@@ -3,7 +3,7 @@ use std::f32::consts::E;
 
 use bevy::{ecs::query, log, prelude::*, render::{mesh::{Indices, PrimitiveTopology}, render_asset::RenderAssetUsages}, tasks::AsyncComputeTaskPool, transform::commands, utils::hashbrown::HashMap};
 use bevy_quinnet::server::QuinnetServer;
-use bevy_rapier3d::{na::distance, rapier::{crossbeam::{channel, epoch::Pointable}, prelude::query_pipeline_generators::CurrentAabb}};
+use bevy_rapier3d::{na::distance, prelude::{CharacterLength, Collider, KinematicCharacterController}, rapier::{crossbeam::{channel, epoch::Pointable}, prelude::query_pipeline_generators::CurrentAabb}};
 use oxidized_navigation_serializable::{NavMesh, NavMeshSettings};
 use rand::distributions::DistMap;
 
@@ -248,6 +248,15 @@ pub fn assign_supply_tasks (
                                     path_recalculation_cooldown: 5000,
                                     path_recalculation_elapsed: 0,
                                     destination_completion_range: supply_consumer.2.supply_range,
+                                }).insert(KinematicCharacterController{
+                                    custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
+                                    up: Vec3::Y,
+                                    offset: CharacterLength::Absolute(0.1),
+                                    slide: true,
+                                    autostep: None,
+                                    apply_impulse_to_dynamic_bodies: false,
+                                    snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                                    ..default()
                                 }).id();
         
                                 let nav_mesh_lock = nav_mesh.get();
@@ -325,6 +334,15 @@ pub fn assign_supply_tasks (
                                         path_recalculation_cooldown: 5000,
                                         path_recalculation_elapsed: 0,
                                         destination_completion_range: supply_consumer.2.supply_range,
+                                    }).insert(KinematicCharacterController{
+                                        custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
+                                        up: Vec3::Y,
+                                        offset: CharacterLength::Absolute(0.1),
+                                        slide: true,
+                                        autostep: None,
+                                        apply_impulse_to_dynamic_bodies: false,
+                                        snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                                        ..default()
                                     }).id();
             
                                     let nav_mesh_lock = nav_mesh.get();
@@ -402,6 +420,15 @@ pub fn assign_supply_tasks (
                                             path_recalculation_cooldown: 5000,
                                             path_recalculation_elapsed: 0,
                                             destination_completion_range: supply_consumer.2.supply_range,
+                                        }).insert(KinematicCharacterController{
+                                            custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
+                                            up: Vec3::Y,
+                                            offset: CharacterLength::Absolute(0.1),
+                                            slide: true,
+                                            autostep: None,
+                                            apply_impulse_to_dynamic_bodies: false,
+                                            snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                                            ..default()
                                         }).id();
                 
                                         let nav_mesh_lock = nav_mesh.get();
@@ -481,6 +508,15 @@ pub fn assign_supply_tasks (
                                                     path_recalculation_cooldown: 5000,
                                                     path_recalculation_elapsed: 0,
                                                     destination_completion_range: supply_consumer.2.supply_range,
+                                                }).insert(KinematicCharacterController{
+                                                    custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
+                                                    up: Vec3::Y,
+                                                    offset: CharacterLength::Absolute(0.1),
+                                                    slide: true,
+                                                    autostep: None,
+                                                    apply_impulse_to_dynamic_bodies: false,
+                                                    snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                                                    ..default()
                                                 }).id();
                         
                                                 let nav_mesh_lock = nav_mesh.get();
@@ -913,6 +949,15 @@ pub fn material_producers_processing_system(
                                 path_recalculation_cooldown: 5000,
                                 path_recalculation_elapsed: 0,
                                 destination_completion_range: material_consumer.2.replenishment_range,
+                            }).insert(KinematicCharacterController{
+                                custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
+                                up: Vec3::Y,
+                                offset: CharacterLength::Absolute(0.1),
+                                slide: true,
+                                autostep: None,
+                                apply_impulse_to_dynamic_bodies: false,
+                                snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                                ..default()
                             }).id();
 
                             let nav_mesh_lock = nav_mesh.get();
@@ -1026,6 +1071,15 @@ pub fn human_resource_producers_processing_system(
                                 path_recalculation_cooldown: 5000,
                                 path_recalculation_elapsed: 0,
                                 destination_completion_range: human_resource_consumer.2.replenishment_range,
+                            }).insert(KinematicCharacterController{
+                                custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
+                                up: Vec3::Y,
+                                offset: CharacterLength::Absolute(0.1),
+                                slide: true,
+                                autostep: None,
+                                apply_impulse_to_dynamic_bodies: false,
+                                snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                                ..default()
                             }).id();
 
                             let nav_mesh_lock = nav_mesh.get();

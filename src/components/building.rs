@@ -3737,9 +3737,14 @@ pub fn buildings_deletion_activation_system(
     selection_node: Query<Entity, With<SelectionBox>>,
     mut unit_selection: ResMut<IsUnitSelectionAllowed>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
+    game_stage: Res<GameStage>,
     mut commands: Commands,
 ){
     for _event in event_reader.0.read() {
+        if !matches!(game_stage.0, GameStages::GameStarted) {
+            return;
+        }
+
         let selection_box = selection_node.single();
 
         if deletion_states.is_blueprints_deletion_active {
@@ -3760,6 +3765,10 @@ pub fn buildings_deletion_activation_system(
     }
 
     for _event in event_reader.1.read() {
+        if !matches!(game_stage.0, GameStages::GameStarted) {
+            return;
+        }
+
         let selection_box = selection_node.single();
 
         if deletion_states.is_buildings_deletion_active {
@@ -3780,6 +3789,10 @@ pub fn buildings_deletion_activation_system(
     }
 
     for _event in event_reader.2.read() {
+        if !matches!(game_stage.0, GameStages::GameStarted) {
+            return;
+        }
+        
         let selection_box = selection_node.single();
 
         if deletion_states.is_buildings_deletion_cancelation_active {
@@ -4305,4 +4318,9 @@ pub fn capturing_displays_processing_system(
             commands.entity(**progress_bar.2).despawn_recursive();
         }
     }
+}
+
+#[derive(Resource)]
+pub struct BuildingStageCache{
+    pub buildings: HashMap<String, (i32, bool)>,
 }

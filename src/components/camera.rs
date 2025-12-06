@@ -89,7 +89,7 @@ pub fn camera_system(
             camera.1.translation += movement;
         }
 
-        if keys.pressed(KeyCode::ControlLeft) {
+        if keys.pressed(KeyCode::KeyC) {
             movement = Vec3::new(0., -1., 0.) * speed * time.delta_seconds();
             camera.1.translation += movement;
         }
@@ -203,7 +203,7 @@ pub fn handle_mouse_buttons(
     }
 
     if buttons_keys.0.just_released(MouseButton::Left){
-        if !buttons_keys.1.pressed(KeyCode::ControlRight) && !selection_bounds.is_ui_hovered && selection_modifiers.0.0 {
+        if !buttons_keys.1.pressed(KeyCode::ControlLeft) && !selection_bounds.is_ui_hovered && selection_modifiers.0.0 {
             clear_selected_units(&mut selected_units, &mut commands, &selectables.0);
 
             clear_selected_buildings(&mut selected_buildings, &mut commands, &selectables.1);

@@ -12,7 +12,7 @@ use oxidized_navigation_serializable::{
 use bevy_tasks::{TaskPool, TaskPoolBuilder};
 use bevy_egui::{egui::{self, Color32, Context, Stroke}, EguiContext};
 
-use crate::components::{asset_manager::{BuildingsAssets, InstancedMaterials, TeamMaterialExtension, UnitsAssets}, building::{BuildingsDeletionStates, PillboxBundle}, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, BattalionSelectionEvent, BrigadeSelectionEvent, ChangeTacticalSymbolsLevel, CompanySelectionEvent, DisplayedTacicalSymbolsLevel, OpenTacticalSymbolsLevels, PlatoonSelectionEvent, RebuildApartments, RegimentSelectionEvent, SwitchBuildingState, UiBlocker}, unit::{AttackAnimationTypes, FogOfWarTexture, IsUnitSelectionAllowed, UnitsTileMap, TILE_SIZE}};
+use crate::components::{asset_manager::{BuildingsAssets, InstancedMaterials, TeamMaterialExtension, UnitsAssets}, building::{BuildingStageCache, BuildingsDeletionStates, PillboxBundle}, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, BattalionSelectionEvent, BrigadeSelectionEvent, BuildingButtonHovered, BuildingHints, ChangeTacticalSymbolsLevel, CompanySelectionEvent, DisplayedTacicalSymbolsLevel, OpenTacticalSymbolsLevels, PlatoonSelectionEvent, RebuildApartments, RegimentSelectionEvent, SwitchBuildingState, UiBlocker}, unit::{AttackAnimationTypes, FogOfWarTexture, IsUnitSelectionAllowed, TILE_SIZE, UnitsTileMap}};
 
 mod components;
 
@@ -119,6 +119,7 @@ fn main() {
     .add_event::<ActivateBuildingsDeletionCancelationMode>()
     .add_event::<SwitchBuildingState>()
     .add_event::<RebuildApartments>()
+    .add_event::<BuildingButtonHovered>()
     .insert_resource(PlayerData{
         team: 1,
         is_all_settlements_placed: false,
@@ -171,6 +172,10 @@ fn main() {
         is_middle_upper_node_visible: false,
         middle_upper_node_width: 0.,
         symbol_level_dropdown_list: Entity::PLACEHOLDER,
+        right_bottom_node: Entity::PLACEHOLDER,
+        right_bottom_node_rows: Vec::new(),
+        hint_node: Entity::PLACEHOLDER,
+        hint_text: Entity::PLACEHOLDER,
     })
     .insert_resource(components::unit::Armies(HashMap::new()))
     .insert_resource(ArmySettingsNodes {
@@ -257,6 +262,9 @@ fn main() {
     .insert_resource(UiBlocker{
         is_bottom_left_node_blocked: false,
         is_bottom_middle_node_blocked: false,
+    })
+    .insert_resource(BuildingStageCache{
+        buildings: HashMap::new(),
     })
     .run();
 }
@@ -1551,6 +1559,64 @@ fn setup(
     x = -5.;
     z = -20.;
 
+    let mut buildings_stage_cache: HashMap<String, (i32, bool)> = HashMap::new();
+    let mut bulding_hints: HashMap<String, String> = HashMap::new();
+
+    for building in buildings_list.0.iter() {
+        let number: i32;
+        let is_req: bool;
+
+        let hint: String;
+
+        match building.0.as_str() {
+            "InfB" => {
+                number = 4;
+                is_req = true;
+
+                hint = "Infantry barracks | cost: 100000 materials\nProduces infantry units.".to_string();
+            },
+            "VehF" => {
+                number = 4;
+                is_req = true;
+
+                hint = "Vehicle Factory | cost: 100000 materials\nProduces armored vehicles.".to_string();
+            },
+            "LogH" => {
+                number = 6;
+                is_req = true;
+
+                hint = "Logistic Hub | cost: 10000 materials\nProvides supplies to the units. You need to have at least 6 of these, having more is not necessary.".to_string();
+            },
+            "ResM" => {
+                number = 6;
+                is_req = true;
+
+                hint = "Materials extractor | cost: 10000 materials\nProduces materials. Materials are spent on the production of units and the construction of buildings.".to_string();
+            },
+            "PillB" => {
+                number = 20;
+                is_req = false;
+
+                hint = "Pillbox | cost: 10000 materials\nDefensive structure. You can place a squad here.".to_string();
+            },
+            _ => {
+                number = 0;
+                is_req = false;
+
+                hint = "".to_string();
+            },
+        }
+
+        buildings_stage_cache.insert(building.0.clone(), (number, is_req));
+        bulding_hints.insert(building.0.clone(), hint);
+    }
+
+    commands.insert_resource(BuildingStageCache{
+        buildings: buildings_stage_cache,
+    });
+
+    commands.insert_resource(BuildingHints(bulding_hints));
+
     // for _i in 0..3 {
     //     x += 5.;
 
@@ -2053,6 +2119,7 @@ impl Plugin for SingleplayerPlugin {
             components::building::rebuild_settlement_apartments_system,
             components::building::apartments_rebuilding_system,
             components::building::capturing_displays_processing_system,
+            components::ui_manager::hint_management_system,
             components::ui_manager::ui_nodes_unlocker,//keep last
         ).run_if(in_state(GameState::Singleplayer)));
     }

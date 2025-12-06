@@ -6,7 +6,7 @@ use bevy_quinnet::{client::QuinnetClient, server::QuinnetServer};
 use bevy_rapier3d::{plugin::RapierContext, prelude::{Collider, QueryFilter}, rapier::crossbeam::epoch::CompareAndSetOrdering};
 use oxidized_navigation_serializable::NavMeshAffector;
 
-use crate::{components::{asset_manager::{CircleData, CircleHolder, ForbiddenBlueprint, InstancedMaterials, OtherAssets, TeamMaterialExtension, Terrain}, building::{BuildingsDeletionStates, HumanResourceStorageComponent, MaterialsProductionComponent, MaterialsStorageComponent, SettlementComponent, SwitchableBuilding}, camera::SelectionBox, unit::{IsUnitSelectionAllowed, SuppliesConsumerComponent, ARMY_SIZE, BATTALION_SIZE, COMPANY_SIZE, PLATOON_SIZE, REGIMENT_SIZE}}, GameStage, GameStages, GameState, PlayerData, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, SUPPLIES_COLOR};
+use crate::{GameStage, GameStages, GameState, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, PlayerData, SUPPLIES_COLOR, components::{asset_manager::{CircleData, CircleHolder, ForbiddenBlueprint, InstancedMaterials, OtherAssets, TeamMaterialExtension, Terrain}, building::{BuildingStageCache, BuildingsDeletionStates, HumanResourceStorageComponent, MaterialsProductionComponent, MaterialsStorageComponent, SettlementComponent, SwitchableBuilding}, camera::SelectionBox, unit::{ARMY_SIZE, BATTALION_SIZE, COMPANY_SIZE, IsUnitSelectionAllowed, PLATOON_SIZE, REGIMENT_SIZE, SuppliesConsumerComponent}}};
 
 use super::{asset_manager::{generate_circle_segments, LineData, LineHolder}, building::{AllSettlementsPlaced, BuildingBlueprint, BuildingsBundles, BuildingsList, InfantryBarracksBundle, ProductionButtonPressed, ProductionQueue, ProductionState, SoldierBundle, UnactivatedBlueprints, UnitBundles, VehicleFactoryBundle, ALLOWED_DISTANCE_FROM_BORDERS, CITIES_COUNT}, camera::{CameraComponent, SelectionBounds}, logistics::ResourceZone, network::{ClientList, ClientMessage, InsertedConnectionData, NetworkStatus, NetworkStatuses, PlayerList, ServerMessage}, unit::{self, Armies, ArmoredPlatoon, ArtilleryUnit, CompanyTypes, CombatComponent, IsArtilleryDesignationActive, LimitedHashMap, LimitedHashSet, LimitedNumber, SquadLeader, RegularPlatoon, SelectedUnit, SerializableArmoredPlatoon, SerializableArmyObject, SerializableRegularPlatoon, SerializableShockPlatoon, ShockPlatoon, UnitTypes, UnitsTileMap, MAX_PLATOON_COUNT, START_ARMORED_SQUADS_AMOUNT, START_REGULAR_SQUADS_AMOUNT, START_SHOCK_SQUADS_AMOUNT, TILE_SIZE}};
 
@@ -122,6 +122,9 @@ pub struct SwitchBuildingState(pub Entity);
 #[derive(Event)]
 pub struct RebuildApartments(pub Entity);
 
+#[derive(Event)]
+pub struct BuildingButtonHovered(pub String);
+
 #[derive(Resource)]
 pub struct ArmySettingsNodes {
     pub land_army_settings_node: Entity,
@@ -180,8 +183,12 @@ pub struct UiButtonNodes {
     pub is_middle_bottom_node_visible: bool,
     pub middle_upper_node: Entity,
     pub middle_upper_node_row: Entity,
+    pub right_bottom_node: Entity,
+    pub right_bottom_node_rows: Vec<Entity>,
     pub symbol_level_dropdown_list: Entity,
     pub is_middle_upper_node_visible: bool,
+    pub hint_node: Entity,
+    pub hint_text: Entity,
     pub middle_upper_node_width: f32,
     pub margin: f32,
     pub button_size: f32,
@@ -296,6 +303,55 @@ pub fn setup_ingame_ui(
 
     commands.entity(middle_bottom_node_entity).insert(Visibility::Hidden);
 
+    let hint_node = NodeBundle {
+        style: Style {
+            position_type: PositionType::Absolute,
+            width: Val::Px(middle_bottom_node_width as f32 * 0.8),
+            height: Val::Px(middle_bottom_node_height as f32 * 4.),
+            bottom: Val::Px((middle_bottom_node_height) as f32 * 1.5),
+            left: Val::Px((window_width - (middle_bottom_node_width as f32 * 0.9) as u32 - left_bottom_node_size) as f32),
+            justify_content: JustifyContent::Start,
+            ..default()
+        },
+        background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
+        ..default()
+    };
+
+    let hint_node_entity = commands.spawn(hint_node).insert(ParentNode).id();
+    
+    ui_button_nodes.hint_node = hint_node_entity;
+
+    let mut hint_node_sub_bundle_entity = Entity::PLACEHOLDER;
+
+    commands.entity(ui_button_nodes.hint_node).with_children(|parent| {
+        hint_node_sub_bundle_entity = parent.spawn(NodeBundle {
+            style: Style {
+                position_type: PositionType::Relative,
+                width: Val::Px(middle_bottom_node_width as f32 * 0.8),
+                height: Val::Px(middle_bottom_node_height as f32 * 4.),
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::Start,
+                ..default()
+            },
+            background_color: Color::srgba(0., 0., 0., 0.).into(),
+            ..default()
+        }).id();
+    });
+
+    ui_button_nodes.hint_text = commands.entity(hint_node_sub_bundle_entity).insert(TextBundle{
+        text: Text{
+            sections: vec![TextSection {
+                value: "".to_string(),
+                ..default()
+            }],
+            justify: JustifyText::Left,
+            ..default() 
+        },
+        ..default()
+    }).id();
+
+    commands.entity(ui_button_nodes.hint_node).insert(Visibility::Hidden);
+
     let right_bottom_node_size = left_bottom_node_size;
     let right_bottom_node = NodeBundle {
         style: Style {
@@ -310,7 +366,36 @@ pub fn setup_ingame_ui(
         ..default()
     };
 
-    commands.spawn(right_bottom_node).insert(ParentNode);
+    let right_bottom_node_entity = commands.spawn(right_bottom_node).insert(ParentNode).id();
+
+    ui_button_nodes.right_bottom_node = right_bottom_node_entity;
+
+    let mut right_bottom_node_rows: Vec<Entity> = Vec::new();
+    commands.entity(right_bottom_node_entity).with_children(|parent| {
+        for _i in 0..3 {
+            right_bottom_node_rows.push(
+                parent.spawn(NodeBundle {
+                    style: Style {
+                        position_type: PositionType::Relative,
+                        width: Val::Px((left_bottom_node_size) as f32),
+                        height: Val::Px((left_bottom_node_size / 3 - (ui_button_nodes.margin * 2.) as u32) as f32),
+                        flex_direction: FlexDirection::Row,
+                        margin: UiRect {
+                            left: Val::Px(0.),
+                            right: Val::Px(0.),
+                            top: Val::Px(ui_button_nodes.margin),
+                            bottom: Val::Px(ui_button_nodes.margin),
+                        },
+                        ..default()
+                    },
+                    background_color: Color::srgba(0., 0., 0., 0.).into(),
+                    ..default()
+                }).id()
+            );
+        }
+    });
+
+    ui_button_nodes.right_bottom_node_rows = right_bottom_node_rows;
 
     ui_button_nodes.button_size = (left_bottom_node_size / 3) as f32;
 
@@ -331,26 +416,28 @@ pub fn setup_ingame_ui(
 
     ui_button_nodes.middle_bottom_node_row = middle_node_row;
 
-    let right_center_node_width = left_bottom_node_size / 3;
-    let right_center_node_height = right_center_node_width * 3;
 
-    let right_center_node = NodeBundle {
-        style: Style {
-            position_type: PositionType::Absolute,
-            width: Val::Px(right_center_node_width as f32),
-            height: Val::Px(right_center_node_height as f32),
-            top: Val::Px((window_height - right_bottom_node_size - right_center_node_height - right_center_node_width) as f32),
-            right: Val::Px(0.),
-            flex_direction: FlexDirection::Column,
-            ..default()
-        },
-        background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
-        ..default()
-    };
 
-    let right_center_node_entity = commands.spawn(right_center_node).insert(ParentNode).id();
+    // let right_center_node_width = left_bottom_node_size / 3;
+    // let right_center_node_height = right_center_node_width * 3;
 
-    commands.entity(right_center_node_entity).with_children(|parent| {
+    // let right_center_node = NodeBundle {
+    //     style: Style {
+    //         position_type: PositionType::Absolute,
+    //         width: Val::Px(right_center_node_width as f32),
+    //         height: Val::Px(right_center_node_height as f32),
+    //         top: Val::Px((window_height - right_bottom_node_size - right_center_node_height - right_center_node_width) as f32),
+    //         right: Val::Px(0.),
+    //         flex_direction: FlexDirection::Column,
+    //         ..default()
+    //     },
+    //     background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
+    //     ..default()
+    // };
+
+    // let right_center_node_entity = commands.spawn(right_center_node).insert(ParentNode).id();
+
+    commands.entity(ui_button_nodes.right_bottom_node_rows[0]).with_children(|parent| {
         parent.spawn(ButtonBundle{
             style: Style {
                 position_type: PositionType::Relative,
@@ -384,7 +471,7 @@ pub fn setup_ingame_ui(
         });
     });
 
-    commands.entity(right_center_node_entity).with_children(|parent| {
+    commands.entity(ui_button_nodes.right_bottom_node_rows[0]).with_children(|parent| {
         parent.spawn(ButtonBundle{
             style: Style {
                 position_type: PositionType::Relative,
@@ -418,7 +505,7 @@ pub fn setup_ingame_ui(
         });
     });
 
-    commands.entity(right_center_node_entity).with_children(|parent| {
+    commands.entity(ui_button_nodes.right_bottom_node_rows[0]).with_children(|parent| {
         parent.spawn(ButtonBundle{
             style: Style {
                 position_type: PositionType::Relative,
@@ -1538,7 +1625,8 @@ pub fn setup_ingame_ui(
 }
 
 pub fn handle_button_clicks(
-    button_interaction_q: Query<(&Interaction, &ButtonAction), (Changed<Interaction>, With<Button>)>,
+    button_interactions_q: Query<(&Interaction, &ButtonAction), (Changed<Interaction>, With<Button>)>,
+    other_interactions_q: Query<&Interaction, (Changed<Interaction>, Without<Button>)>,
     mut selection_bounds: ResMut<SelectionBounds>,
     mut event_writer1:
     (
@@ -1571,10 +1659,19 @@ pub fn handle_button_clicks(
         EventWriter<SwitchBuildingState>,
         EventWriter<RebuildApartments>,
     ),
+    mut buttons_hover_event_writer: (
+        EventWriter<BuildingButtonHovered>,
+    ),
+    ui_button_nodes: Res<UiButtonNodes>,
+    mut commands: Commands,
 ){
-    for (interaction, button_action) in &button_interaction_q {
-        let mut is_hovered = false;
+    if button_interactions_q.is_empty() && other_interactions_q.is_empty() {
+        return;
+    }
 
+    let mut is_hovered = false;
+    
+    for (interaction, button_action) in &button_interactions_q {
         match *interaction {
             Interaction::Pressed => {
                 match &button_action.action {
@@ -1659,13 +1756,34 @@ pub fn handle_button_clicks(
             Interaction::Hovered => {
                 is_hovered = true;
                 selection_bounds.is_ui_hovered = true;
+
+                match &button_action.action {
+                    Actions::BuildingToBuildSelected(d) => {
+                        buttons_hover_event_writer.0.send(BuildingButtonHovered(d.4.clone()));
+                    }
+                    _ => {}
+                }
             }
             Interaction::None => {}
         }
+    }
 
-        if !is_hovered {
-            selection_bounds.is_ui_hovered = false;
+    if !is_hovered {
+        commands.entity(ui_button_nodes.hint_node).insert(Visibility::Hidden);
+    }
+
+    for interaction in other_interactions_q.iter() {
+        match *interaction {
+            Interaction::Hovered => {
+                is_hovered = true;
+                selection_bounds.is_ui_hovered = true;
+            }
+            _ => {}
         }
+    }
+
+    if !is_hovered {
+        selection_bounds.is_ui_hovered = false;
     }
 }
 
@@ -1678,7 +1796,7 @@ pub fn land_army_settings_system(
     game_stage: Res<GameStage>,
 ){
     for _event in event_reader.read() {
-        if matches!(game_stage.0, GameStages::ArmySetup | GameStages::GameStarted) {
+        if matches!(game_stage.0, GameStages::GameStarted) {
             if army_settings_nodes.is_land_army_settings_visible {
                 commands.entity(army_settings_nodes.land_army_settings_node).insert(Visibility::Hidden);
                 army_settings_nodes.is_land_army_settings_visible = false;
@@ -3429,7 +3547,7 @@ pub fn toggle_buildings_list_system(
     game_stage: Res<GameStage>,
 ){
     for _event in event_reader.read() {
-        if !matches!(game_stage.0, GameStages::SettlementsSetup) {
+        if matches!(game_stage.0, GameStages::GameStarted){
             deletion_states.is_blueprints_deletion_active = false;
             deletion_states.is_buildings_deletion_active = false;
             deletion_states.is_buildings_deletion_cancelation_active = false;
@@ -3626,12 +3744,22 @@ pub fn toggle_buildings_list_system(
 pub fn building_placement_activation_system(
     mut event_reader: EventReader<BuildingToBuildSelectedEvent>,
     mut building_placement_cache: ResMut<BuildingPlacementCache>,
+    building_stage_cache: Res<BuildingStageCache>,
     displayed_model_holders: Query<Entity, With<DisplayedModelHolder>>,
+    game_stage: Res<GameStage>,
     mut commands: Commands,
     player_data: Res<PlayerData>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ){
     for event in event_reader.read(){
+        if matches!(game_stage.0, GameStages::BuildingsSetup) {
+            if let Some(building) = building_stage_cache.buildings.get(&event.0.4) {
+                if building.0 < 1 {
+                    return;
+                }
+            }
+        }
+
         building_placement_cache.is_active = true;
         building_placement_cache.current_building = event.0.0.clone();
         building_placement_cache.current_building_y_adjustment = event.0.2;
@@ -3699,7 +3827,11 @@ pub fn building_placement_activation_system(
 }
 
 pub fn building_placement_handling_system(
-    mut building_placement_cache: ResMut<BuildingPlacementCache>,
+    mut buildings_cache: (
+        ResMut<BuildingPlacementCache>,
+        ResMut<BuildingStageCache>,
+        Res<BuildingsList>,
+    ),
     mut materials: (
         ResMut<Assets<StandardMaterial>>,
         ResMut<InstancedMaterials>,
@@ -3708,10 +3840,16 @@ pub fn building_placement_handling_system(
     mut unactivated_blueprints: ResMut<UnactivatedBlueprints>,
     mut displayed_model_holders: Query<(Entity, &mut Transform), (With<DisplayedModelHolder>, Without<ResourceZone>, Without<Terrain>)>,
     terrain_q: Query<Entity, With<Terrain>>,
-    selection_bounds: Res<SelectionBounds>,
+    ui_resources: (
+        Res<SelectionBounds>,
+        ResMut<UiButtonNodes>,
+    ),
     cursor_ray: Res<CursorRay>,
     mut raycast: Raycast,
-    mouse_buttons: Res<ButtonInput<MouseButton>>,
+    button_inputs: (
+        Res<ButtonInput<MouseButton>>,
+        Res<ButtonInput<KeyCode>>,
+    ),
     mut commands: Commands,
     mut resource_zones_q: Query<(&mut ResourceZone, &Transform), With<ResourceZone>>,
     game_stage: Res<GameStage>,
@@ -3720,7 +3858,7 @@ pub fn building_placement_handling_system(
     player_data: Res<PlayerData>,
     rapier_context: Res<RapierContext>,
 ){
-    if building_placement_cache.is_active {
+    if buildings_cache.0.is_active {
         let terrain_entity = terrain_q.single();
         // let mut entities_to_ignore: Vec<Entity> = Vec::new();
 
@@ -3762,7 +3900,7 @@ pub fn building_placement_handling_system(
         let intersections = rapier_context.intersection_with_shape(
             shape_position,
             Quat::from_rotation_y(angle),
-            &building_placement_cache.current_building_check_collider,
+            &buildings_cache.0.current_building_check_collider,
             QueryFilter::default(),
         );
 
@@ -3777,7 +3915,7 @@ pub fn building_placement_handling_system(
         for mut holder in displayed_model_holders.iter_mut() {
             holder.1.translation = Vec3::new(
                 cursor_on_plane_position.x,
-                cursor_on_plane_position.y + building_placement_cache.current_building_y_adjustment,
+                cursor_on_plane_position.y + buildings_cache.0.current_building_y_adjustment,
                 cursor_on_plane_position.z,
             );
             holder.1.rotation = Quat::from_rotation_y(angle);
@@ -3789,7 +3927,7 @@ pub fn building_placement_handling_system(
             }
         }
 
-        if mouse_buttons.just_pressed(MouseButton::Left) && !selection_bounds.is_ui_hovered {
+        if button_inputs.0.just_pressed(MouseButton::Left) && !ui_resources.0.is_ui_hovered {
             if !is_forbidden {
                 // let round_factor = 3.;
                 // cursor_on_plane_position.x = ((cursor_on_plane_position.x / round_factor) as i32) as f32 * round_factor;
@@ -3800,10 +3938,10 @@ pub fn building_placement_handling_system(
                     while channel_id <= 89 {
                         if let Err(_) = client.connection_mut().send_message_on(channel_id, ClientMessage::BuildingPlacementRequest {
                             team: player_data.team,
-                            name: building_placement_cache.name.clone(),
+                            name: buildings_cache.0.name.clone(),
                             position: cursor_on_plane_position,
                             angle: angle,
-                            needed_buildpower: building_placement_cache.needed_buildpower,
+                            needed_buildpower: buildings_cache.0.needed_buildpower,
                         }){
                             channel_id += 1;
                         } else {
@@ -3811,8 +3949,8 @@ pub fn building_placement_handling_system(
                         }
                     }
 
-                    building_placement_cache.is_active = false;
-                    building_placement_cache.current_building = BuildingsBundles::None;
+                    buildings_cache.0.is_active = false;
+                    buildings_cache.0.current_building = BuildingsBundles::None;
                     for holder in displayed_model_holders.iter() {
                         commands.entity(holder.0).despawn();
                     }
@@ -3826,7 +3964,7 @@ pub fn building_placement_handling_system(
                         color = Vec4::new(1., 0., 0., 1.);
                     }
         
-                    match &building_placement_cache.current_building {
+                    match &buildings_cache.0.current_building {
                         BuildingsBundles::InfantryBarracks(bundle) => {
                             let material = materials.1.blue_transparent.clone();
                             
@@ -3835,17 +3973,17 @@ pub fn building_placement_handling_system(
                                 material: material.clone(),
                                 transform: Transform::from_translation(Vec3::new(
                                     cursor_on_plane_position.x,
-                                    cursor_on_plane_position.y + building_placement_cache.current_building_y_adjustment,
+                                    cursor_on_plane_position.y + buildings_cache.0.current_building_y_adjustment,
                                     cursor_on_plane_position.z,
                                 )).with_rotation(Quat::from_rotation_y(angle)),
                                 ..default()
                             }).insert(BuildingBlueprint{
                                 team: player_data.team,
-                                building_bundle: building_placement_cache.current_building.clone(),
-                                build_power_remaining: building_placement_cache.needed_buildpower,
-                                name: building_placement_cache.name.clone(),
-                                build_distance: building_placement_cache.build_distance,
-                                resource_cost: building_placement_cache.resource_cost,
+                                building_bundle: buildings_cache.0.current_building.clone(),
+                                build_power_remaining: buildings_cache.0.needed_buildpower,
+                                name: buildings_cache.0.name.clone(),
+                                build_distance: buildings_cache.0.build_distance,
+                                resource_cost: buildings_cache.0.resource_cost,
                             })
                             .insert(NotShadowCaster)
                             .id();
@@ -3858,17 +3996,17 @@ pub fn building_placement_handling_system(
                                 material: material.clone(),
                                 transform: Transform::from_translation(Vec3::new(
                                     cursor_on_plane_position.x,
-                                    cursor_on_plane_position.y + building_placement_cache.current_building_y_adjustment,
+                                    cursor_on_plane_position.y + buildings_cache.0.current_building_y_adjustment,
                                     cursor_on_plane_position.z,
                                 )).with_rotation(Quat::from_rotation_y(angle)),
                                 ..default()
                             }).insert(BuildingBlueprint{
                                 team: player_data.team,
-                                building_bundle: building_placement_cache.current_building.clone(),
-                                build_power_remaining: building_placement_cache.needed_buildpower,
-                                name: building_placement_cache.name.clone(),
-                                build_distance: building_placement_cache.build_distance,
-                                resource_cost: building_placement_cache.resource_cost,
+                                building_bundle: buildings_cache.0.current_building.clone(),
+                                build_power_remaining: buildings_cache.0.needed_buildpower,
+                                name: buildings_cache.0.name.clone(),
+                                build_distance: buildings_cache.0.build_distance,
+                                resource_cost: buildings_cache.0.resource_cost,
                             })
                             .insert(NotShadowCaster)
                             .id();
@@ -3881,17 +4019,17 @@ pub fn building_placement_handling_system(
                                 material: material.clone(),
                                 transform: Transform::from_translation(Vec3::new(
                                     cursor_on_plane_position.x,
-                                    cursor_on_plane_position.y + building_placement_cache.current_building_y_adjustment,
+                                    cursor_on_plane_position.y + buildings_cache.0.current_building_y_adjustment,
                                     cursor_on_plane_position.z,
                                 )).with_rotation(Quat::from_rotation_y(angle)),
                                 ..default()
                             }).insert(BuildingBlueprint{
                                 team: player_data.team,
-                                building_bundle: building_placement_cache.current_building.clone(),
-                                build_power_remaining: building_placement_cache.needed_buildpower,
-                                name: building_placement_cache.name.clone(),
-                                build_distance: building_placement_cache.build_distance,
-                                resource_cost: building_placement_cache.resource_cost,
+                                building_bundle: buildings_cache.0.current_building.clone(),
+                                build_power_remaining: buildings_cache.0.needed_buildpower,
+                                name: buildings_cache.0.name.clone(),
+                                build_distance: buildings_cache.0.build_distance,
+                                resource_cost: buildings_cache.0.resource_cost,
                             })
                             .insert(NotShadowCaster)
                             .id();
@@ -3920,17 +4058,17 @@ pub fn building_placement_handling_system(
                                         material: material.clone(),
                                         transform: Transform::from_translation(Vec3::new(
                                             cursor_on_plane_position.x,
-                                            cursor_on_plane_position.y + building_placement_cache.current_building_y_adjustment,
+                                            cursor_on_plane_position.y + buildings_cache.0.current_building_y_adjustment,
                                             cursor_on_plane_position.z,
                                         )).with_rotation(Quat::from_rotation_y(angle)),
                                         ..default()
                                     }).insert(BuildingBlueprint{
                                         team: player_data.team,
-                                        building_bundle: building_placement_cache.current_building.clone(),
-                                        build_power_remaining: building_placement_cache.needed_buildpower,
-                                        name: building_placement_cache.name.clone(),
-                                        build_distance: building_placement_cache.build_distance,
-                                        resource_cost: building_placement_cache.resource_cost,
+                                        building_bundle: buildings_cache.0.current_building.clone(),
+                                        build_power_remaining: buildings_cache.0.needed_buildpower,
+                                        name: buildings_cache.0.name.clone(),
+                                        build_distance: buildings_cache.0.build_distance,
+                                        resource_cost: buildings_cache.0.resource_cost,
                                     })
                                     .insert(NotShadowCaster)
                                     .id();
@@ -3951,17 +4089,17 @@ pub fn building_placement_handling_system(
                                 material: material.clone(),
                                 transform: Transform::from_translation(Vec3::new(
                                     cursor_on_plane_position.x,
-                                    cursor_on_plane_position.y + building_placement_cache.current_building_y_adjustment,
+                                    cursor_on_plane_position.y + buildings_cache.0.current_building_y_adjustment,
                                     cursor_on_plane_position.z,
                                 )).with_rotation(Quat::from_rotation_y(angle)),
                                 ..default()
                             }).insert(BuildingBlueprint{
                                 team: player_data.team,
-                                building_bundle: building_placement_cache.current_building.clone(),
-                                build_power_remaining: building_placement_cache.needed_buildpower,
-                                name: building_placement_cache.name.clone(),
-                                build_distance: building_placement_cache.build_distance,
-                                resource_cost: building_placement_cache.resource_cost,
+                                building_bundle: buildings_cache.0.current_building.clone(),
+                                build_power_remaining: buildings_cache.0.needed_buildpower,
+                                name: buildings_cache.0.name.clone(),
+                                build_distance: buildings_cache.0.build_distance,
+                                resource_cost: buildings_cache.0.resource_cost,
                             })
                             .insert(NotShadowCaster)
                             .id();
@@ -3972,16 +4110,97 @@ pub fn building_placement_handling_system(
                     if new_building_entity != Entity::PLACEHOLDER {
                         if let GameStages::GameStarted = game_stage.0 {
                             unactivated_blueprints.0.entry(player_data.team).or_insert_with(HashMap::new)
-                            .insert(new_building_entity, (cursor_on_plane_position, Entity::PLACEHOLDER, building_placement_cache.build_distance));
+                            .insert(new_building_entity, (cursor_on_plane_position, Entity::PLACEHOLDER, buildings_cache.0.build_distance));
                         }
                     }
 
-                    building_placement_cache.is_active = false;
-                    building_placement_cache.current_building = BuildingsBundles::None;
-                    for holder in displayed_model_holders.iter() {
-                        commands.entity(holder.0).despawn();
+                    if !button_inputs.1.pressed(KeyCode::ControlLeft) {
+                        buildings_cache.0.is_active = false;
+                        buildings_cache.0.current_building = BuildingsBundles::None;
+                        for holder in displayed_model_holders.iter() {
+                            commands.entity(holder.0).despawn();
+                        }
+                    }
+
+                    if matches!(game_stage.0, GameStages::BuildingsSetup) {
+                        if let Some(building) = buildings_cache.1.buildings.get_mut(&buildings_cache.0.name) {
+                            building.0 -= 1;
+
+                            if building.0 < 1 {
+                                buildings_cache.0.is_active = false;
+                                buildings_cache.0.current_building = BuildingsBundles::None;
+                                for holder in displayed_model_holders.iter() {
+                                    commands.entity(holder.0).despawn();
+                                }
+                            }
+                        }
+
+                        commands.entity(ui_resources.1.middle_bottom_node_row).despawn_descendants();
+
+                        for building in buildings_cache.2.0.iter() {
+                            let mut count = "".to_string();
+                            let mut color = Color::srgb(0., 1., 0.);
+                            if let Some(building_cache) = buildings_cache.1.buildings.get_mut(&building.0) {
+                                count = building_cache.0.to_string();
+                                if building_cache.1 {
+                                    color = Color::srgb(1., 0., 0.);
+                                }
+
+                                if building_cache.0 < 1 {
+                                    color = Color::srgb(0., 1., 0.);
+                                }
+                            }
+                            
+                            commands.entity(ui_resources.1.middle_bottom_node_row).with_children(|parent| {
+                                parent.spawn(ButtonBundle{
+                                    style: Style {
+                                        position_type: PositionType::Relative,
+                                        width: Val::Px(ui_resources.1.button_size - ui_resources.1.margin * 2.),
+                                        height: Val::Px(ui_resources.1.button_size - ui_resources.1.margin * 2.),
+                                        margin: UiRect {
+                                            left: Val::Px(ui_resources.1.margin),
+                                            right: Val::Px(ui_resources.1.margin),
+                                            top: Val::Px(ui_resources.1.margin),
+                                            bottom: Val::Px(ui_resources.1.margin),
+                                        },
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                                    ..default()
+                                }).insert(ButtonAction{action: Actions::BuildingToBuildSelected(
+                                    (building.1.clone(), building.2.clone(), building.3, building.4, building.0.clone(), building.5, building.6))}
+                                )
+                                .with_children(|button_parent| {
+                                    button_parent.spawn(TextBundle {
+                                        text: Text{
+                                            sections: vec![TextSection {
+                                                value: count,
+                                                style: TextStyle{
+                                                    color: color,
+                                                    ..default()
+                                                }
+                                            }],
+                                            justify: JustifyText::Center,
+                                            ..default() 
+                                        },
+                                        ..default()
+                                    });
+                                });
+                            });
+                        }
                     }
                 }
+            }
+        } else if button_inputs.0.just_pressed(MouseButton::Right) {
+            buildings_cache.0.is_active = false;
+            buildings_cache.0.name = "".to_string();
+            buildings_cache.0.build_distance = 0.;
+            buildings_cache.0.resource_cost = 0;
+
+            for holder in displayed_model_holders.iter() {
+                commands.entity(holder.0).despawn();
             }
         }
     }
@@ -4129,6 +4348,7 @@ pub fn building_stage_ui_activation(
     mut event_reader: EventReader<AllSettlementsPlaced>,
     mut ui_button_nodes: ResMut<UiButtonNodes>,
     buildings_list: Res<BuildingsList>,
+    building_stage_cache: Res<BuildingStageCache>,
     mut commands: Commands,
 ){
     for _event in event_reader.read() {
@@ -4137,6 +4357,16 @@ pub fn building_stage_ui_activation(
         ui_button_nodes.is_middle_bottom_node_visible = true;
 
         for building in buildings_list.0.iter() {
+            let mut count = "".to_string();
+            let mut color = Color::srgb(0., 1., 0.);
+            if let Some(building_cache) = building_stage_cache.buildings.get(&building.0) {
+                count = building_cache.0.to_string();
+
+                if building_cache.1 {
+                    color = Color::srgb(1., 0., 0.);
+                }
+            }
+            
             commands.entity(ui_button_nodes.middle_bottom_node_row).with_children(|parent| {
                 parent.spawn(ButtonBundle{
                     style: Style {
@@ -4162,8 +4392,11 @@ pub fn building_stage_ui_activation(
                     button_parent.spawn(TextBundle {
                         text: Text{
                             sections: vec![TextSection {
-                                value: building.0.clone(),
-                                ..default()
+                                value: count,
+                                style: TextStyle{
+                                    color: color,
+                                    ..default()
+                                },
                             }],
                             justify: JustifyText::Center,
                             ..default() 
@@ -4330,10 +4563,17 @@ pub fn army_setup_stage_ui_activation(
     mut ui_button_nodes: ResMut<UiButtonNodes>,
     mut army_settings_nodes: ResMut<ArmySettingsNodes>,
     resource_zones_q: Query<Entity, With<ResourceZone>>,
+    building_stage_cache: Res<BuildingStageCache>,
     mut commands: Commands,
     mut game_stage: ResMut<GameStage>,
 ){
     for _event in event_reader.read() {
+        for building in building_stage_cache.buildings.iter() {
+            if building.1.0 > 0 && building.1.1 {
+                return;
+            }
+        }
+
         game_stage.0 = GameStages::ArmySetup;
 
         commands.entity(ui_button_nodes.middle_bottom_node_row).despawn_descendants();
@@ -4377,7 +4617,7 @@ pub fn tactical_symbols_dropdown_menu_system (
                 parent.spawn(NodeBundle{
                     style: Style {
                         position_type: PositionType::Absolute,
-                        top: Val::Px(ui_nodes.button_size / 2.),
+                        bottom: Val::Px(ui_nodes.button_size / 2.),
                         width: Val::Px(ui_nodes.button_size),
                         height: Val::Px(ui_nodes.button_size / 4. * 9.),
                         flex_direction: FlexDirection::Column,
@@ -5247,4 +5487,34 @@ pub fn ui_nodes_unlocker(//must be last on the updates list
 ){
     ui_blocker.is_bottom_left_node_blocked = false;
     ui_blocker.is_bottom_middle_node_blocked = false;
+}
+
+#[derive(Resource)]
+pub struct BuildingHints(pub HashMap<String, String>);
+
+pub fn hint_management_system (
+    mut event_reader: EventReader<BuildingButtonHovered>,
+    hints: Res<BuildingHints>,
+    ui_button_nodes: Res<UiButtonNodes>,
+    mut commands: Commands,
+    mut current_hint: Local<String>,
+){
+    for event in event_reader.read() {
+        if let Some(hint) = hints.0.get(&event.0) {
+            commands.entity(ui_button_nodes.hint_node).insert(Visibility::Visible);
+
+            if *current_hint != event.0 {
+                *current_hint = event.0.clone();
+
+                commands.entity(ui_button_nodes.hint_text).insert(Text{
+                    sections: vec![TextSection {
+                        value: hint.to_string(),
+                        ..default()
+                    }],
+                    justify: JustifyText::Left,
+                    ..default()
+                });
+            }
+        }
+    }
 }

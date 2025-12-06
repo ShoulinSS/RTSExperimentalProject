@@ -3267,7 +3267,7 @@ pub fn process_busy_engineers (
                                     let mut nearest_vehicles_producer = (Vec3::ZERO, f32::INFINITY);
 
                                     for producer in producers_q.1.iter() {
-                                        let producer_pos = producer.0.translation() + producer.1.spawn_point;
+                                        let producer_pos = producer.0.transform_point(producer.1.spawn_point);
 
                                         let distance = producer_pos.distance(engineer.2.translation);
                                         
@@ -3901,7 +3901,7 @@ pub fn process_busy_engineers (
                                             let mut nearest_vehicles_producer = (Vec3::ZERO, f32::INFINITY);
 
                                             for producer in producers_q.1.iter() {
-                                                let producer_pos = producer.0.translation() + producer.1.spawn_point;
+                                                let producer_pos = producer.0.transform_point(producer.1.spawn_point);
 
                                                 let distance = producer_pos.distance(engineer.2.translation);
                                                 
@@ -3961,7 +3961,7 @@ pub fn process_busy_engineers (
                                     let mut nearest_vehicles_producer = (Vec3::ZERO, f32::INFINITY);
 
                                     for producer in producers_q.1.iter() {
-                                        let producer_pos = producer.0.translation() + producer.1.spawn_point;
+                                        let producer_pos = producer.0.transform_point(producer.1.spawn_point);
 
                                         let distance = producer_pos.distance(engineer.2.translation);
                                         
@@ -4015,7 +4015,7 @@ pub fn process_busy_engineers (
                                             let mut nearest_vehicles_producer = (Vec3::ZERO, f32::INFINITY);
 
                                             for producer in producers_q.1.iter() {
-                                                let producer_pos = producer.0.translation() + producer.1.spawn_point;
+                                                let producer_pos = producer.0.transform_point(producer.1.spawn_point);
 
                                                 let distance = producer_pos.distance(engineer.2.translation);
                                                 
@@ -4109,7 +4109,7 @@ pub fn process_busy_engineers (
                                             let mut nearest_vehicles_producer = (Vec3::ZERO, f32::INFINITY);
 
                                             for producer in producers_q.1.iter() {
-                                                let producer_pos = producer.0.translation() + producer.1.spawn_point;
+                                                let producer_pos = producer.0.transform_point(producer.1.spawn_point);
 
                                                 let distance = producer_pos.distance(engineer.2.translation);
                                                 
@@ -4141,7 +4141,7 @@ pub fn process_busy_engineers (
                                     let mut nearest_vehicles_producer = (Vec3::ZERO, f32::INFINITY);
 
                                     for producer in producers_q.1.iter() {
-                                        let producer_pos = producer.0.translation() + producer.1.spawn_point;
+                                        let producer_pos = producer.0.transform_point(producer.1.spawn_point);
 
                                         let distance = producer_pos.distance(engineer.2.translation);
                                         
