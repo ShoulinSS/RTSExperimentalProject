@@ -1,13 +1,13 @@
 use core::f32;
 use std::f32::consts::E;
 
-use bevy::{ecs::query, log, prelude::*, render::{mesh::{Indices, PrimitiveTopology}, render_asset::RenderAssetUsages}, tasks::AsyncComputeTaskPool, transform::commands, utils::hashbrown::HashMap};
+use bevy::{ecs::query, log, pbr::ExtendedMaterial, prelude::*, render::{mesh::{Indices, PrimitiveTopology}, render_asset::RenderAssetUsages}, tasks::AsyncComputeTaskPool, transform::commands, utils::hashbrown::HashMap};
 use bevy_quinnet::server::QuinnetServer;
 use bevy_rapier3d::{na::distance, prelude::{CharacterLength, Collider, KinematicCharacterController}, rapier::{crossbeam::{channel, epoch::Pointable}, prelude::query_pipeline_generators::CurrentAabb}};
 use oxidized_navigation_serializable::{NavMesh, NavMeshSettings};
 use rand::distributions::DistMap;
 
-use crate::{components::{asset_manager::UnitsAssets, building::SwitchableBuilding}, GameStage, GameStages, PlayerData};
+use crate::{GameStage, GameStages, PlayerData, components::{asset_manager::{InstancedMaterials, LOD, TeamMaterialExtension, UnitAssets}, building::SwitchableBuilding, unit::{AttackAnimationTypes, AttackTypes, UnitTypes}}};
 
 use super::{building::{HumanResourceStorageComponent, MaterialsProductionComponent, MaterialsStorageComponent, SettlementComponent, SuppliesProductionComponent, SuppliesStorageComponent}, camera, network::{ClientList, NetworkStatus, NetworkStatuses, ServerMessage}, unit::{async_path_find, Armies, AsyncPathfindingTasks, AsyncTaskPools, CompanyTypes, CombatComponent, NeedToMove, SuppliesConsumerComponent, UnitComponent}};
 
@@ -186,18 +186,23 @@ const LOGISTIC_UNITS_SPEED: f32 = 30.;
 
 pub fn assign_supply_tasks (
     mut supply_participants: (
-        Query<(&mut SuppliesProductionComponent, &Transform)>,
-        Query<(Entity, &Transform, &mut SuppliesConsumerComponent), With<SuppliesConsumerComponent>>,
+        Query<(&mut SuppliesProductionComponent, &Transform, &CombatComponent)>,
+        Query<(Entity, &Transform, &mut SuppliesConsumerComponent, &CombatComponent), With<SuppliesConsumerComponent>>,
     ),
     army: Res<Armies>,
     mut commands: Commands,
-    units_assets: Res<UnitsAssets>,
+    units_assets: Res<UnitAssets>,
     nav_mesh: Res<NavMesh>,
     nav_mesh_settings: Res<NavMeshSettings>,
     mut pathfinding_task: ResMut<AsyncPathfindingTasks>,
     async_task_pools: Res<AsyncTaskPools>,
     game_stage: Res<GameStage>,
-    player_data: Res<PlayerData>,
+    //player_data: Res<PlayerData>,
+    mut materials: (
+        ResMut<Assets<StandardMaterial>>,
+        ResMut<Assets<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>>,
+        ResMut<InstancedMaterials>,
+    ),
     time: Res<Time>,
     network_status: Res<NetworkStatus>,
     mut server: ResMut<QuinnetServer>,
@@ -211,125 +216,79 @@ pub fn assign_supply_tasks (
             supply_producer.0.elapsed_cooldown_time += time.delta().as_millis();
         }
 
-        let mut supply_producers_iter = supply_participants.0.iter_mut();
-        
-        for regular_platoon in army.0.get(&player_data.team).unwrap().regular_platoons.iter() {
-            if !commands.get_entity(regular_platoon.1.2).is_none() {
-                if let Ok (mut supply_consumer) = supply_participants.1.get_mut(regular_platoon.1.2) {
-                    supply_consumer.2.elapsed_time += time.delta().as_millis();
-
-                    if supply_producers_iter.len() == 0 {continue;}
-    
-                    if supply_consumer.2.elapsed_time >= supply_consumer.2.supply_frequency {
-                        while let Some(mut supply_producer) = supply_producers_iter.next() {
-                            let supplies_needed = (regular_platoon.1.0.0.0.capacity() + regular_platoon.1.0.0.1.capacity()) as i32 * supply_consumer.2.supplies_capacity;
-
-                            if supply_producer.0.elapsed_cooldown_time >= supply_producer.0.supply_cooldown && supply_producer.0.available_supplies >= supplies_needed {
-                                supply_producer.0.elapsed_cooldown_time = 0;
-                                supply_consumer.2.elapsed_time = 0;
-                                
-                                supply_producer.0.available_supplies -= supplies_needed;
-
-                                let start_point = supply_producer.1.translation + supply_producer.0.production_local_point;
-    
-                                let new_logistic_unit = commands.spawn(MaterialMeshBundle {
-                                    mesh: units_assets.truck.0.clone(),
-                                    material: units_assets.truck.1.clone(),
-                                    transform: Transform::from_translation(start_point),
-                                    ..default()
-                                }).insert(UnitComponent {
-                                    path: Vec::new(),
-                                    speed: LOGISTIC_UNITS_SPEED,
-                                }).insert(LogisticUnitComponent {
-                                    storage_capacity: supplies_needed,
-                                    storage: ResourceTypes::Supplies(supplies_needed),
-                                    destination: (supply_consumer.0, Some((CompanyTypes::Regular, *regular_platoon.0))),
-                                    last_destination_point: supply_consumer.1.translation,
-                                    path_recalculation_cooldown: 5000,
-                                    path_recalculation_elapsed: 0,
-                                    destination_completion_range: supply_consumer.2.supply_range,
-                                }).insert(KinematicCharacterController{
-                                    custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
-                                    up: Vec3::Y,
-                                    offset: CharacterLength::Absolute(0.1),
-                                    slide: true,
-                                    autostep: None,
-                                    apply_impulse_to_dynamic_bodies: false,
-                                    snap_to_ground: Some(CharacterLength::Absolute(1.)),
-                                    ..default()
-                                }).id();
-        
-                                let nav_mesh_lock = nav_mesh.get();
-                
-                                let task = async_task_pools.logistic_pathfinding_pool.spawn(async_path_find(
-                                    nav_mesh_lock.clone(),
-                                    nav_mesh_settings.clone(),
-                                    start_point,
-                                    supply_consumer.1.translation,
-                                    Some(100.),
-                                    Some(&[10.0, 0.1]),
-                                    new_logistic_unit,
-                                ));
-                
-                                pathfinding_task.tasks.push(task);
-
-                                if matches!(network_status.0, NetworkStatuses::Host){
-                                    let mut channel_id = 60;
-                                    while channel_id <= 89 {
-                                        if let Err(_) = server
-                                        .endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::LogisticUnitSpawned {
-                                            position: Vec3::new(supply_producer.1.translation.x, 0.25, supply_producer.1.translation.z),
-                                            server_entity: new_logistic_unit,
-                                        }){
-                                            channel_id += 1;
-                                        } else {
-                                            break;
-                                        }
-                                    }
-                                }
-    
-                                break;
-                            }
-                        }
-                    } else {
-                        continue;
-                    }
-                }
-            }
-        }
-
-        if supply_producers_iter.len() > 0 {
-            for shock_platoon in army.0.get(&player_data.team).unwrap().shock_platoons.iter() {
-                if !commands.get_entity(shock_platoon.1.2).is_none() {
-                    if let Ok (mut supply_consumer) = supply_participants.1.get_mut(shock_platoon.1.2) {
+        for team in 1..=2 {
+            let mut supply_producers_iter = supply_participants.0.iter_mut();
+            
+            for regular_platoon in army.0.get(&team).unwrap().regular_platoons.iter() {
+                if !commands.get_entity(regular_platoon.1.2).is_none() {
+                    if let Ok (mut supply_consumer) = supply_participants.1.get_mut(regular_platoon.1.2) {
                         supply_consumer.2.elapsed_time += time.delta().as_millis();
 
                         if supply_producers_iter.len() == 0 {continue;}
         
                         if supply_consumer.2.elapsed_time >= supply_consumer.2.supply_frequency {
                             while let Some(mut supply_producer) = supply_producers_iter.next() {
-                                let supplies_needed = (shock_platoon.1.0.0.0.capacity() + shock_platoon.1.0.0.1.capacity()) as i32 * supply_consumer.2.supplies_capacity;
+                                if supply_producer.2.team != team {continue;}
+
+                                let supplies_needed = (regular_platoon.1.0.0.0.capacity() + regular_platoon.1.0.0.1.capacity()) as i32 * supply_consumer.2.supplies_capacity;
 
                                 if supply_producer.0.elapsed_cooldown_time >= supply_producer.0.supply_cooldown && supply_producer.0.available_supplies >= supplies_needed {
                                     supply_producer.0.elapsed_cooldown_time = 0;
                                     supply_consumer.2.elapsed_time = 0;
-
+                                    
                                     supply_producer.0.available_supplies -= supplies_needed;
 
                                     let start_point = supply_producer.1.translation + supply_producer.0.production_local_point;
+
+                                    let color;
+                                    let simplified_material;
+                                    if supply_producer.2.team == 1 {
+                                        color = Vec4::new(0., 0., 1., 1.);
+                                        simplified_material = materials.2.blue_solid.clone();
+                                    } else {
+                                        color = Vec4::new(1., 0., 0., 1.);
+                                        simplified_material = materials.2.red_solid.clone();
+                                    }
+
+                                    let material;
+
+                                    if let Some(mat) = materials.2.team_materials.get(&(units_assets.truck.0.id(), supply_producer.2.team)) {
+                                        material = mat.clone();
+                                    } else {
+                                        if let Some(original) = materials.0.get(units_assets.truck.1.id()) {
+                                            material = materials.1.add(ExtendedMaterial {
+                                                base: original.clone(),
+                                                extension: TeamMaterialExtension {
+                                                    team_color: color,
+                                                },
+                                            });
+                                        } else {
+                                            material = materials.1.add(ExtendedMaterial {
+                                                base: StandardMaterial{
+                                                    ..default()
+                                                },
+                                                extension: TeamMaterialExtension {
+                                                    team_color: color,
+                                                },
+                                            });
+                                        }
+
+                                        materials.2.team_materials.insert((units_assets.truck.0.id(), supply_producer.2.team), material.clone());
+                                    }
         
                                     let new_logistic_unit = commands.spawn(MaterialMeshBundle {
                                         mesh: units_assets.truck.0.clone(),
-                                        material: units_assets.truck.1.clone(),
+                                        material: material.clone(),
                                         transform: Transform::from_translation(start_point),
                                         ..default()
                                     }).insert(UnitComponent {
                                         path: Vec::new(),
                                         speed: LOGISTIC_UNITS_SPEED,
+                                        waypoint_check_factor: 0.5,
                                     }).insert(LogisticUnitComponent {
                                         storage_capacity: supplies_needed,
                                         storage: ResourceTypes::Supplies(supplies_needed),
-                                        destination: (supply_consumer.0, Some((CompanyTypes::Shock, *shock_platoon.0))),
+                                        destination: (supply_consumer.0, Some((CompanyTypes::Regular, *regular_platoon.0))),
                                         last_destination_point: supply_consumer.1.translation,
                                         path_recalculation_cooldown: 5000,
                                         path_recalculation_elapsed: 0,
@@ -343,6 +302,30 @@ pub fn assign_supply_tasks (
                                         apply_impulse_to_dynamic_bodies: false,
                                         snap_to_ground: Some(CharacterLength::Absolute(1.)),
                                         ..default()
+                                    }).insert(LOD{
+                                        detailed: (units_assets.truck.0.clone(), material.clone()),
+                                        simplified: (units_assets.truck.2.clone(), simplified_material.clone()),
+                                    }).insert(CombatComponent{
+                                        team: supply_producer.2.team,
+                                        current_health: 100,
+                                        max_health: 100,
+                                        unit_type: UnitTypes::LightVehicle,
+                                        attack_type: AttackTypes::None,
+                                        attack_animation_type: AttackAnimationTypes::None(Vec3::ZERO),
+                                        attack_frequency: 0,
+                                        attack_elapsed_time: 0,
+                                        enemies: Vec::new(),
+                                        detection_range: 0.,
+                                        attack_range: 0.,
+                                        is_static: false,
+                                        unit_data: (
+                                            (0, 0),
+                                            (
+                                                CompanyTypes::None,
+                                                (-1, -1, -1, -1, -1, -1, -1),
+                                                "".to_string(),
+                                            ),
+                                        ),
                                     }).id();
             
                                     let nav_mesh_lock = nav_mesh.get();
@@ -362,8 +345,8 @@ pub fn assign_supply_tasks (
                                     if matches!(network_status.0, NetworkStatuses::Host){
                                         let mut channel_id = 60;
                                         while channel_id <= 89 {
-                                            if let Err(_) = server.endpoint_mut()
-                                            .send_group_message_on(clients.0.keys(), channel_id, ServerMessage::LogisticUnitSpawned {
+                                            if let Err(_) = server
+                                            .endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::LogisticUnitSpawned {
                                                 position: Vec3::new(supply_producer.1.translation.x, 0.25, supply_producer.1.translation.z),
                                                 server_entity: new_logistic_unit,
                                             }){
@@ -385,16 +368,18 @@ pub fn assign_supply_tasks (
             }
 
             if supply_producers_iter.len() > 0 {
-                for armored_platoon in army.0.get(&player_data.team).unwrap().armored_platoons.iter() {
-                    if !commands.get_entity(armored_platoon.1.2).is_none() {
-                        if let Ok (mut supply_consumer) = supply_participants.1.get_mut(armored_platoon.1.2) {
+                for shock_platoon in army.0.get(&team).unwrap().shock_platoons.iter() {
+                    if !commands.get_entity(shock_platoon.1.2).is_none() {
+                        if let Ok (mut supply_consumer) = supply_participants.1.get_mut(shock_platoon.1.2) {
                             supply_consumer.2.elapsed_time += time.delta().as_millis();
 
                             if supply_producers_iter.len() == 0 {continue;}
             
                             if supply_consumer.2.elapsed_time >= supply_consumer.2.supply_frequency {
                                 while let Some(mut supply_producer) = supply_producers_iter.next() {
-                                    let supplies_needed = armored_platoon.1.0.0.capacity() as i32 * supply_consumer.2.supplies_capacity;
+                                    if supply_producer.2.team != team {continue;}
+
+                                    let supplies_needed = (shock_platoon.1.0.0.0.capacity() + shock_platoon.1.0.0.1.capacity()) as i32 * supply_consumer.2.supplies_capacity;
 
                                     if supply_producer.0.elapsed_cooldown_time >= supply_producer.0.supply_cooldown && supply_producer.0.available_supplies >= supplies_needed {
                                         supply_producer.0.elapsed_cooldown_time = 0;
@@ -403,19 +388,56 @@ pub fn assign_supply_tasks (
                                         supply_producer.0.available_supplies -= supplies_needed;
 
                                         let start_point = supply_producer.1.translation + supply_producer.0.production_local_point;
+
+                                        let color;
+                                        let simplified_material;
+                                        if supply_producer.2.team == 1 {
+                                            color = Vec4::new(0., 0., 1., 1.);
+                                            simplified_material = materials.2.blue_solid.clone();
+                                        } else {
+                                            color = Vec4::new(1., 0., 0., 1.);
+                                            simplified_material = materials.2.red_solid.clone();
+                                        }
+
+                                        let material;
+
+                                        if let Some(mat) = materials.2.team_materials.get(&(units_assets.truck.0.id(), supply_producer.2.team)) {
+                                            material = mat.clone();
+                                        } else {
+                                            if let Some(original) = materials.0.get(units_assets.truck.1.id()) {
+                                                material = materials.1.add(ExtendedMaterial {
+                                                    base: original.clone(),
+                                                    extension: TeamMaterialExtension {
+                                                        team_color: color,
+                                                    },
+                                                });
+                                            } else {
+                                                material = materials.1.add(ExtendedMaterial {
+                                                    base: StandardMaterial{
+                                                        ..default()
+                                                    },
+                                                    extension: TeamMaterialExtension {
+                                                        team_color: color,
+                                                    },
+                                                });
+                                            }
+
+                                            materials.2.team_materials.insert((units_assets.truck.0.id(), supply_producer.2.team), material.clone());
+                                        }
             
                                         let new_logistic_unit = commands.spawn(MaterialMeshBundle {
                                             mesh: units_assets.truck.0.clone(),
-                                            material: units_assets.truck.1.clone(),
+                                            material: material.clone(),
                                             transform: Transform::from_translation(start_point),
                                             ..default()
                                         }).insert(UnitComponent {
                                             path: Vec::new(),
                                             speed: LOGISTIC_UNITS_SPEED,
+                                            waypoint_check_factor: 0.5,
                                         }).insert(LogisticUnitComponent {
                                             storage_capacity: supplies_needed,
                                             storage: ResourceTypes::Supplies(supplies_needed),
-                                            destination: (supply_consumer.0, Some((CompanyTypes::Armored, *armored_platoon.0))),
+                                            destination: (supply_consumer.0, Some((CompanyTypes::Shock, *shock_platoon.0))),
                                             last_destination_point: supply_consumer.1.translation,
                                             path_recalculation_cooldown: 5000,
                                             path_recalculation_elapsed: 0,
@@ -429,8 +451,32 @@ pub fn assign_supply_tasks (
                                             apply_impulse_to_dynamic_bodies: false,
                                             snap_to_ground: Some(CharacterLength::Absolute(1.)),
                                             ..default()
+                                        }).insert(LOD{
+                                            detailed: (units_assets.truck.0.clone(), material.clone()),
+                                            simplified: (units_assets.truck.2.clone(), simplified_material.clone()),
+                                        }).insert(CombatComponent{
+                                            team: supply_producer.2.team,
+                                            current_health: 100,
+                                            max_health: 100,
+                                            unit_type: UnitTypes::LightVehicle,
+                                            attack_type: AttackTypes::None,
+                                            attack_animation_type: AttackAnimationTypes::None(Vec3::ZERO),
+                                            attack_frequency: 0,
+                                            attack_elapsed_time: 0,
+                                            enemies: Vec::new(),
+                                            detection_range: 0.,
+                                            attack_range: 0.,
+                                            is_static: false,
+                                            unit_data: (
+                                                (0, 0),
+                                                (
+                                                    CompanyTypes::None,
+                                                    (-1, -1, -1, -1, -1, -1, -1),
+                                                    "".to_string(),
+                                                ),
+                                            ),
                                         }).id();
-                
+
                                         let nav_mesh_lock = nav_mesh.get();
                         
                                         let task = async_task_pools.logistic_pathfinding_pool.spawn(async_path_find(
@@ -448,8 +494,8 @@ pub fn assign_supply_tasks (
                                         if matches!(network_status.0, NetworkStatuses::Host){
                                             let mut channel_id = 60;
                                             while channel_id <= 89 {
-                                                if let Err(_) = server
-                                                .endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::LogisticUnitSpawned {
+                                                if let Err(_) = server.endpoint_mut()
+                                                .send_group_message_on(clients.0.keys(), channel_id, ServerMessage::LogisticUnitSpawned {
                                                     position: Vec3::new(supply_producer.1.translation.x, 0.25, supply_producer.1.translation.z),
                                                     server_entity: new_logistic_unit,
                                                 }){
@@ -471,88 +517,301 @@ pub fn assign_supply_tasks (
                 }
 
                 if supply_producers_iter.len() > 0 {
-                    for artillery_unit in army.0.get(&player_data.team).unwrap().artillery_units.0.iter() {
-                        if let Some (unit_entity) = artillery_unit.1.0.0 {
-                            if !commands.get_entity(unit_entity).is_none() {
-                                if let Ok (mut supply_consumer) = supply_participants.1.get_mut(unit_entity) {
-                                    supply_consumer.2.elapsed_time += time.delta().as_millis();
+                    for armored_platoon in army.0.get(&team).unwrap().armored_platoons.iter() {
+                        if !commands.get_entity(armored_platoon.1.2).is_none() {
+                            if let Ok (mut supply_consumer) = supply_participants.1.get_mut(armored_platoon.1.2) {
+                                supply_consumer.2.elapsed_time += time.delta().as_millis();
 
-                                    if supply_producers_iter.len() == 0 {continue;}
+                                if supply_producers_iter.len() == 0 {continue;}
+                
+                                if supply_consumer.2.elapsed_time >= supply_consumer.2.supply_frequency {
+                                    while let Some(mut supply_producer) = supply_producers_iter.next() {
+                                        if supply_producer.2.team != team {continue;}
+
+                                        let supplies_needed = armored_platoon.1.0.0.capacity() as i32 * supply_consumer.2.supplies_capacity;
+
+                                        if supply_producer.0.elapsed_cooldown_time >= supply_producer.0.supply_cooldown && supply_producer.0.available_supplies >= supplies_needed {
+                                            supply_producer.0.elapsed_cooldown_time = 0;
+                                            supply_consumer.2.elapsed_time = 0;
+
+                                            supply_producer.0.available_supplies -= supplies_needed;
+
+                                            let start_point = supply_producer.1.translation + supply_producer.0.production_local_point;
+
+                                            let color;
+                                            let simplified_material;
+                                            if supply_producer.2.team == 1 {
+                                                color = Vec4::new(0., 0., 1., 1.);
+                                                simplified_material = materials.2.blue_solid.clone();
+                                            } else {
+                                                color = Vec4::new(1., 0., 0., 1.);
+                                                simplified_material = materials.2.red_solid.clone();
+                                            }
+
+                                            let material;
+
+                                            if let Some(mat) = materials.2.team_materials.get(&(units_assets.truck.0.id(), supply_producer.2.team)) {
+                                                material = mat.clone();
+                                            } else {
+                                                if let Some(original) = materials.0.get(units_assets.truck.1.id()) {
+                                                    material = materials.1.add(ExtendedMaterial {
+                                                        base: original.clone(),
+                                                        extension: TeamMaterialExtension {
+                                                            team_color: color,
+                                                        },
+                                                    });
+                                                } else {
+                                                    material = materials.1.add(ExtendedMaterial {
+                                                        base: StandardMaterial{
+                                                            ..default()
+                                                        },
+                                                        extension: TeamMaterialExtension {
+                                                            team_color: color,
+                                                        },
+                                                    });
+                                                }
+
+                                                materials.2.team_materials.insert((units_assets.truck.0.id(), supply_producer.2.team), material.clone());
+                                            }
+                
+                                            let new_logistic_unit = commands.spawn(MaterialMeshBundle {
+                                                mesh: units_assets.truck.0.clone(),
+                                                material: material.clone(),
+                                                transform: Transform::from_translation(start_point),
+                                                ..default()
+                                            }).insert(UnitComponent {
+                                                path: Vec::new(),
+                                                speed: LOGISTIC_UNITS_SPEED,
+                                                waypoint_check_factor: 0.5,
+                                            }).insert(LogisticUnitComponent {
+                                                storage_capacity: supplies_needed,
+                                                storage: ResourceTypes::Supplies(supplies_needed),
+                                                destination: (supply_consumer.0, Some((CompanyTypes::Armored, *armored_platoon.0))),
+                                                last_destination_point: supply_consumer.1.translation,
+                                                path_recalculation_cooldown: 5000,
+                                                path_recalculation_elapsed: 0,
+                                                destination_completion_range: supply_consumer.2.supply_range,
+                                            }).insert(KinematicCharacterController{
+                                                custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
+                                                up: Vec3::Y,
+                                                offset: CharacterLength::Absolute(0.1),
+                                                slide: true,
+                                                autostep: None,
+                                                apply_impulse_to_dynamic_bodies: false,
+                                                snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                                                ..default()
+                                            }).insert(LOD{
+                                                detailed: (units_assets.truck.0.clone(), material.clone()),
+                                                simplified: (units_assets.truck.2.clone(), simplified_material.clone()),
+                                            }).insert(CombatComponent{
+                                                team: supply_producer.2.team,
+                                                current_health: 100,
+                                                max_health: 100,
+                                                unit_type: UnitTypes::LightVehicle,
+                                                attack_type: AttackTypes::None,
+                                                attack_animation_type: AttackAnimationTypes::None(Vec3::ZERO),
+                                                attack_frequency: 0,
+                                                attack_elapsed_time: 0,
+                                                enemies: Vec::new(),
+                                                detection_range: 0.,
+                                                attack_range: 0.,
+                                                is_static: false,
+                                                unit_data: (
+                                                    (0, 0),
+                                                    (
+                                                        CompanyTypes::None,
+                                                        (-1, -1, -1, -1, -1, -1, -1),
+                                                        "".to_string(),
+                                                    ),
+                                                ),
+                                            }).id();
                     
-                                    if supply_consumer.2.elapsed_time >= supply_consumer.2.supply_frequency {
-                                        while let Some(mut supply_producer) = supply_producers_iter.next() {
-                                            let supplies_needed = supply_consumer.2.supplies_capacity;
+                                            let nav_mesh_lock = nav_mesh.get();
+                            
+                                            let task = async_task_pools.logistic_pathfinding_pool.spawn(async_path_find(
+                                                nav_mesh_lock.clone(),
+                                                nav_mesh_settings.clone(),
+                                                start_point,
+                                                supply_consumer.1.translation,
+                                                Some(100.),
+                                                Some(&[10.0, 0.1]),
+                                                new_logistic_unit,
+                                            ));
+                            
+                                            pathfinding_task.tasks.push(task);
 
-                                            if supply_producer.0.elapsed_cooldown_time >= supply_producer.0.supply_cooldown &&
-                                            supply_producer.0.available_supplies >= supplies_needed {
-                                                supply_producer.0.elapsed_cooldown_time = 0;
-                                                supply_consumer.2.elapsed_time = 0;
-
-                                                supply_producer.0.available_supplies -= supplies_needed;
-
-                                                let start_point = supply_producer.1.translation + supply_producer.0.production_local_point;
-
-                                                let new_logistic_unit = commands.spawn(MaterialMeshBundle {
-                                                    mesh: units_assets.truck.0.clone(),
-                                                    material: units_assets.truck.1.clone(),
-                                                    transform: Transform::from_translation(start_point),
-                                                    ..default()
-                                                }).insert(UnitComponent {
-                                                    path: Vec::new(),
-                                                    speed: LOGISTIC_UNITS_SPEED,
-                                                }).insert(LogisticUnitComponent {
-                                                    storage_capacity: supplies_needed,
-                                                    storage: ResourceTypes::Supplies(supplies_needed),
-                                                    destination: (supply_consumer.0, None),
-                                                    last_destination_point: supply_consumer.1.translation,
-                                                    path_recalculation_cooldown: 5000,
-                                                    path_recalculation_elapsed: 0,
-                                                    destination_completion_range: supply_consumer.2.supply_range,
-                                                }).insert(KinematicCharacterController{
-                                                    custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
-                                                    up: Vec3::Y,
-                                                    offset: CharacterLength::Absolute(0.1),
-                                                    slide: true,
-                                                    autostep: None,
-                                                    apply_impulse_to_dynamic_bodies: false,
-                                                    snap_to_ground: Some(CharacterLength::Absolute(1.)),
-                                                    ..default()
-                                                }).id();
-                        
-                                                let nav_mesh_lock = nav_mesh.get();
-                                
-                                                let task = async_task_pools.logistic_pathfinding_pool.spawn(async_path_find(
-                                                    nav_mesh_lock.clone(),
-                                                    nav_mesh_settings.clone(),
-                                                    start_point,
-                                                    supply_consumer.1.translation,
-                                                    Some(100.),
-                                                    Some(&[10.0, 0.1]),
-                                                    new_logistic_unit,
-                                                ));
-                                
-                                                pathfinding_task.tasks.push(task);
-
-                                                if matches!(network_status.0, NetworkStatuses::Host){
-                                                    let mut channel_id = 60;
-                                                    while channel_id <= 89 {
-                                                        if let Err(_) = server.endpoint_mut()
-                                                        .send_group_message_on(clients.0.keys(), channel_id, ServerMessage::LogisticUnitSpawned {
-                                                            position: Vec3::new(supply_producer.1.translation.x, 0.25, supply_producer.1.translation.z),
-                                                            server_entity: new_logistic_unit,
-                                                        }){
-                                                            channel_id += 1;
-                                                        } else {
-                                                            break;
-                                                        }
+                                            if matches!(network_status.0, NetworkStatuses::Host){
+                                                let mut channel_id = 60;
+                                                while channel_id <= 89 {
+                                                    if let Err(_) = server
+                                                    .endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::LogisticUnitSpawned {
+                                                        position: Vec3::new(supply_producer.1.translation.x, 0.25, supply_producer.1.translation.z),
+                                                        server_entity: new_logistic_unit,
+                                                    }){
+                                                        channel_id += 1;
+                                                    } else {
+                                                        break;
                                                     }
                                                 }
-                    
-                                                break;
                                             }
+                
+                                            break;
                                         }
-                                    } else {
-                                        continue;
+                                    }
+                                } else {
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+
+                    if supply_producers_iter.len() > 0 {
+                        for artillery_unit in army.0.get(&team).unwrap().artillery_units.0.iter() {
+                            if let Some (unit_entity) = artillery_unit.1.0.0 {
+                                if !commands.get_entity(unit_entity).is_none() {
+                                    if let Ok (mut supply_consumer) = supply_participants.1.get_mut(unit_entity) {
+                                        supply_consumer.2.elapsed_time += time.delta().as_millis();
+
+                                        if supply_producers_iter.len() == 0 {continue;}
+                        
+                                        if supply_consumer.2.elapsed_time >= supply_consumer.2.supply_frequency {
+                                            while let Some(mut supply_producer) = supply_producers_iter.next() {
+                                                if supply_producer.2.team != team {continue;}
+
+                                                let supplies_needed = supply_consumer.2.supplies_capacity;
+
+                                                if supply_producer.0.elapsed_cooldown_time >= supply_producer.0.supply_cooldown &&
+                                                supply_producer.0.available_supplies >= supplies_needed {
+                                                    supply_producer.0.elapsed_cooldown_time = 0;
+                                                    supply_consumer.2.elapsed_time = 0;
+
+                                                    supply_producer.0.available_supplies -= supplies_needed;
+
+                                                    let start_point = supply_producer.1.translation + supply_producer.0.production_local_point;
+
+                                                    let color;
+                                                    let simplified_material;
+                                                    if supply_producer.2.team == 1 {
+                                                        color = Vec4::new(0., 0., 1., 1.);
+                                                        simplified_material = materials.2.blue_solid.clone();
+                                                    } else {
+                                                        color = Vec4::new(1., 0., 0., 1.);
+                                                        simplified_material = materials.2.red_solid.clone();
+                                                    }
+
+                                                    let material;
+
+                                                    if let Some(mat) = materials.2.team_materials.get(&(units_assets.truck.0.id(), supply_producer.2.team)) {
+                                                        material = mat.clone();
+                                                    } else {
+                                                        if let Some(original) = materials.0.get(units_assets.truck.1.id()) {
+                                                            material = materials.1.add(ExtendedMaterial {
+                                                                base: original.clone(),
+                                                                extension: TeamMaterialExtension {
+                                                                    team_color: color,
+                                                                },
+                                                            });
+                                                        } else {
+                                                            material = materials.1.add(ExtendedMaterial {
+                                                                base: StandardMaterial{
+                                                                    ..default()
+                                                                },
+                                                                extension: TeamMaterialExtension {
+                                                                    team_color: color,
+                                                                },
+                                                            });
+                                                        }
+
+                                                        materials.2.team_materials.insert((units_assets.truck.0.id(), supply_producer.2.team), material.clone());
+                                                    }
+
+                                                    let new_logistic_unit = commands.spawn(MaterialMeshBundle {
+                                                        mesh: units_assets.truck.0.clone(),
+                                                        material: material.clone(),
+                                                        transform: Transform::from_translation(start_point),
+                                                        ..default()
+                                                    }).insert(UnitComponent {
+                                                        path: Vec::new(),
+                                                        speed: LOGISTIC_UNITS_SPEED,
+                                                        waypoint_check_factor: 0.5,
+                                                    }).insert(LogisticUnitComponent {
+                                                        storage_capacity: supplies_needed,
+                                                        storage: ResourceTypes::Supplies(supplies_needed),
+                                                        destination: (supply_consumer.0, None),
+                                                        last_destination_point: supply_consumer.1.translation,
+                                                        path_recalculation_cooldown: 5000,
+                                                        path_recalculation_elapsed: 0,
+                                                        destination_completion_range: supply_consumer.2.supply_range,
+                                                    }).insert(KinematicCharacterController{
+                                                        custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
+                                                        up: Vec3::Y,
+                                                        offset: CharacterLength::Absolute(0.1),
+                                                        slide: true,
+                                                        autostep: None,
+                                                        apply_impulse_to_dynamic_bodies: false,
+                                                        snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                                                        ..default()
+                                                    }).insert(LOD{
+                                                        detailed: (units_assets.truck.0.clone(), material.clone()),
+                                                        simplified: (units_assets.truck.2.clone(), simplified_material.clone()),
+                                                    }).insert(CombatComponent{
+                                                        team: supply_producer.2.team,
+                                                        current_health: 100,
+                                                        max_health: 100,
+                                                        unit_type: UnitTypes::LightVehicle,
+                                                        attack_type: AttackTypes::None,
+                                                        attack_animation_type: AttackAnimationTypes::None(Vec3::ZERO),
+                                                        attack_frequency: 0,
+                                                        attack_elapsed_time: 0,
+                                                        enemies: Vec::new(),
+                                                        detection_range: 0.,
+                                                        attack_range: 0.,
+                                                        is_static: false,
+                                                        unit_data: (
+                                                            (0, 0),
+                                                            (
+                                                                CompanyTypes::None,
+                                                                (-1, -1, -1, -1, -1, -1, -1),
+                                                                "".to_string(),
+                                                            ),
+                                                        ),
+                                                    }).id();
+                            
+                                                    let nav_mesh_lock = nav_mesh.get();
+                                    
+                                                    let task = async_task_pools.logistic_pathfinding_pool.spawn(async_path_find(
+                                                        nav_mesh_lock.clone(),
+                                                        nav_mesh_settings.clone(),
+                                                        start_point,
+                                                        supply_consumer.1.translation,
+                                                        Some(100.),
+                                                        Some(&[10.0, 0.1]),
+                                                        new_logistic_unit,
+                                                    ));
+                                    
+                                                    pathfinding_task.tasks.push(task);
+
+                                                    if matches!(network_status.0, NetworkStatuses::Host){
+                                                        let mut channel_id = 60;
+                                                        while channel_id <= 89 {
+                                                            if let Err(_) = server.endpoint_mut()
+                                                            .send_group_message_on(clients.0.keys(), channel_id, ServerMessage::LogisticUnitSpawned {
+                                                                position: Vec3::new(supply_producer.1.translation.x, 0.25, supply_producer.1.translation.z),
+                                                                server_entity: new_logistic_unit,
+                                                            }){
+                                                                channel_id += 1;
+                                                            } else {
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                        
+                                                    break;
+                                                }
+                                            }
+                                        } else {
+                                            continue;
+                                        }
                                     }
                                 }
                             }
@@ -881,15 +1140,20 @@ pub fn logistic_convoys_processing_system(
 }
 
 pub fn material_producers_processing_system(
-    mut material_producers_q: Query<(&Transform, &mut MaterialsProductionComponent), With<MaterialsProductionComponent>>,
-    mut material_consumers_q: Query<(Entity, &Transform, &mut MaterialsStorageComponent), With<MaterialsStorageComponent>>,
-    units_assets: Res<UnitsAssets>,
+    mut material_producers_q: Query<(&Transform, &mut MaterialsProductionComponent, &CombatComponent), With<MaterialsProductionComponent>>,
+    mut material_consumers_q: Query<(Entity, &Transform, &mut MaterialsStorageComponent, &CombatComponent), With<MaterialsStorageComponent>>,
+    units_assets: Res<UnitAssets>,
     nav_mesh: Res<NavMesh>,
     nav_mesh_settings: Res<NavMeshSettings>,
     mut pathfinding_task: ResMut<AsyncPathfindingTasks>,
     async_task_pools: Res<AsyncTaskPools>,
     mut commands: Commands,
     game_stage: Res<GameStage>,
+    mut materials: (
+        ResMut<Assets<StandardMaterial>>,
+        ResMut<Assets<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>>,
+        ResMut<InstancedMaterials>,
+    ),
     time: Res<Time>,
     network_status: Res<NetworkStatus>,
     mut server: ResMut<QuinnetServer>,
@@ -902,119 +1166,191 @@ pub fn material_producers_processing_system(
         for mut material_consumer in material_consumers_q.iter_mut() {
             material_consumer.2.replenishment_time_elapsed += time.delta().as_millis();
         }
+
+        for team in 1..=2 {
+            let mut material_consumers_iter = material_consumers_q.iter_mut();
+            let mut is_consumers_empty = false;
+
+            for mut material_producer in material_producers_q.iter_mut(){
+                if material_producer.2.team != team {continue;}
+
+                material_producer.1.elapsed_time += time.delta().as_millis();
         
-        let mut material_consumers_iter = material_consumers_q.iter_mut();
-        let mut is_consumers_empty = false;
-
-        for mut material_producer in material_producers_q.iter_mut(){
-            material_producer.1.elapsed_time += time.delta().as_millis();
-    
-            if material_producer.1.elapsed_time >= material_producer.1.materials_production_speed &&
-            material_producer.1.available_materials < material_producer.1.materials_storage_capacity {
-                material_producer.1.elapsed_time = 0;
-    
-                material_producer.1.available_materials += material_producer.1.materials_production_rate;
-    
-                if material_producer.1.available_materials > material_producer.1.materials_storage_capacity {
-                    material_producer.1.available_materials = material_producer.1.materials_storage_capacity;
+                if material_producer.1.elapsed_time >= material_producer.1.materials_production_speed &&
+                material_producer.1.available_materials < material_producer.1.materials_storage_capacity {
+                    material_producer.1.elapsed_time = 0;
+        
+                    material_producer.1.available_materials += material_producer.1.materials_production_rate;
+        
+                    if material_producer.1.available_materials > material_producer.1.materials_storage_capacity {
+                        material_producer.1.available_materials = material_producer.1.materials_storage_capacity;
+                    }
                 }
-            }
 
-            loop {
-                if let Some(mut material_consumer) = material_consumers_iter.next() {
-                    if material_consumer.2.replenishment_time_elapsed >= material_consumer.2.replenishment_cooldown {
-                        material_consumer.2.replenishment_time_elapsed = 0;
+                loop {
+                    if let Some(mut material_consumer) = material_consumers_iter.next() {
+                        if material_consumer.3.team != team {continue;}
 
-                        if
-                        material_producer.1.available_materials >= material_consumer.2.replenishment_amount &&
-                        material_consumer.2.available_resources < material_consumer.2.materials_storage_capacity {
-                            material_producer.1.available_materials -= material_consumer.2.replenishment_amount;
+                        if material_consumer.2.replenishment_time_elapsed >= material_consumer.2.replenishment_cooldown {
+                            material_consumer.2.replenishment_time_elapsed = 0;
 
-                            let start_point = material_producer.0.translation + material_producer.1.production_local_point;
-                            let destination_point = material_consumer.1.translation + material_consumer.2.replenishment_local_point;
+                            if
+                            material_producer.1.available_materials >= material_consumer.2.replenishment_amount &&
+                            material_consumer.2.available_resources < material_consumer.2.materials_storage_capacity {
+                                material_producer.1.available_materials -= material_consumer.2.replenishment_amount;
 
-                            let new_logistic_unit = commands.spawn(MaterialMeshBundle {
-                                mesh: units_assets.truck.0.clone(),
-                                material: units_assets.truck.1.clone(),
-                                transform: Transform::from_translation(start_point),
-                                ..default()
-                            }).insert(UnitComponent {
-                                path: Vec::new(),
-                                speed: LOGISTIC_UNITS_SPEED,
-                            }).insert(LogisticUnitComponent {
-                                storage_capacity: material_consumer.2.replenishment_amount,
-                                storage: ResourceTypes::Materials(material_consumer.2.replenishment_amount),
-                                destination: (material_consumer.0, None),
-                                last_destination_point: destination_point,
-                                path_recalculation_cooldown: 5000,
-                                path_recalculation_elapsed: 0,
-                                destination_completion_range: material_consumer.2.replenishment_range,
-                            }).insert(KinematicCharacterController{
-                                custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
-                                up: Vec3::Y,
-                                offset: CharacterLength::Absolute(0.1),
-                                slide: true,
-                                autostep: None,
-                                apply_impulse_to_dynamic_bodies: false,
-                                snap_to_ground: Some(CharacterLength::Absolute(1.)),
-                                ..default()
-                            }).id();
+                                let start_point = material_producer.0.translation + material_producer.1.production_local_point;
+                                let destination_point = material_consumer.1.translation + material_consumer.2.replenishment_local_point;
 
-                            let nav_mesh_lock = nav_mesh.get();
-            
-                            let task = async_task_pools.logistic_pathfinding_pool.spawn(async_path_find(
-                                nav_mesh_lock.clone(),
-                                nav_mesh_settings.clone(),
-                                start_point,
-                                destination_point,
-                                Some(100.),
-                                Some(&[10.0, 0.1]),
-                                new_logistic_unit,
-                            ));
-            
-                            pathfinding_task.tasks.push(task);
+                                let color;
+                                let simplified_material;
+                                if material_producer.2.team == 1 {
+                                    color = Vec4::new(0., 0., 1., 1.);
+                                    simplified_material = materials.2.blue_solid.clone();
+                                } else {
+                                    color = Vec4::new(1., 0., 0., 1.);
+                                    simplified_material = materials.2.red_solid.clone();
+                                }
 
-                            if matches!(network_status.0, NetworkStatuses::Host){
-                                let mut channel_id = 30;
-                                while channel_id <= 59 {
-                                    if let Err(_) = server.endpoint_mut()
-                                    .send_group_message_on(clients.0.keys(), 1, ServerMessage::LogisticUnitSpawned {
-                                        position: Vec3::new(material_producer.0.translation.x, 0.25, material_producer.0.translation.z),
-                                        server_entity: new_logistic_unit,
-                                    }){
-                                        channel_id += 1;
+                                let material;
+
+                                if let Some(mat) = materials.2.team_materials.get(&(units_assets.truck.0.id(), material_producer.2.team)) {
+                                    material = mat.clone();
+                                } else {
+                                    if let Some(original) = materials.0.get(units_assets.truck.1.id()) {
+                                        material = materials.1.add(ExtendedMaterial {
+                                            base: original.clone(),
+                                            extension: TeamMaterialExtension {
+                                                team_color: color,
+                                            },
+                                        });
                                     } else {
-                                        break;
+                                        material = materials.1.add(ExtendedMaterial {
+                                            base: StandardMaterial{
+                                                ..default()
+                                            },
+                                            extension: TeamMaterialExtension {
+                                                team_color: color,
+                                            },
+                                        });
+                                    }
+
+                                    materials.2.team_materials.insert((units_assets.truck.0.id(), material_producer.2.team), material.clone());
+                                }
+
+                                let new_logistic_unit = commands.spawn(MaterialMeshBundle {
+                                    mesh: units_assets.truck.0.clone(),
+                                    material: material.clone(),
+                                    transform: Transform::from_translation(start_point),
+                                    ..default()
+                                }).insert(UnitComponent {
+                                    path: Vec::new(),
+                                    speed: LOGISTIC_UNITS_SPEED,
+                                    waypoint_check_factor: 0.5,
+                                }).insert(LogisticUnitComponent {
+                                    storage_capacity: material_consumer.2.replenishment_amount,
+                                    storage: ResourceTypes::Materials(material_consumer.2.replenishment_amount),
+                                    destination: (material_consumer.0, None),
+                                    last_destination_point: destination_point,
+                                    path_recalculation_cooldown: 5000,
+                                    path_recalculation_elapsed: 0,
+                                    destination_completion_range: material_consumer.2.replenishment_range,
+                                }).insert(KinematicCharacterController{
+                                    custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
+                                    up: Vec3::Y,
+                                    offset: CharacterLength::Absolute(0.1),
+                                    slide: true,
+                                    autostep: None,
+                                    apply_impulse_to_dynamic_bodies: false,
+                                    snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                                    ..default()
+                                }).insert(LOD{
+                                    detailed: (units_assets.truck.0.clone(), material.clone()),
+                                    simplified: (units_assets.truck.2.clone(), simplified_material.clone()),
+                                }).insert(CombatComponent{
+                                    team: material_producer.2.team,
+                                    current_health: 100,
+                                    max_health: 100,
+                                    unit_type: UnitTypes::LightVehicle,
+                                    attack_type: AttackTypes::None,
+                                    attack_animation_type: AttackAnimationTypes::None(Vec3::ZERO),
+                                    attack_frequency: 0,
+                                    attack_elapsed_time: 0,
+                                    enemies: Vec::new(),
+                                    detection_range: 0.,
+                                    attack_range: 0.,
+                                    is_static: false,
+                                    unit_data: (
+                                        (0, 0),
+                                        (
+                                            CompanyTypes::None,
+                                            (-1, -1, -1, -1, -1, -1, -1),
+                                            "".to_string(),
+                                        ),
+                                    ),
+                                }).id();
+
+                                let nav_mesh_lock = nav_mesh.get();
+                
+                                let task = async_task_pools.logistic_pathfinding_pool.spawn(async_path_find(
+                                    nav_mesh_lock.clone(),
+                                    nav_mesh_settings.clone(),
+                                    start_point,
+                                    destination_point,
+                                    Some(100.),
+                                    Some(&[10.0, 0.1]),
+                                    new_logistic_unit,
+                                ));
+                
+                                pathfinding_task.tasks.push(task);
+
+                                if matches!(network_status.0, NetworkStatuses::Host){
+                                    let mut channel_id = 30;
+                                    while channel_id <= 59 {
+                                        if let Err(_) = server.endpoint_mut()
+                                        .send_group_message_on(clients.0.keys(), 1, ServerMessage::LogisticUnitSpawned {
+                                            position: Vec3::new(material_producer.0.translation.x, 0.25, material_producer.0.translation.z),
+                                            server_entity: new_logistic_unit,
+                                        }){
+                                            channel_id += 1;
+                                        } else {
+                                            break;
+                                        }
                                     }
                                 }
+
+                                break;
                             }
-
-                            break;
                         }
+                    } else {
+                        is_consumers_empty = true;
+                        break;
                     }
-                } else {
-                    is_consumers_empty = true;
-                    break;
                 }
-            }
 
-            // if is_consumers_empty {
-            //     break;
-            // }
+                // if is_consumers_empty {
+                //     break;
+                // }
+            }
         }
     }
 }
 
 pub fn human_resource_producers_processing_system(
     mut human_resource_producers_q: Query<(&Transform, &mut SettlementComponent), With<SettlementComponent>>,
-    mut human_resource_consumers_q: Query<(Entity, &Transform, &mut HumanResourceStorageComponent), With<HumanResourceStorageComponent>>,
-    units_assets: Res<UnitsAssets>,
+    mut human_resource_consumers_q: Query<(Entity, &Transform, &mut HumanResourceStorageComponent, &CombatComponent), With<HumanResourceStorageComponent>>,
+    units_assets: Res<UnitAssets>,
     nav_mesh: Res<NavMesh>,
     nav_mesh_settings: Res<NavMeshSettings>,
     mut pathfinding_task: ResMut<AsyncPathfindingTasks>,
     async_task_pools: Res<AsyncTaskPools>,
     mut commands: Commands,
     game_stage: Res<GameStage>,
+    mut materials: (
+        ResMut<Assets<StandardMaterial>>,
+        ResMut<Assets<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>>,
+        ResMut<InstancedMaterials>,
+    ),
     time: Res<Time>,
     network_status: Res<NetworkStatus>,
     mut server: ResMut<QuinnetServer>,
@@ -1025,104 +1361,171 @@ pub fn human_resource_producers_processing_system(
             human_resource_consumer.2.replenishment_time_elapsed += time.delta().as_millis();
         }
 
-        let mut human_resource_consumers_iter = human_resource_consumers_q.iter_mut();
-        let mut is_consumers_empty = false;
+        for team in 1..=2 {
+            let mut human_resource_consumers_iter = human_resource_consumers_q.iter_mut();
+            let mut is_consumers_empty = false;
+
+            for mut human_resource_producer in human_resource_producers_q.iter_mut(){
+                if human_resource_producer.1.0.team != team {continue;}
+
+                human_resource_producer.1.0.elapsed_time += time.delta().as_millis();
         
-        for mut human_resource_producer in human_resource_producers_q.iter_mut(){
-            human_resource_producer.1.0.elapsed_time += time.delta().as_millis();
-    
-            if human_resource_producer.1.0.elapsed_time >= human_resource_producer.1.0.human_resource_production_speed &&
-            human_resource_producer.1.0.available_human_resources < human_resource_producer.1.0.human_resource_storage_capacity {
-                human_resource_producer.1.0.elapsed_time = 0;
-    
-                human_resource_producer.1.0.available_human_resources += human_resource_producer.1.0.human_resource_production_rate;
-    
-                if human_resource_producer.1.0.available_human_resources > human_resource_producer.1.0.human_resource_storage_capacity {
-                    human_resource_producer.1.0.available_human_resources = human_resource_producer.1.0.human_resource_storage_capacity;
+                if human_resource_producer.1.0.elapsed_time >= human_resource_producer.1.0.human_resource_production_speed &&
+                human_resource_producer.1.0.available_human_resources < human_resource_producer.1.0.human_resource_storage_capacity {
+                    human_resource_producer.1.0.elapsed_time = 0;
+        
+                    human_resource_producer.1.0.available_human_resources += human_resource_producer.1.0.human_resource_production_rate;
+        
+                    if human_resource_producer.1.0.available_human_resources > human_resource_producer.1.0.human_resource_storage_capacity {
+                        human_resource_producer.1.0.available_human_resources = human_resource_producer.1.0.human_resource_storage_capacity;
+                    }
                 }
-            }
 
-            loop {
-                if let Some(mut human_resource_consumer) = human_resource_consumers_iter.next() {
-                    if human_resource_consumer.2.replenishment_time_elapsed >= human_resource_consumer.2.replenishment_cooldown {
-                        human_resource_consumer.2.replenishment_time_elapsed = 0;
+                loop {
+                    if let Some(mut human_resource_consumer) = human_resource_consumers_iter.next() {
+                        if human_resource_consumer.3.team != team {continue;}
 
-                        if
-                        human_resource_producer.1.0.available_human_resources >= human_resource_consumer.2.replenishment_amount &&
-                        human_resource_consumer.2.available_human_resources < human_resource_consumer.2.human_resource_storage_capacity {
-                            human_resource_producer.1.0.available_human_resources -= human_resource_consumer.2.replenishment_amount;
+                        if human_resource_consumer.2.replenishment_time_elapsed >= human_resource_consumer.2.replenishment_cooldown {
+                            human_resource_consumer.2.replenishment_time_elapsed = 0;
 
-                            let start_point = human_resource_producer.0.translation + human_resource_producer.1.0.production_local_point;
-                            let destination_point = human_resource_consumer.1.translation + human_resource_consumer.2.replenishment_local_point;
+                            if
+                            human_resource_producer.1.0.available_human_resources >= human_resource_consumer.2.replenishment_amount &&
+                            human_resource_consumer.2.available_human_resources < human_resource_consumer.2.human_resource_storage_capacity {
+                                human_resource_producer.1.0.available_human_resources -= human_resource_consumer.2.replenishment_amount;
 
-                            let new_logistic_unit = commands.spawn(MaterialMeshBundle {
-                                mesh: units_assets.truck.0.clone(),
-                                material: units_assets.truck.1.clone(),
-                                transform: Transform::from_translation(start_point),
-                                ..default()
-                            }).insert(UnitComponent {
-                                path: Vec::new(),
-                                speed: LOGISTIC_UNITS_SPEED,
-                            }).insert(LogisticUnitComponent {
-                                storage_capacity: human_resource_consumer.2.replenishment_amount,
-                                storage: ResourceTypes::HumanResources(human_resource_consumer.2.replenishment_amount),
-                                destination: (human_resource_consumer.0, None),
-                                last_destination_point: destination_point,
-                                path_recalculation_cooldown: 5000,
-                                path_recalculation_elapsed: 0,
-                                destination_completion_range: human_resource_consumer.2.replenishment_range,
-                            }).insert(KinematicCharacterController{
-                                custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
-                                up: Vec3::Y,
-                                offset: CharacterLength::Absolute(0.1),
-                                slide: true,
-                                autostep: None,
-                                apply_impulse_to_dynamic_bodies: false,
-                                snap_to_ground: Some(CharacterLength::Absolute(1.)),
-                                ..default()
-                            }).id();
+                                let start_point = human_resource_producer.0.translation + human_resource_producer.1.0.production_local_point;
+                                let destination_point = human_resource_consumer.1.translation + human_resource_consumer.2.replenishment_local_point;
 
-                            let nav_mesh_lock = nav_mesh.get();
-            
-                            let task = async_task_pools.logistic_pathfinding_pool.spawn(async_path_find(
-                                nav_mesh_lock.clone(),
-                                nav_mesh_settings.clone(),
-                                start_point,
-                                destination_point,
-                                Some(100.),
-                                Some(&[10.0, 0.1]),
-                                new_logistic_unit,
-                            ));
-            
-                            pathfinding_task.tasks.push(task);
+                                let color;
+                                let simplified_material;
+                                if human_resource_producer.1.0.team == 1 {
+                                    color = Vec4::new(0., 0., 1., 1.);
+                                    simplified_material = materials.2.blue_solid.clone();
+                                } else {
+                                    color = Vec4::new(1., 0., 0., 1.);
+                                    simplified_material = materials.2.red_solid.clone();
+                                }
 
-                            if matches!(network_status.0, NetworkStatuses::Host){
-                                let mut channel_id = 30;
-                                while channel_id <= 59 {
-                                    if let Err(_) = server
-                                    .endpoint_mut().send_group_message_on(clients.0.keys(), 1, ServerMessage::LogisticUnitSpawned {
-                                        position: Vec3::new(human_resource_producer.0.translation.x, 0.25, human_resource_producer.0.translation.z),
-                                        server_entity: new_logistic_unit,
-                                    }){
-                                        channel_id += 1;
+                                let material;
+
+                                if let Some(mat) = materials.2.team_materials.get(&(units_assets.truck.0.id(), human_resource_producer.1.0.team)) {
+                                    material = mat.clone();
+                                } else {
+                                    if let Some(original) = materials.0.get(units_assets.truck.1.id()) {
+                                        material = materials.1.add(ExtendedMaterial {
+                                            base: original.clone(),
+                                            extension: TeamMaterialExtension {
+                                                team_color: color,
+                                            },
+                                        });
                                     } else {
-                                        break;
+                                        material = materials.1.add(ExtendedMaterial {
+                                            base: StandardMaterial{
+                                                ..default()
+                                            },
+                                            extension: TeamMaterialExtension {
+                                                team_color: color,
+                                            },
+                                        });
+                                    }
+
+                                    materials.2.team_materials.insert((units_assets.truck.0.id(), human_resource_producer.1.0.team), material.clone());
+                                }
+
+                                let new_logistic_unit = commands.spawn(MaterialMeshBundle {
+                                    mesh: units_assets.truck.0.clone(),
+                                    material: units_assets.truck.1.clone(),
+                                    transform: Transform::from_translation(start_point),
+                                    ..default()
+                                }).insert(UnitComponent {
+                                    path: Vec::new(),
+                                    speed: LOGISTIC_UNITS_SPEED,
+                                    waypoint_check_factor: 0.5,
+                                }).insert(LogisticUnitComponent {
+                                    storage_capacity: human_resource_consumer.2.replenishment_amount,
+                                    storage: ResourceTypes::HumanResources(human_resource_consumer.2.replenishment_amount),
+                                    destination: (human_resource_consumer.0, None),
+                                    last_destination_point: destination_point,
+                                    path_recalculation_cooldown: 5000,
+                                    path_recalculation_elapsed: 0,
+                                    destination_completion_range: human_resource_consumer.2.replenishment_range,
+                                }).insert(KinematicCharacterController{
+                                    custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
+                                    up: Vec3::Y,
+                                    offset: CharacterLength::Absolute(0.1),
+                                    slide: true,
+                                    autostep: None,
+                                    apply_impulse_to_dynamic_bodies: false,
+                                    snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                                    ..default()
+                                }).insert(LOD{
+                                    detailed: (units_assets.truck.0.clone(), material.clone()),
+                                    simplified: (units_assets.truck.2.clone(), simplified_material.clone()),
+                                }).insert(CombatComponent{
+                                    team: human_resource_producer.1.0.team,
+                                    current_health: 100,
+                                    max_health: 100,
+                                    unit_type: UnitTypes::LightVehicle,
+                                    attack_type: AttackTypes::None,
+                                    attack_animation_type: AttackAnimationTypes::None(Vec3::ZERO),
+                                    attack_frequency: 0,
+                                    attack_elapsed_time: 0,
+                                    enemies: Vec::new(),
+                                    detection_range: 0.,
+                                    attack_range: 0.,
+                                    is_static: false,
+                                    unit_data: (
+                                        (0, 0),
+                                        (
+                                            CompanyTypes::None,
+                                            (-1, -1, -1, -1, -1, -1, -1),
+                                            "".to_string(),
+                                        ),
+                                    ),
+                                }).id();
+
+                                let nav_mesh_lock = nav_mesh.get();
+                
+                                let task = async_task_pools.logistic_pathfinding_pool.spawn(async_path_find(
+                                    nav_mesh_lock.clone(),
+                                    nav_mesh_settings.clone(),
+                                    start_point,
+                                    destination_point,
+                                    Some(100.),
+                                    Some(&[10.0, 0.1]),
+                                    new_logistic_unit,
+                                ));
+                
+                                pathfinding_task.tasks.push(task);
+
+                                if matches!(network_status.0, NetworkStatuses::Host){
+                                    let mut channel_id = 30;
+                                    while channel_id <= 59 {
+                                        if let Err(_) = server
+                                        .endpoint_mut().send_group_message_on(clients.0.keys(), 1, ServerMessage::LogisticUnitSpawned {
+                                            position: Vec3::new(human_resource_producer.0.translation.x, 0.25, human_resource_producer.0.translation.z),
+                                            server_entity: new_logistic_unit,
+                                        }){
+                                            channel_id += 1;
+                                        } else {
+                                            break;
+                                        }
                                     }
                                 }
+
+                                break;
                             }
-
-                            break;
                         }
+                    } else {
+                        is_consumers_empty = true;
+                        break;
                     }
-                } else {
-                    is_consumers_empty = true;
-                    break;
                 }
-            }
 
-            // if is_consumers_empty {
-            //     break;
-            // }
+                // if is_consumers_empty {
+                //     break;
+                // }
+            }
         }
     }
 }

@@ -16,7 +16,7 @@ pub enum Actions {
     ChooseBatallionType((CompanyTypes, (i32, i32, i32), i32)),
     SetupBatallion((i32, (i32, i32, i32))),
     OpenPlatoonSpecializations((i32, (i32, i32, i32, i32, i32), CompanyTypes)),
-    ChoosePlatoonSpecialization((String, (i32, i32, i32, i32, i32), i32, CompanyTypes)),
+    ChoosePlatoonSpecialization(((String, String), (i32, i32, i32, i32, i32), i32, CompanyTypes)),
     SquadSelection((CompanyTypes, (i32, i32, i32 ,i32 ,i32))),
     PlatoonSelection((CompanyTypes, Vec<(i32, i32, i32 ,i32 ,i32)>)),
     CompanySelection((CompanyTypes, Vec<(i32, i32, i32 ,i32 ,i32)>)),
@@ -54,7 +54,7 @@ pub struct SetupBatallionEvent((i32, (i32, i32, i32)));
 pub struct OpenPlatoonSpecializationsEvent((i32, (i32, i32, i32, i32, i32), CompanyTypes));
 
 #[derive(Event)]
-pub struct ChoosePlatoonSpecializationEvent((String, (i32, i32, i32, i32, i32), i32, CompanyTypes));
+pub struct ChoosePlatoonSpecializationEvent(((String, String), (i32, i32, i32, i32, i32), i32, CompanyTypes));
 
 #[derive(Event)]
 pub struct ToggleProductionEvent;
@@ -137,7 +137,7 @@ pub struct ArmySettingsNodes {
     pub last_battalion_type_dropdown_list_index: i32,
     pub platoon_specialization_dropdown_lists: Vec<(Entity, String, LimitedNumber<0, 2>)>,
     pub last_platoon_specialization_dropdown_list_index: i32,
-    pub platoon_specialization_cache: Vec<(String, CompanyTypes)>,
+    pub platoon_specialization_cache: Vec<((String, String), CompanyTypes)>,
     pub companies_row: Entity,
     pub platoons_row: Entity,
     pub units_row: Entity,
@@ -173,6 +173,9 @@ pub struct ParentNode;
 #[derive(Component)]
 pub struct DisplayedModelHolder;
 
+#[derive(Component)]
+pub struct ResourceZoneRestricted;
+
 #[derive(Resource)]
 pub struct UiButtonNodes {
     pub left_bottom_node: Entity,
@@ -196,9 +199,9 @@ pub struct UiButtonNodes {
 
 #[derive(Resource)]
 pub struct Specializations {
-    pub regular: Vec<String>,
-    pub shock: Vec<String>,
-    pub armored: Vec<String>,
+    pub regular: Vec<(String, String)>,
+    pub shock: Vec<(String, String)>,
+    pub armored: Vec<(String, String)>,
 }
 
 #[derive(Resource)]
@@ -1024,15 +1027,15 @@ pub fn setup_ingame_ui(
     }
 
     for _i in 0..START_REGULAR_SQUADS_AMOUNT {
-        army_settings_nodes.platoon_specialization_cache.push(("atgm".to_string(), CompanyTypes::Regular));
+        army_settings_nodes.platoon_specialization_cache.push((("atgm".to_string(), "ATGM".to_string()), CompanyTypes::Regular));
     }
 
     for _i in START_REGULAR_SQUADS_AMOUNT..START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT {
-        army_settings_nodes.platoon_specialization_cache.push(("lat".to_string(), CompanyTypes::Shock));
+        army_settings_nodes.platoon_specialization_cache.push((("lat".to_string(), "LAT".to_string()), CompanyTypes::Shock));
     }
 
     for _i in START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT..START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT + START_ARMORED_SQUADS_AMOUNT {
-        army_settings_nodes.platoon_specialization_cache.push(("tank".to_string(), CompanyTypes::Armored));
+        army_settings_nodes.platoon_specialization_cache.push((("tank".to_string(), "Tank".to_string()), CompanyTypes::Armored));
     }
     
     commands.entity(units_row).with_children(|parent| {
@@ -1752,6 +1755,9 @@ pub fn handle_button_clicks(
                     },
                     _ => {},
                 }
+
+                is_hovered = true;
+                selection_bounds.is_ui_hovered = true;
             }
             Interaction::Hovered => {
                 is_hovered = true;
@@ -2263,7 +2269,7 @@ pub fn setup_batallion(
                         }
 
                         if army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].1 != CompanyTypes::Regular {
-                            army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].0 = "atgm".to_string();
+                            army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].0 = ("atgm".to_string(), "ATGM".to_string());
                             army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].1 = CompanyTypes::Regular;
                         }
 
@@ -2335,7 +2341,7 @@ pub fn setup_batallion(
                                     button_parent.spawn(TextBundle {
                                         text: Text{
                                             sections: vec![TextSection {
-                                                value: current_platoon_specialization.clone(),
+                                                value: current_platoon_specialization.1.clone(),
                                                 style: TextStyle {
                                                     font_size: 10.,
                                                     ..default()
@@ -2353,7 +2359,7 @@ pub fn setup_batallion(
                                         },
                                         ..default()
                                     }).id(),
-                                    current_platoon_specialization.clone(),
+                                    current_platoon_specialization.0.clone(),
                                     LimitedNumber::new()
                                 ));
                             });
@@ -2468,7 +2474,7 @@ pub fn setup_batallion(
                         }
 
                         if army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].1 != CompanyTypes::Shock {
-                            army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].0 = "lat".to_string();
+                            army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].0 = ("lat".to_string(), "LAT".to_string());
                             army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].1 = CompanyTypes::Shock;
                         }
 
@@ -2540,7 +2546,7 @@ pub fn setup_batallion(
                                     button_parent.spawn(TextBundle {
                                         text: Text{
                                             sections: vec![TextSection {
-                                                value: current_platoon_specialization.clone(),
+                                                value: current_platoon_specialization.1.clone(),
                                                 style: TextStyle {
                                                     font_size: 10.,
                                                     ..default()
@@ -2558,7 +2564,7 @@ pub fn setup_batallion(
                                         },
                                         ..default()
                                     }).id(),
-                                    current_platoon_specialization.clone(),
+                                    current_platoon_specialization.0.clone(),
                                     LimitedNumber::new()
                                 ));
                             });
@@ -2673,7 +2679,7 @@ pub fn setup_batallion(
                         }
 
                         if army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].1 != CompanyTypes::Armored {
-                            army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].0 = "tank".to_string();
+                            army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].0 = ("tank".to_string(), "Tank".to_string());
                             army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].1 = CompanyTypes::Armored;
                         }
 
@@ -2745,7 +2751,7 @@ pub fn setup_batallion(
                                     button_parent.spawn(TextBundle {
                                         text: Text{
                                             sections: vec![TextSection {
-                                                value: current_platoon_specialization.clone(),
+                                                value: current_platoon_specialization.1.clone(),
                                                 style: TextStyle {
                                                     font_size: 10.,
                                                     ..default()
@@ -2763,7 +2769,7 @@ pub fn setup_batallion(
                                         },
                                         ..default()
                                     }).id(),
-                                    current_platoon_specialization.clone(),
+                                    current_platoon_specialization.0.clone(),
                                     LimitedNumber::new()
                                 ));
                             });
@@ -2805,7 +2811,7 @@ pub fn open_specializations_dropdown_list(
                 commands.entity(dropdown_list.0).despawn_descendants();
             }
 
-            let mut current_specializations: Vec<String> = Vec::new();
+            let mut current_specializations: Vec<(String, String)> = Vec::new();
             match event.0.2 {
                 CompanyTypes::Regular => {
                     current_specializations = specializations.regular.clone();
@@ -2865,7 +2871,7 @@ pub fn open_specializations_dropdown_list(
                         button_parent.spawn(TextBundle {
                             text: Text{
                                 sections: vec![TextSection {
-                                    value: specialization.clone(),
+                                    value: specialization.1.clone(),
                                     style: TextStyle {
                                         font_size: 10.,
                                         ..default()
@@ -2902,66 +2908,66 @@ pub fn choose_platoon_specialization(
         match event.0.3 {
             CompanyTypes::Regular => {
                 if let Some(platoon) = army.0.get_mut(&player_data.team).unwrap().regular_platoons.get_mut(&event.0.1.clone()){
-                    platoon.1 = event.0.0.clone();
+                    platoon.1 = event.0.0.0.clone();
                 }
                 else{
                     army.0.get_mut(&player_data.team).unwrap().regular_platoons
-                    .insert(event.0.1, (RegularPlatoon((LimitedHashSet::new(), LimitedHashSet::new())), event.0.0.clone(), Entity::PLACEHOLDER));
+                    .insert(event.0.1, (RegularPlatoon((LimitedHashSet::new(), LimitedHashSet::new())), event.0.0.0.clone(), Entity::PLACEHOLDER));
                 }
 
                 commands.entity(army_settings_nodes.platoon_specialization_dropdown_lists[event.0.2 as usize].0).despawn_descendants();
                 commands.entity(army_settings_nodes.platoon_specialization_dropdown_lists[event.0.2 as usize].0).insert(
                     Text::from_section(
-                        event.0.0.clone(),
+                        event.0.0.1.clone(),
                         TextStyle {
                             font_size: 10.,
                             ..default()
                         })
                 );
 
-                army_settings_nodes.platoon_specialization_dropdown_lists[event.0.2 as usize].1 = event.0.0.clone();
+                army_settings_nodes.platoon_specialization_dropdown_lists[event.0.2 as usize].1 = event.0.0.1.clone();
             },
             CompanyTypes::Shock => {
                 if let Some(platoon) = army.0.get_mut(&player_data.team).unwrap().shock_platoons.get_mut(&event.0.1.clone()){
-                    platoon.1 = event.0.0.clone();
+                    platoon.1 = event.0.0.0.clone();
                 }
                 else{
                     army.0.get_mut(&player_data.team).unwrap().shock_platoons
-                    .insert(event.0.1, (ShockPlatoon((LimitedHashSet::new(), LimitedHashSet::new())), event.0.0.clone(), Entity::PLACEHOLDER));
+                    .insert(event.0.1, (ShockPlatoon((LimitedHashSet::new(), LimitedHashSet::new())), event.0.0.0.clone(), Entity::PLACEHOLDER));
                 }
 
                 commands.entity(army_settings_nodes.platoon_specialization_dropdown_lists[event.0.2 as usize].0).despawn_descendants();
                 commands.entity(army_settings_nodes.platoon_specialization_dropdown_lists[event.0.2 as usize].0).insert(
                     Text::from_section(
-                        event.0.0.clone(),
+                        event.0.0.1.clone(),
                         TextStyle {
                             font_size: 10.,
                             ..default()
                         })
                 );
 
-                army_settings_nodes.platoon_specialization_dropdown_lists[event.0.2 as usize].1 = event.0.0.clone();
+                army_settings_nodes.platoon_specialization_dropdown_lists[event.0.2 as usize].1 = event.0.0.1.clone();
             },
             CompanyTypes::Armored => {
                 if let Some(platoon) = army.0.get_mut(&player_data.team).unwrap().armored_platoons.get_mut(&event.0.1.clone()){
-                    platoon.1 = event.0.0.clone();
+                    platoon.1 = event.0.0.0.clone();
                 }
                 else{
                     army.0.get_mut(&player_data.team).unwrap().armored_platoons
-                    .insert(event.0.1, (ArmoredPlatoon(LimitedHashSet::new()), event.0.0.clone(), Entity::PLACEHOLDER));
+                    .insert(event.0.1, (ArmoredPlatoon(LimitedHashSet::new()), event.0.0.0.clone(), Entity::PLACEHOLDER));
                 }
 
                 commands.entity(army_settings_nodes.platoon_specialization_dropdown_lists[event.0.2 as usize].0).despawn_descendants();
                 commands.entity(army_settings_nodes.platoon_specialization_dropdown_lists[event.0.2 as usize].0).insert(
                     Text::from_section(
-                        event.0.0.clone(),
+                        event.0.0.1.clone(),
                         TextStyle {
                             font_size: 10.,
                             ..default()
                         })
                 );
 
-                army_settings_nodes.platoon_specialization_dropdown_lists[event.0.2 as usize].1 = event.0.0.clone();
+                army_settings_nodes.platoon_specialization_dropdown_lists[event.0.2 as usize].1 = event.0.0.1.clone();
             },
             _ => {},
         }
@@ -3811,7 +3817,8 @@ pub fn building_placement_activation_system(
                     ..default()
                 })
                 .insert(NotShadowCaster)
-                .insert(DisplayedModelHolder);
+                .insert(DisplayedModelHolder)
+                .insert(ResourceZoneRestricted);
             },
             BuildingsBundles::Pillbox(bundle) => {
                 commands.spawn(PbrBundle{
@@ -3838,7 +3845,7 @@ pub fn building_placement_handling_system(
         ResMut<Assets<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>>,
     ),
     mut unactivated_blueprints: ResMut<UnactivatedBlueprints>,
-    mut displayed_model_holders: Query<(Entity, &mut Transform), (With<DisplayedModelHolder>, Without<ResourceZone>, Without<Terrain>)>,
+    mut displayed_model_holders: Query<(Entity, &mut Transform, Option<&ResourceZoneRestricted>), (With<DisplayedModelHolder>, Without<ResourceZone>, Without<Terrain>)>,
     terrain_q: Query<Entity, With<Terrain>>,
     ui_resources: (
         Res<SelectionBounds>,
@@ -3919,6 +3926,19 @@ pub fn building_placement_handling_system(
                 cursor_on_plane_position.z,
             );
             holder.1.rotation = Quat::from_rotation_y(angle);
+
+            if holder.2.is_some() {
+                let mut is_inside_any_zone = false;
+                for res_zone in resource_zones_q.iter() {
+                    if cursor_on_plane_position.xz().distance(res_zone.1.translation.xz()) <= res_zone.0.zone_radius {
+                        is_inside_any_zone = true;
+                    }
+                }
+
+                if !is_inside_any_zone {
+                    is_forbidden = true;
+                }
+            }
 
             if is_forbidden {
                 commands.entity(holder.0).insert(ForbiddenBlueprint);
@@ -4122,7 +4142,7 @@ pub fn building_placement_handling_system(
                         }
                     }
 
-                    if matches!(game_stage.0, GameStages::BuildingsSetup) {
+                    if matches!(game_stage.0, GameStages::BuildingsSetup) && new_building_entity != Entity::PLACEHOLDER {
                         if let Some(building) = buildings_cache.1.buildings.get_mut(&buildings_cache.0.name) {
                             building.0 -= 1;
 

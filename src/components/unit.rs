@@ -11,7 +11,7 @@ use std::hash::Hash;
 use bevy_tasks::TaskPool;
 use serde::{Deserialize, Serialize};
 
-use crate::{components::{asset_manager::{AttackVisualisationAssets, InstancedMaterials, OtherAssets, TeamMaterialExtension, TrailComponent, TrailEmmiterComponent, LOD}, building::{ConstructionProgressBar, DeconstructableBuilding, DontTouch, HumanResourcesDisplay, MaterialsDisplay, MaterialsProductionComponent, SwitchableBuilding, ToDeconstruct, CONSTRUCTION_PROGRESS_COLOR}, camera::{self, CameraComponent}, ui_manager::{BattalionSelectionEvent, BrigadeSelectionEvent, CompanySelectionEvent, PlatoonSelectionEvent, RegimentSelectionEvent, UiButtonNodes}}, GameStage, GameStages, PlayerData, FOG_TEXTURE_SIZE, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, WORLD_SIZE};
+use crate::{FOG_TEXTURE_SIZE, GameStage, GameStages, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, PlayerData, WORLD_SIZE, components::{asset_manager::{AttackVisualisationAssets, ChangeMaterial, InstancedMaterials, LOD, OtherAssets, TeamMaterialExtension, TrailComponent, TrailEmmiterComponent}, building::{CONSTRUCTION_PROGRESS_COLOR, ConstructionProgressBar, DeconstructableBuilding, DontTouch, HumanResourcesDisplay, MaterialsDisplay, MaterialsProductionComponent, SwitchableBuilding, ToDeconstruct}, camera::{self, CameraComponent}, ui_manager::{BattalionSelectionEvent, BrigadeSelectionEvent, CompanySelectionEvent, PlatoonSelectionEvent, RegimentSelectionEvent, UiButtonNodes}}};
 
 use super::{building::{ArtilleryBundle, BuildingBlueprint, BuildingConstructionSite, BuildingsBundles, CoverComponent, EngineerBundle, IFVBundle, InfantryBarracksBundle, InfantryProducer, LogisticHubBundle, ProductionQueue, ProductionState, ResourceMinerBundle, SoldierBundle, SuppliesProductionComponent, TankBundle, UnactivatedBlueprints, UnitBundles, UnitProductionBuildingComponent, VehicleFactoryBundle, VehiclesProducer}, camera::MoveOrderEvent, logistics::ResourceZone, network::{self, ClientList, ClientMessage, EntityMaps, NetworkStatus, NetworkStatuses, ServerMessage}, ui_manager::{CancelArtilleryTargets, GameStartedEvent, SquadSelectionEvent, ProductionStateChanged, ToggleArtilleryDesignation}};
 
@@ -326,6 +326,7 @@ pub fn clear_selected_units(
 pub struct UnitComponent{
     pub path: Vec<Vec3>,
     pub speed: f32,
+    pub waypoint_check_factor: f32,
 }
 
 #[derive(Component, Clone)]
@@ -482,6 +483,9 @@ pub struct SelectedUnit;
 
 #[derive(Component)]
 pub struct NeedToMove;
+
+#[derive(Component)]
+pub struct StoppedMoving;
 
 #[derive(Component, Clone)]
 pub struct ArtilleryUnit {
@@ -1059,12 +1063,13 @@ pub fn process_agents_movement(
             //     }
             // }
 
-            if unit_transform.translation.xz().distance(next_point.xz()) < 0.1 {
+            if unit_transform.translation.xz().distance(next_point.xz()) < unit_component.waypoint_check_factor {
 
                 unit_component.path.remove(0);
 
                 if unit_component.path.is_empty() {
                     commands.entity(unit_entity).remove::<NeedToMove>();
+                    commands.entity(unit_entity).insert(StoppedMoving);
 
                     if matches!(network_status.0, NetworkStatuses::Host) {
                         let mut channel_id = 30;
@@ -1083,6 +1088,7 @@ pub fn process_agents_movement(
             }
         } else {
             commands.entity(unit_entity).remove::<NeedToMove>();
+            commands.entity(unit_entity).insert(StoppedMoving);
         }
     }
 }
@@ -1686,15 +1692,15 @@ pub fn process_combat (
 
         match sounds_type.0 {
             AttackAnimationTypes::LowCaliber(_) => {
-                counter += 1;
-
                 for source_entity in sounds_type.1.iter() {
+                    counter += 1;
+
                     commands.entity(source_entity.0).insert(
                         AudioBundle{
                             source: attack_visualisation_assets.bullet_low.1.clone(),
                             settings: PlaybackSettings{
                                 mode: PlaybackMode::Remove,
-                                volume: Volume::new(1000.),
+                                volume: Volume::new(100.),
                                 speed: 1.,
                                 paused: false,
                                 spatial: true,
@@ -1702,20 +1708,20 @@ pub fn process_combat (
                             },
                         }
                     );
-                }
 
-                if counter >= 3 {continue;}
+                    if counter >= 5 {break;}
+                }
             },
             AttackAnimationTypes::HighCaliber(_) => {
-                counter += 1;
-
                 for source_entity in sounds_type.1.iter() {
+                    counter += 1;
+
                     commands.entity(source_entity.0).insert(
                         AudioBundle{
                             source: attack_visualisation_assets.bullet_high.1.clone(),
                             settings: PlaybackSettings{
                                 mode: PlaybackMode::Remove,
-                                volume: Volume::new(1000.),
+                                volume: Volume::new(100.),
                                 speed: 1.,
                                 paused: false,
                                 spatial: true,
@@ -1723,20 +1729,20 @@ pub fn process_combat (
                             },
                         }
                     );
-                }
 
-                if counter >= 3 {continue;}
+                    if counter >= 5 {break;}
+                }
             },
             AttackAnimationTypes::MissileLaunch(p) => {
-                counter += 1;
-
                 for source_entity in sounds_type.1.iter() {
+                    counter += 1;
+
                     commands.entity(source_entity.0).insert(
                         AudioBundle{
                             source: attack_visualisation_assets.missile_launch_sound.clone(),
                             settings: PlaybackSettings{
                                 mode: PlaybackMode::Remove,
-                                volume: Volume::new(500.),
+                                volume: Volume::new(100.),
                                 speed: 1.,
                                 paused: false,
                                 spatial: true,
@@ -1744,20 +1750,20 @@ pub fn process_combat (
                             },
                         }
                     );
-                }
 
-                if counter >= 3 {continue;}
+                    if counter >= 5 {break;}
+                }
             },
             AttackAnimationTypes::TankCannon(_) => {
-                counter += 1;
-
                 for source_entity in sounds_type.1.iter() {
+                    counter += 1;
+
                     commands.entity(source_entity.0).insert(
                         AudioBundle{
                             source: attack_visualisation_assets.tank_shot_sound.clone(),
                             settings: PlaybackSettings{
                                 mode: PlaybackMode::Remove,
-                                volume: Volume::new(1000.),
+                                volume: Volume::new(100.),
                                 speed: 1.,
                                 paused: false,
                                 spatial: true,
@@ -1765,9 +1771,9 @@ pub fn process_combat (
                             },
                         }
                     );
-                }
 
-                if counter >= 3 {continue;}
+                    if counter >= 5 {break;}
+                }
             },
             AttackAnimationTypes::None(_) => {},
         }
@@ -2703,7 +2709,7 @@ pub fn process_busy_engineers (
                                                 let material;
 
                                                 if let Some(mat) =
-                                                materials.1.team_material.get(&(bundle.model.mesh.id(), current_blueprint.1.team)) {
+                                                materials.1.team_materials.get(&(bundle.model.mesh.id(), current_blueprint.1.team)) {
                                                     material = mat.clone();
                                                 } else {
                                                     if let Some(original) = materials.0.get(bundle.model.material.id()) {
@@ -2724,7 +2730,7 @@ pub fn process_busy_engineers (
                                                         });
                                                     }
 
-                                                    materials.1.team_material.insert((bundle.model.mesh.id(), current_blueprint.1.team), material.clone());
+                                                    materials.1.team_materials.insert((bundle.model.mesh.id(), current_blueprint.1.team), material.clone());
                                                 }
                                                 
                                                 new_construction = commands.spawn(MaterialMeshBundle{
@@ -2802,7 +2808,7 @@ pub fn process_busy_engineers (
                                                 let material;
 
                                                 if let Some(mat) =
-                                                materials.1.team_material.get(&(bundle.model.mesh.id(), current_blueprint.1.team)) {
+                                                materials.1.team_materials.get(&(bundle.model.mesh.id(), current_blueprint.1.team)) {
                                                     material = mat.clone();
                                                 } else {
                                                     if let Some(original) = materials.0.get(bundle.model.material.id()) {
@@ -2823,7 +2829,7 @@ pub fn process_busy_engineers (
                                                         });
                                                     }
 
-                                                    materials.1.team_material.insert((bundle.model.mesh.id(), current_blueprint.1.team), material.clone());
+                                                    materials.1.team_materials.insert((bundle.model.mesh.id(), current_blueprint.1.team), material.clone());
                                                 }
 
                                                 new_construction = commands.spawn(MaterialMeshBundle{
@@ -2901,7 +2907,7 @@ pub fn process_busy_engineers (
                                                 let material;
 
                                                 if let Some(mat) =
-                                                materials.1.team_material.get(&(bundle.model.mesh.id(), current_blueprint.1.team)) {
+                                                materials.1.team_materials.get(&(bundle.model.mesh.id(), current_blueprint.1.team)) {
                                                     material = mat.clone();
                                                 } else {
                                                     if let Some(original) = materials.0.get(bundle.model.material.id()) {
@@ -2922,7 +2928,7 @@ pub fn process_busy_engineers (
                                                         });
                                                     }
 
-                                                    materials.1.team_material.insert((bundle.model.mesh.id(), current_blueprint.1.team), material.clone());
+                                                    materials.1.team_materials.insert((bundle.model.mesh.id(), current_blueprint.1.team), material.clone());
                                                 }
 
                                                 new_construction = commands.spawn(MaterialMeshBundle{
@@ -3022,7 +3028,7 @@ pub fn process_busy_engineers (
                                                         let material;
 
                                                         if let Some(mat) =
-                                                        materials.1.team_material.get(&(bundle.model.mesh.id(), current_blueprint.1.team)) {
+                                                        materials.1.team_materials.get(&(bundle.model.mesh.id(), current_blueprint.1.team)) {
                                                             material = mat.clone();
                                                         } else {
                                                             if let Some(original) = materials.0.get(bundle.model.material.id()) {
@@ -3043,7 +3049,7 @@ pub fn process_busy_engineers (
                                                                 });
                                                             }
 
-                                                            materials.1.team_material.insert((bundle.model.mesh.id(), current_blueprint.1.team), material.clone());
+                                                            materials.1.team_materials.insert((bundle.model.mesh.id(), current_blueprint.1.team), material.clone());
                                                         }
 
                                                         new_construction = commands.spawn(MaterialMeshBundle{
@@ -3131,7 +3137,7 @@ pub fn process_busy_engineers (
                                                 let material;
 
                                                 if let Some(mat) =
-                                                materials.1.team_material.get(&(bundle.model.mesh.id(), current_blueprint.1.team)) {
+                                                materials.1.team_materials.get(&(bundle.model.mesh.id(), current_blueprint.1.team)) {
                                                     material = mat.clone();
                                                 } else {
                                                     if let Some(original) = materials.0.get(bundle.model.material.id()) {
@@ -3152,7 +3158,7 @@ pub fn process_busy_engineers (
                                                         });
                                                     }
 
-                                                    materials.1.team_material.insert((bundle.model.mesh.id(), current_blueprint.1.team), material.clone());
+                                                    materials.1.team_materials.insert((bundle.model.mesh.id(), current_blueprint.1.team), material.clone());
                                                 }
 
                                                 new_construction = commands.spawn(MaterialMeshBundle{
@@ -3321,7 +3327,7 @@ pub fn process_busy_engineers (
                                                     let material;
 
                                                     if let Some(mat) =
-                                                    materials.1.team_material.get(&(bundle.model.mesh.id(), current_construction_site.1.team)) {
+                                                    materials.1.team_materials.get(&(bundle.model.mesh.id(), current_construction_site.1.team)) {
                                                         material = mat.clone();
                                                     } else {
                                                         if let Some(original) = materials.0.get(bundle.model.material.id()) {
@@ -3342,7 +3348,7 @@ pub fn process_busy_engineers (
                                                             });
                                                         }
 
-                                                        materials.1.team_material.insert((bundle.model.mesh.id(), current_construction_site.1.team), material.clone());
+                                                        materials.1.team_materials.insert((bundle.model.mesh.id(), current_construction_site.1.team), material.clone());
                                                     }
                                                     
                                                     new_building = commands.spawn((
@@ -3352,7 +3358,7 @@ pub fn process_busy_engineers (
                                                             transform: *current_construction_site.2,
                                                             ..default()
                                                         },
-                                                        bundle.collider.clone(),
+                                                        bundle.collider.clone(), CollisionGroups::new(Group::GROUP_2, Group::all()),
                                                         bundle.building_component.clone(),
                                                         CombatComponent{
                                                             team: current_construction_site.1.team,
@@ -3465,7 +3471,7 @@ pub fn process_busy_engineers (
                                                     let material;
 
                                                     if let Some(mat) =
-                                                    materials.1.team_material.get(&(bundle.model.mesh.id(), current_construction_site.1.team)) {
+                                                    materials.1.team_materials.get(&(bundle.model.mesh.id(), current_construction_site.1.team)) {
                                                         material = mat.clone();
                                                     } else {
                                                         if let Some(original) = materials.0.get(bundle.model.material.id()) {
@@ -3486,7 +3492,7 @@ pub fn process_busy_engineers (
                                                             });
                                                         }
 
-                                                        materials.1.team_material.insert((bundle.model.mesh.id(), current_construction_site.1.team), material.clone());
+                                                        materials.1.team_materials.insert((bundle.model.mesh.id(), current_construction_site.1.team), material.clone());
                                                     }
 
                                                     new_building = commands.spawn((
@@ -3496,7 +3502,7 @@ pub fn process_busy_engineers (
                                                             transform: *current_construction_site.2,
                                                             ..default()
                                                         },
-                                                        bundle.collider.clone(),
+                                                        bundle.collider.clone(), CollisionGroups::new(Group::GROUP_2, Group::all()),
                                                         bundle.building_component.clone(),
                                                         CombatComponent{
                                                             team: current_construction_site.1.team,
@@ -3608,7 +3614,7 @@ pub fn process_busy_engineers (
                                                     let material;
 
                                                     if let Some(mat) =
-                                                    materials.1.team_material.get(&(bundle.model.mesh.id(), current_construction_site.1.team)) {
+                                                    materials.1.team_materials.get(&(bundle.model.mesh.id(), current_construction_site.1.team)) {
                                                         material = mat.clone();
                                                     } else {
                                                         if let Some(original) = materials.0.get(bundle.model.material.id()) {
@@ -3629,7 +3635,7 @@ pub fn process_busy_engineers (
                                                             });
                                                         }
 
-                                                        materials.1.team_material.insert((bundle.model.mesh.id(), current_construction_site.1.team), material.clone());
+                                                        materials.1.team_materials.insert((bundle.model.mesh.id(), current_construction_site.1.team), material.clone());
                                                     }
 
                                                     new_building = commands.spawn((
@@ -3639,7 +3645,7 @@ pub fn process_busy_engineers (
                                                             transform: *current_construction_site.2,
                                                             ..default()
                                                         },
-                                                        bundle.collider.clone(),
+                                                        bundle.collider.clone(), CollisionGroups::new(Group::GROUP_2, Group::all()),
                                                         SuppliesProductionComponent{
                                                             supplies_storage_capacity: bundle.building_component.supplies_storage_capacity,
                                                             available_supplies: bundle.building_component.available_supplies,
@@ -3744,7 +3750,7 @@ pub fn process_busy_engineers (
                                                             let material;
 
                                                             if let Some(mat) =
-                                                            materials.1.team_material.get(&(bundle.model.mesh.id(), current_construction_site.1.team)) {
+                                                            materials.1.team_materials.get(&(bundle.model.mesh.id(), current_construction_site.1.team)) {
                                                                 material = mat.clone();
                                                             } else {
                                                                 if let Some(original) = materials.0.get(bundle.model.material.id()) {
@@ -3765,7 +3771,7 @@ pub fn process_busy_engineers (
                                                                     });
                                                                 }
 
-                                                                materials.1.team_material.insert((bundle.model.mesh.id(), current_construction_site.1.team), material.clone());
+                                                                materials.1.team_materials.insert((bundle.model.mesh.id(), current_construction_site.1.team), material.clone());
                                                             }
 
                                                             new_building = commands.spawn((
@@ -3775,7 +3781,7 @@ pub fn process_busy_engineers (
                                                                     transform: *current_construction_site.2,
                                                                     ..default()
                                                                 },
-                                                                bundle.collider.clone(),
+                                                                bundle.collider.clone(), CollisionGroups::new(Group::GROUP_2, Group::all()),
                                                                 bundle.building_component.clone(),
                                                                 CombatComponent{
                                                                     team: current_construction_site.1.team,
@@ -3823,7 +3829,7 @@ pub fn process_busy_engineers (
                                                     let material;
 
                                                     if let Some(mat) =
-                                                    materials.1.team_material.get(&(bundle.model.mesh.id(), current_construction_site.1.team)) {
+                                                    materials.1.team_materials.get(&(bundle.model.mesh.id(), current_construction_site.1.team)) {
                                                         material = mat.clone();
                                                     } else {
                                                         if let Some(original) = materials.0.get(bundle.model.material.id()) {
@@ -3844,7 +3850,7 @@ pub fn process_busy_engineers (
                                                             });
                                                         }
 
-                                                        materials.1.team_material.insert((bundle.model.mesh.id(), current_construction_site.1.team), material.clone());
+                                                        materials.1.team_materials.insert((bundle.model.mesh.id(), current_construction_site.1.team), material.clone());
                                                     }
 
                                                     new_building = commands.spawn((
@@ -3859,7 +3865,7 @@ pub fn process_busy_engineers (
                                                             points: bundle.building_component.points.clone(),
                                                             units_inside: bundle.building_component.units_inside.clone(),
                                                         },
-                                                        bundle.collider.clone(),
+                                                        bundle.collider.clone(), CollisionGroups::new(Group::GROUP_2, Group::all()),
                                                         CombatComponent{
                                                             team: current_construction_site.1.team,
                                                             current_health: bundle.combat_component.current_health,
@@ -4196,7 +4202,7 @@ pub fn process_busy_engineers (
                         let material;
 
                         if let Some(mat) =
-                        materials.1.team_material.get(&(bundle.model.mesh.id(), blueprint.1.team)) {
+                        materials.1.team_materials.get(&(bundle.model.mesh.id(), blueprint.1.team)) {
                             material = mat.clone();
                         } else {
                             if let Some(original) = materials.0.get(bundle.model.material.id()) {
@@ -4217,7 +4223,7 @@ pub fn process_busy_engineers (
                                 });
                             }
 
-                            materials.1.team_material.insert((bundle.model.mesh.id(), blueprint.1.team), material.clone());
+                            materials.1.team_materials.insert((bundle.model.mesh.id(), blueprint.1.team), material.clone());
                         }
                         
                         new_building = commands.spawn((
@@ -4227,7 +4233,7 @@ pub fn process_busy_engineers (
                                 transform: *blueprint.2,
                                 ..default()
                             },
-                            bundle.collider.clone(),
+                            bundle.collider.clone(), CollisionGroups::new(Group::GROUP_2, Group::all()),
                             bundle.building_component.clone(),
                             CombatComponent{
                                 team: blueprint.1.team,
@@ -4340,7 +4346,7 @@ pub fn process_busy_engineers (
                         let material;
 
                         if let Some(mat) =
-                        materials.1.team_material.get(&(bundle.model.mesh.id(), blueprint.1.team)) {
+                        materials.1.team_materials.get(&(bundle.model.mesh.id(), blueprint.1.team)) {
                             material = mat.clone();
                         } else {
                             if let Some(original) = materials.0.get(bundle.model.material.id()) {
@@ -4361,7 +4367,7 @@ pub fn process_busy_engineers (
                                 });
                             }
 
-                            materials.1.team_material.insert((bundle.model.mesh.id(), blueprint.1.team), material.clone());
+                            materials.1.team_materials.insert((bundle.model.mesh.id(), blueprint.1.team), material.clone());
                         }
 
                         new_building = commands.spawn((
@@ -4371,7 +4377,7 @@ pub fn process_busy_engineers (
                                 transform: *blueprint.2,
                                 ..default()
                             },
-                            bundle.collider.clone(),
+                            bundle.collider.clone(), CollisionGroups::new(Group::GROUP_2, Group::all()),
                             bundle.building_component.clone(),
                             CombatComponent{
                                 team: blueprint.1.team,
@@ -4484,7 +4490,7 @@ pub fn process_busy_engineers (
                         let material;
 
                         if let Some(mat) =
-                        materials.1.team_material.get(&(bundle.model.mesh.id(), blueprint.1.team)) {
+                        materials.1.team_materials.get(&(bundle.model.mesh.id(), blueprint.1.team)) {
                             material = mat.clone();
                         } else {
                             if let Some(original) = materials.0.get(bundle.model.material.id()) {
@@ -4505,7 +4511,7 @@ pub fn process_busy_engineers (
                                 });
                             }
 
-                            materials.1.team_material.insert((bundle.model.mesh.id(), blueprint.1.team), material.clone());
+                            materials.1.team_materials.insert((bundle.model.mesh.id(), blueprint.1.team), material.clone());
                         }
 
                         new_building = commands.spawn((
@@ -4515,7 +4521,7 @@ pub fn process_busy_engineers (
                                 transform: *blueprint.2,
                                 ..default()
                             },
-                            bundle.collider.clone(),
+                            bundle.collider.clone(), CollisionGroups::new(Group::GROUP_2, Group::all()),
                             SuppliesProductionComponent{
                                 supplies_storage_capacity: bundle.building_component.supplies_storage_capacity,
                                 available_supplies: bundle.building_component.available_supplies,
@@ -4619,7 +4625,7 @@ pub fn process_busy_engineers (
                             let material;
 
                             if let Some(mat) =
-                            materials.1.team_material.get(&(bundle.model.mesh.id(), blueprint.1.team)) {
+                            materials.1.team_materials.get(&(bundle.model.mesh.id(), blueprint.1.team)) {
                                 material = mat.clone();
                             } else {
                                 if let Some(original) = materials.0.get(bundle.model.material.id()) {
@@ -4640,7 +4646,7 @@ pub fn process_busy_engineers (
                                     });
                                 }
 
-                                materials.1.team_material.insert((bundle.model.mesh.id(), blueprint.1.team), material.clone());
+                                materials.1.team_materials.insert((bundle.model.mesh.id(), blueprint.1.team), material.clone());
                             }
 
                             new_building = commands.spawn((
@@ -4650,7 +4656,7 @@ pub fn process_busy_engineers (
                                     transform: *blueprint.2,
                                     ..default()
                                 },
-                                bundle.collider.clone(),
+                                bundle.collider.clone(), CollisionGroups::new(Group::GROUP_2, Group::all()),
                                 bundle.building_component.clone(),
                                 CombatComponent{
                                     team: blueprint.1.team,
@@ -4697,7 +4703,7 @@ pub fn process_busy_engineers (
                         let material;
 
                         if let Some(mat) =
-                        materials.1.team_material.get(&(bundle.model.mesh.id(), blueprint.1.team)) {
+                        materials.1.team_materials.get(&(bundle.model.mesh.id(), blueprint.1.team)) {
                             material = mat.clone();
                         } else {
                             if let Some(original) = materials.0.get(bundle.model.material.id()) {
@@ -4718,7 +4724,7 @@ pub fn process_busy_engineers (
                                 });
                             }
 
-                            materials.1.team_material.insert((bundle.model.mesh.id(), blueprint.1.team), material.clone());
+                            materials.1.team_materials.insert((bundle.model.mesh.id(), blueprint.1.team), material.clone());
                         }
 
                         new_building = commands.spawn((
@@ -4728,7 +4734,7 @@ pub fn process_busy_engineers (
                                 transform: *blueprint.2,
                                 ..default()
                             },
-                            bundle.collider.clone(),
+                            bundle.collider.clone(), CollisionGroups::new(Group::GROUP_2, Group::all()),
                             CoverComponent{
                                 cover_efficiency: bundle.building_component.cover_efficiency,
                                 points: bundle.building_component.points.clone(),
@@ -5171,10 +5177,13 @@ pub fn game_starting_system (
 
         for team_queue in production_queue.0.iter_mut(){
             let color;
+            let simplified_material;
             if team_queue.0.clone() == 1 {
                 color = Vec4::new(0., 0., 1., 1.);
+                simplified_material = instanced_materials.blue_solid.clone();
             } else {
                 color = Vec4::new(1., 0., 0., 1.);
+                simplified_material = instanced_materials.red_solid.clone();
             }
 
             for unit_to_produce in team_queue.1.regular_infantry_queue.iter() {
@@ -5201,36 +5210,9 @@ pub fn game_starting_system (
                                     battalion_type = CompanyTypes::Regular;
                                     unit_type = b.combat_component.unit_type.clone();
 
-                                    let material;
-
-                                    if let Some(mat) = instanced_materials.team_material.get(&(b.model.mesh.id(), *team_queue.0)) {
-                                        material = mat.clone();
-                                    } else {
-                                        if let Some(original) = materials.get(b.model.material.id()) {
-                                            material = extended_materials.add(ExtendedMaterial {
-                                                base: original.clone(),
-                                                extension: TeamMaterialExtension {
-                                                    team_color: color,
-                                                },
-                                            });
-                                        } else {
-                                            material = extended_materials.add(ExtendedMaterial {
-                                                base: StandardMaterial{
-                                                    ..default()
-                                                },
-                                                extension: TeamMaterialExtension {
-                                                    team_color: color,
-                                                },
-                                            });
-                                        }
-
-                                        instanced_materials.team_material.insert((b.model.mesh.id(), *team_queue.0), material.clone());
-                                    }
-
                                     new_unit = commands.spawn((
-                                        MaterialMeshBundle{
-                                            mesh: b.model.mesh.clone(),
-                                            material: material.clone(),
+                                        SceneBundle{
+                                            scene: b.scene.clone(),
                                             transform: Transform::from_translation(point),
                                             ..default()
                                         },
@@ -5260,9 +5242,11 @@ pub fn game_starting_system (
                                         b.supplies_consumer.clone(),
                                         b.controller.clone(),
                                         SelectableUnit,
+                                        b.animation_component.clone(),
+                                        ChangeMaterial,
                                         LOD{
-                                            detailed: (b.model.mesh.clone(), material.clone()),
-                                            simplified: b.lod.clone(),
+                                            detailed: (Handle::default(), Handle::default()),
+                                            simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
                                 },
@@ -5270,36 +5254,9 @@ pub fn game_starting_system (
                                     battalion_type = CompanyTypes::Shock;
                                     unit_type = b.combat_component.unit_type.clone();
 
-                                    let material;
-
-                                    if let Some(mat) = instanced_materials.team_material.get(&(b.model.mesh.id(), *team_queue.0)) {
-                                        material = mat.clone();
-                                    } else {
-                                        if let Some(original) = materials.get(b.model.material.id()) {
-                                            material = extended_materials.add(ExtendedMaterial {
-                                                base: original.clone(),
-                                                extension: TeamMaterialExtension {
-                                                    team_color: color,
-                                                },
-                                            });
-                                        } else {
-                                            material = extended_materials.add(ExtendedMaterial {
-                                                base: StandardMaterial{
-                                                    ..default()
-                                                },
-                                                extension: TeamMaterialExtension {
-                                                    team_color: color,
-                                                },
-                                            });
-                                        }
-
-                                        instanced_materials.team_material.insert((b.model.mesh.id(), *team_queue.0), material.clone());
-                                    }
-
                                     new_unit = commands.spawn((
-                                        MaterialMeshBundle{
-                                            mesh: b.model.mesh.clone(),
-                                            material: material.clone(),
+                                        SceneBundle{
+                                            scene: b.scene.clone(),
                                             transform: Transform::from_translation(point),
                                             ..default()
                                         },
@@ -5329,9 +5286,11 @@ pub fn game_starting_system (
                                         b.supplies_consumer.clone(),
                                         b.controller.clone(),
                                         SelectableUnit,
+                                        b.animation_component.clone(),
+                                        ChangeMaterial,
                                         LOD{
-                                            detailed: (b.model.mesh.clone(), material.clone()),
-                                            simplified: b.lod.clone(),
+                                            detailed: (Handle::default(), Handle::default()),
+                                            simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
                                 },
@@ -5341,10 +5300,10 @@ pub fn game_starting_system (
 
                                     let material_turret;
 
-                                    if let Some(mat) = instanced_materials.team_material.get(&(b.model_turret.0.mesh.id(), *team_queue.0)) {
+                                    if let Some(mat) = instanced_materials.team_materials.get(&(b.model_turret.mesh.id(), *team_queue.0)) {
                                         material_turret = mat.clone();
                                     } else {
-                                        if let Some(original) = materials.get(b.model_turret.0.material.id()) {
+                                        if let Some(original) = materials.get(b.model_turret.material.id()) {
                                             material_turret = extended_materials.add(ExtendedMaterial {
                                                 base: original.clone(),
                                                 extension: TeamMaterialExtension {
@@ -5362,24 +5321,24 @@ pub fn game_starting_system (
                                             });
                                         }
 
-                                        instanced_materials.team_material.insert((b.model_turret.0.mesh.id(), *team_queue.0), material_turret.clone());
+                                        instanced_materials.team_materials.insert((b.model_turret.mesh.id(), *team_queue.0), material_turret.clone());
                                     }
 
                                     let turret = commands.spawn((
                                         MaterialMeshBundle{
-                                            mesh: b.model_turret.0.mesh.clone(),
-                                            material: b.model_turret.0.material.clone(),
+                                            mesh: b.model_turret.mesh.clone(),
+                                            material: b.model_turret.material.clone(),
                                             ..default()
                                         },
                                         LOD{
-                                            detailed: (b.model_turret.0.mesh.clone(), material_turret.clone()),
-                                            simplified: b.model_turret.1.clone(),
+                                            detailed: (b.model_turret.mesh.clone(), material_turret.clone()),
+                                            simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
 
                                     let material_hull;
 
-                                    if let Some(mat) = instanced_materials.team_material.get(&(b.model_hull.mesh.id(), *team_queue.0)) {
+                                    if let Some(mat) = instanced_materials.team_materials.get(&(b.model_hull.mesh.id(), *team_queue.0)) {
                                         material_hull = mat.clone();
                                     } else {
                                         if let Some(original) = materials.get(b.model_hull.material.id()) {
@@ -5400,7 +5359,7 @@ pub fn game_starting_system (
                                             });
                                         }
 
-                                        instanced_materials.team_material.insert((b.model_hull.mesh.id(), *team_queue.0), material_hull.clone());
+                                        instanced_materials.team_materials.insert((b.model_hull.mesh.id(), *team_queue.0), material_hull.clone());
                                     }
 
                                     new_unit = commands.spawn((
@@ -5438,7 +5397,7 @@ pub fn game_starting_system (
                                         SelectableUnit,
                                         LOD{
                                             detailed: (b.model_hull.mesh.clone(), material_hull.clone()),
-                                            simplified: b.lod.clone(),
+                                            simplified: (b.lod.0.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).push_children(&[turret]).id();
                                 },
@@ -5448,10 +5407,10 @@ pub fn game_starting_system (
 
                                     let material_turret;
 
-                                    if let Some(mat) = instanced_materials.team_material.get(&(b.model_turret.0.mesh.id(), *team_queue.0)) {
+                                    if let Some(mat) = instanced_materials.team_materials.get(&(b.model_turret.mesh.id(), *team_queue.0)) {
                                         material_turret = mat.clone();
                                     } else {
-                                        if let Some(original) = materials.get(b.model_turret.0.material.id()) {
+                                        if let Some(original) = materials.get(b.model_turret.material.id()) {
                                             material_turret = extended_materials.add(ExtendedMaterial {
                                                 base: original.clone(),
                                                 extension: TeamMaterialExtension {
@@ -5469,24 +5428,24 @@ pub fn game_starting_system (
                                             });
                                         }
 
-                                        instanced_materials.team_material.insert((b.model_turret.0.mesh.id(), *team_queue.0), material_turret.clone());
+                                        instanced_materials.team_materials.insert((b.model_turret.mesh.id(), *team_queue.0), material_turret.clone());
                                     }
 
                                     let turret = commands.spawn((
                                         MaterialMeshBundle{
-                                            mesh: b.model_turret.0.mesh.clone(),
-                                            material: b.model_turret.0.material.clone(),
+                                            mesh: b.model_turret.mesh.clone(),
+                                            material: b.model_turret.material.clone(),
                                             ..default()
                                         },
                                         LOD{
-                                            detailed: (b.model_turret.0.mesh.clone(), material_turret.clone()),
-                                            simplified: b.model_turret.1.clone(),
+                                            detailed: (b.model_turret.mesh.clone(), material_turret.clone()),
+                                            simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
 
                                     let material_hull;
 
-                                    if let Some(mat) = instanced_materials.team_material.get(&(b.model_hull.mesh.id(), *team_queue.0)) {
+                                    if let Some(mat) = instanced_materials.team_materials.get(&(b.model_hull.mesh.id(), *team_queue.0)) {
                                         material_hull = mat.clone();
                                     } else {
                                         if let Some(original) = materials.get(b.model_hull.material.id()) {
@@ -5507,7 +5466,7 @@ pub fn game_starting_system (
                                             });
                                         }
 
-                                        instanced_materials.team_material.insert((b.model_hull.mesh.id(), *team_queue.0), material_hull.clone());
+                                        instanced_materials.team_materials.insert((b.model_hull.mesh.id(), *team_queue.0), material_hull.clone());
                                     }
 
                                     new_unit = commands.spawn((
@@ -5545,7 +5504,7 @@ pub fn game_starting_system (
                                         SelectableUnit,
                                         LOD{
                                             detailed: (b.model_hull.mesh.clone(), material_hull.clone()),
-                                            simplified: b.lod.clone(),
+                                            simplified: (b.lod.0.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).push_children(&[turret]).id();
                                 },
@@ -5623,36 +5582,9 @@ pub fn game_starting_system (
                                     battalion_type = CompanyTypes::Regular;
                                     unit_type = b.combat_component.unit_type.clone();
 
-                                    let material;
-
-                                    if let Some(mat) = instanced_materials.team_material.get(&(b.model.mesh.id(), *team_queue.0)) {
-                                        material = mat.clone();
-                                    } else {
-                                        if let Some(original) = materials.get(b.model.material.id()) {
-                                            material = extended_materials.add(ExtendedMaterial {
-                                                base: original.clone(),
-                                                extension: TeamMaterialExtension {
-                                                    team_color: color,
-                                                },
-                                            });
-                                        } else {
-                                            material = extended_materials.add(ExtendedMaterial {
-                                                base: StandardMaterial{
-                                                    ..default()
-                                                },
-                                                extension: TeamMaterialExtension {
-                                                    team_color: color,
-                                                },
-                                            });
-                                        }
-
-                                        instanced_materials.team_material.insert((b.model.mesh.id(), *team_queue.0), material.clone());
-                                    }
-
                                     new_unit = commands.spawn((
-                                        MaterialMeshBundle{
-                                            mesh: b.model.mesh.clone(),
-                                            material: material.clone(),
+                                        SceneBundle{
+                                            scene: b.scene.clone(),
                                             transform: Transform::from_translation(point),
                                             ..default()
                                         },
@@ -5682,46 +5614,21 @@ pub fn game_starting_system (
                                         b.supplies_consumer.clone(),
                                         b.controller.clone(),
                                         SelectableUnit,
-                                            LOD{
-                                                detailed: (b.model.mesh.clone(), material.clone()),
-                                                simplified: b.lod.clone(),
-                                            },
+                                        b.animation_component.clone(),
+                                        ChangeMaterial,
+                                        LOD{
+                                            detailed: (Handle::default(), Handle::default()),
+                                            simplified: (b.lod.mesh.clone(), simplified_material.clone()),
+                                        },
                                     )).id();
                                 },
                                 UnitBundles::Shock(b) => {
                                     battalion_type = CompanyTypes::Shock;
                                     unit_type = b.combat_component.unit_type.clone();
 
-                                    let material;
-
-                                    if let Some(mat) = instanced_materials.team_material.get(&(b.model.mesh.id(), *team_queue.0)) {
-                                        material = mat.clone();
-                                    } else {
-                                        if let Some(original) = materials.get(b.model.material.id()) {
-                                            material = extended_materials.add(ExtendedMaterial {
-                                                base: original.clone(),
-                                                extension: TeamMaterialExtension {
-                                                    team_color: color,
-                                                },
-                                            });
-                                        } else {
-                                            material = extended_materials.add(ExtendedMaterial {
-                                                base: StandardMaterial{
-                                                    ..default()
-                                                },
-                                                extension: TeamMaterialExtension {
-                                                    team_color: color,
-                                                },
-                                            });
-                                        }
-
-                                        instanced_materials.team_material.insert((b.model.mesh.id(), *team_queue.0), material.clone());
-                                    }
-
                                     new_unit = commands.spawn((
-                                        MaterialMeshBundle{
-                                            mesh: b.model.mesh.clone(),
-                                            material: material.clone(),
+                                        SceneBundle{
+                                            scene: b.scene.clone(),
                                             transform: Transform::from_translation(point),
                                             ..default()
                                         },
@@ -5751,10 +5658,12 @@ pub fn game_starting_system (
                                         b.supplies_consumer.clone(),
                                         b.controller.clone(),
                                         SelectableUnit,
-                                            LOD{
-                                                detailed: (b.model.mesh.clone(), material.clone()),
-                                                simplified: b.lod.clone(),
-                                            },
+                                        b.animation_component.clone(),
+                                        ChangeMaterial,
+                                        LOD{
+                                            detailed: (Handle::default(), Handle::default()),
+                                            simplified: (b.lod.mesh.clone(), simplified_material.clone()),
+                                        },
                                     )).id();
                                 },
                                 UnitBundles::Tank(b) => {
@@ -5763,10 +5672,10 @@ pub fn game_starting_system (
 
                                     let material_turret;
 
-                                    if let Some(mat) = instanced_materials.team_material.get(&(b.model_turret.0.mesh.id(), *team_queue.0)) {
+                                    if let Some(mat) = instanced_materials.team_materials.get(&(b.model_turret.mesh.id(), *team_queue.0)) {
                                         material_turret = mat.clone();
                                     } else {
-                                        if let Some(original) = materials.get(b.model_turret.0.material.id()) {
+                                        if let Some(original) = materials.get(b.model_turret.material.id()) {
                                             material_turret = extended_materials.add(ExtendedMaterial {
                                                 base: original.clone(),
                                                 extension: TeamMaterialExtension {
@@ -5784,24 +5693,24 @@ pub fn game_starting_system (
                                             });
                                         }
 
-                                        instanced_materials.team_material.insert((b.model_turret.0.mesh.id(), *team_queue.0), material_turret.clone());
+                                        instanced_materials.team_materials.insert((b.model_turret.mesh.id(), *team_queue.0), material_turret.clone());
                                     }
 
                                     let turret = commands.spawn((
                                         MaterialMeshBundle{
-                                            mesh: b.model_turret.0.mesh.clone(),
-                                            material: b.model_turret.0.material.clone(),
+                                            mesh: b.model_turret.mesh.clone(),
+                                            material: b.model_turret.material.clone(),
                                             ..default()
                                         },
                                         LOD{
-                                            detailed: (b.model_turret.0.mesh.clone(), material_turret.clone()),
-                                            simplified: b.model_turret.1.clone(),
+                                            detailed: (b.model_turret.mesh.clone(), material_turret.clone()),
+                                            simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
 
                                     let material_hull;
 
-                                    if let Some(mat) = instanced_materials.team_material.get(&(b.model_hull.mesh.id(), *team_queue.0)) {
+                                    if let Some(mat) = instanced_materials.team_materials.get(&(b.model_hull.mesh.id(), *team_queue.0)) {
                                         material_hull = mat.clone();
                                     } else {
                                         if let Some(original) = materials.get(b.model_hull.material.id()) {
@@ -5822,7 +5731,7 @@ pub fn game_starting_system (
                                             });
                                         }
 
-                                        instanced_materials.team_material.insert((b.model_hull.mesh.id(), *team_queue.0), material_hull.clone());
+                                        instanced_materials.team_materials.insert((b.model_hull.mesh.id(), *team_queue.0), material_hull.clone());
                                     }
 
                                     new_unit = commands.spawn((
@@ -5860,7 +5769,7 @@ pub fn game_starting_system (
                                         SelectableUnit,
                                             LOD{
                                                 detailed: (b.model_hull.mesh.clone(), material_hull.clone()),
-                                                simplified: b.lod.clone(),
+                                                simplified: (b.lod.0.mesh.clone(), simplified_material.clone()),
                                             },
                                     )).push_children(&[turret]).id();
                                 },
@@ -5870,10 +5779,10 @@ pub fn game_starting_system (
 
                                     let material_turret;
 
-                                    if let Some(mat) = instanced_materials.team_material.get(&(b.model_turret.0.mesh.id(), *team_queue.0)) {
+                                    if let Some(mat) = instanced_materials.team_materials.get(&(b.model_turret.mesh.id(), *team_queue.0)) {
                                         material_turret = mat.clone();
                                     } else {
-                                        if let Some(original) = materials.get(b.model_turret.0.material.id()) {
+                                        if let Some(original) = materials.get(b.model_turret.material.id()) {
                                             material_turret = extended_materials.add(ExtendedMaterial {
                                                 base: original.clone(),
                                                 extension: TeamMaterialExtension {
@@ -5891,24 +5800,24 @@ pub fn game_starting_system (
                                             });
                                         }
 
-                                        instanced_materials.team_material.insert((b.model_turret.0.mesh.id(), *team_queue.0), material_turret.clone());
+                                        instanced_materials.team_materials.insert((b.model_turret.mesh.id(), *team_queue.0), material_turret.clone());
                                     }
 
                                     let turret = commands.spawn((
                                         MaterialMeshBundle{
-                                            mesh: b.model_turret.0.mesh.clone(),
-                                            material: b.model_turret.0.material.clone(),
+                                            mesh: b.model_turret.mesh.clone(),
+                                            material: b.model_turret.material.clone(),
                                             ..default()
                                         },
                                         LOD{
-                                            detailed: (b.model_turret.0.mesh.clone(), material_turret.clone()),
-                                            simplified: b.model_turret.1.clone(),
+                                            detailed: (b.model_turret.mesh.clone(), material_turret.clone()),
+                                            simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
 
                                     let material_hull;
 
-                                    if let Some(mat) = instanced_materials.team_material.get(&(b.model_hull.mesh.id(), *team_queue.0)) {
+                                    if let Some(mat) = instanced_materials.team_materials.get(&(b.model_hull.mesh.id(), *team_queue.0)) {
                                         material_hull = mat.clone();
                                     } else {
                                         if let Some(original) = materials.get(b.model_hull.material.id()) {
@@ -5929,7 +5838,7 @@ pub fn game_starting_system (
                                             });
                                         }
 
-                                        instanced_materials.team_material.insert((b.model_hull.mesh.id(), *team_queue.0), material_hull.clone());
+                                        instanced_materials.team_materials.insert((b.model_hull.mesh.id(), *team_queue.0), material_hull.clone());
                                     }
 
                                     new_unit = commands.spawn((
@@ -5967,7 +5876,7 @@ pub fn game_starting_system (
                                         SelectableUnit,
                                             LOD{
                                                 detailed: (b.model_hull.mesh.clone(), material_hull.clone()),
-                                                simplified: b.lod.clone(),
+                                                simplified: (b.lod.0.mesh.clone(), simplified_material.clone()),
                                             },
                                     )).push_children(&[turret]).id();
                                 },
@@ -6044,37 +5953,10 @@ pub fn game_starting_system (
                                 UnitBundles::Soldier(b) => {
                                     battalion_type = CompanyTypes::Regular;
                                     unit_type = b.combat_component.unit_type.clone();
-
-                                    let material;
-
-                                    if let Some(mat) = instanced_materials.team_material.get(&(b.model.mesh.id(), *team_queue.0)) {
-                                        material = mat.clone();
-                                    } else {
-                                        if let Some(original) = materials.get(b.model.material.id()) {
-                                            material = extended_materials.add(ExtendedMaterial {
-                                                base: original.clone(),
-                                                extension: TeamMaterialExtension {
-                                                    team_color: color,
-                                                },
-                                            });
-                                        } else {
-                                            material = extended_materials.add(ExtendedMaterial {
-                                                base: StandardMaterial{
-                                                    ..default()
-                                                },
-                                                extension: TeamMaterialExtension {
-                                                    team_color: color,
-                                                },
-                                            });
-                                        }
-
-                                        instanced_materials.team_material.insert((b.model.mesh.id(), *team_queue.0), material.clone());
-                                    }
                                     
                                     new_unit = commands.spawn((
-                                        MaterialMeshBundle{
-                                            mesh: b.model.mesh.clone(),
-                                            material: material.clone(),
+                                        SceneBundle{
+                                            scene: b.scene.clone(),
                                             transform: Transform::from_translation(point),
                                             ..default()
                                         },
@@ -6104,9 +5986,11 @@ pub fn game_starting_system (
                                         b.supplies_consumer.clone(),
                                         b.controller.clone(),
                                         SelectableUnit,
+                                        b.animation_component.clone(),
+                                        ChangeMaterial,
                                         LOD{
-                                            detailed: (b.model.mesh.clone(), material.clone()),
-                                            simplified: b.lod.clone(),
+                                            detailed: (Handle::default(), Handle::default()),
+                                            simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
                                 },
@@ -6114,36 +5998,9 @@ pub fn game_starting_system (
                                     battalion_type = CompanyTypes::Shock;
                                     unit_type = b.combat_component.unit_type.clone();
 
-                                    let material;
-
-                                    if let Some(mat) = instanced_materials.team_material.get(&(b.model.mesh.id(), *team_queue.0)) {
-                                        material = mat.clone();
-                                    } else {
-                                        if let Some(original) = materials.get(b.model.material.id()) {
-                                            material = extended_materials.add(ExtendedMaterial {
-                                                base: original.clone(),
-                                                extension: TeamMaterialExtension {
-                                                    team_color: color,
-                                                },
-                                            });
-                                        } else {
-                                            material = extended_materials.add(ExtendedMaterial {
-                                                base: StandardMaterial{
-                                                    ..default()
-                                                },
-                                                extension: TeamMaterialExtension {
-                                                    team_color: color,
-                                                },
-                                            });
-                                        }
-
-                                        instanced_materials.team_material.insert((b.model.mesh.id(), *team_queue.0), material.clone());
-                                    }
-
                                     new_unit = commands.spawn((
-                                        MaterialMeshBundle{
-                                            mesh: b.model.mesh.clone(),
-                                            material: material.clone(),
+                                        SceneBundle{
+                                            scene: b.scene.clone(),
                                             transform: Transform::from_translation(point),
                                             ..default()
                                         },
@@ -6173,9 +6030,11 @@ pub fn game_starting_system (
                                         b.supplies_consumer.clone(),
                                         b.controller.clone(),
                                         SelectableUnit,
+                                        b.animation_component.clone(),
+                                        ChangeMaterial,
                                         LOD{
-                                            detailed: (b.model.mesh.clone(), material.clone()),
-                                            simplified: b.lod.clone(),
+                                            detailed: (Handle::default(), Handle::default()),
+                                            simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
                                 },
@@ -6185,10 +6044,10 @@ pub fn game_starting_system (
 
                                     let material_turret;
 
-                                    if let Some(mat) = instanced_materials.team_material.get(&(b.model_turret.0.mesh.id(), *team_queue.0)) {
+                                    if let Some(mat) = instanced_materials.team_materials.get(&(b.model_turret.mesh.id(), *team_queue.0)) {
                                         material_turret = mat.clone();
                                     } else {
-                                        if let Some(original) = materials.get(b.model_turret.0.material.id()) {
+                                        if let Some(original) = materials.get(b.model_turret.material.id()) {
                                             material_turret = extended_materials.add(ExtendedMaterial {
                                                 base: original.clone(),
                                                 extension: TeamMaterialExtension {
@@ -6206,24 +6065,24 @@ pub fn game_starting_system (
                                             });
                                         }
 
-                                        instanced_materials.team_material.insert((b.model_turret.0.mesh.id(), *team_queue.0), material_turret.clone());
+                                        instanced_materials.team_materials.insert((b.model_turret.mesh.id(), *team_queue.0), material_turret.clone());
                                     }
 
                                     let turret = commands.spawn((
                                         MaterialMeshBundle{
-                                            mesh: b.model_turret.0.mesh.clone(),
-                                            material: b.model_turret.0.material.clone(),
+                                            mesh: b.model_turret.mesh.clone(),
+                                            material: b.model_turret.material.clone(),
                                             ..default()
                                         },
                                         LOD{
-                                            detailed: (b.model_turret.0.mesh.clone(), material_turret.clone()),
-                                            simplified: b.model_turret.1.clone(),
+                                            detailed: (b.model_turret.mesh.clone(), material_turret.clone()),
+                                            simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
 
                                     let material_hull;
 
-                                    if let Some(mat) = instanced_materials.team_material.get(&(b.model_hull.mesh.id(), *team_queue.0)) {
+                                    if let Some(mat) = instanced_materials.team_materials.get(&(b.model_hull.mesh.id(), *team_queue.0)) {
                                         material_hull = mat.clone();
                                     } else {
                                         if let Some(original) = materials.get(b.model_hull.material.id()) {
@@ -6244,7 +6103,7 @@ pub fn game_starting_system (
                                             });
                                         }
 
-                                        instanced_materials.team_material.insert((b.model_hull.mesh.id(), *team_queue.0), material_hull.clone());
+                                        instanced_materials.team_materials.insert((b.model_hull.mesh.id(), *team_queue.0), material_hull.clone());
                                     }
 
                                     new_unit = commands.spawn((
@@ -6282,7 +6141,7 @@ pub fn game_starting_system (
                                         SelectableUnit,
                                         LOD{
                                             detailed: (b.model_hull.mesh.clone(), material_hull.clone()),
-                                            simplified: b.lod.clone(),
+                                            simplified: (b.lod.0.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).push_children(&[turret]).id();
                                 },
@@ -6292,10 +6151,10 @@ pub fn game_starting_system (
 
                                     let material_turret;
 
-                                    if let Some(mat) = instanced_materials.team_material.get(&(b.model_turret.0.mesh.id(), *team_queue.0)) {
+                                    if let Some(mat) = instanced_materials.team_materials.get(&(b.model_turret.mesh.id(), *team_queue.0)) {
                                         material_turret = mat.clone();
                                     } else {
-                                        if let Some(original) = materials.get(b.model_turret.0.material.id()) {
+                                        if let Some(original) = materials.get(b.model_turret.material.id()) {
                                             material_turret = extended_materials.add(ExtendedMaterial {
                                                 base: original.clone(),
                                                 extension: TeamMaterialExtension {
@@ -6313,24 +6172,24 @@ pub fn game_starting_system (
                                             });
                                         }
 
-                                        instanced_materials.team_material.insert((b.model_turret.0.mesh.id(), *team_queue.0), material_turret.clone());
+                                        instanced_materials.team_materials.insert((b.model_turret.mesh.id(), *team_queue.0), material_turret.clone());
                                     }
 
                                     let turret = commands.spawn((
                                         MaterialMeshBundle{
-                                            mesh: b.model_turret.0.mesh.clone(),
-                                            material: b.model_turret.0.material.clone(),
+                                            mesh: b.model_turret.mesh.clone(),
+                                            material: b.model_turret.material.clone(),
                                             ..default()
                                         },
                                         LOD{
-                                            detailed: (b.model_turret.0.mesh.clone(), material_turret.clone()),
-                                            simplified: b.model_turret.1.clone(),
+                                            detailed: (b.model_turret.mesh.clone(), material_turret.clone()),
+                                            simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
 
                                     let material_hull;
 
-                                    if let Some(mat) = instanced_materials.team_material.get(&(b.model_hull.mesh.id(), *team_queue.0)) {
+                                    if let Some(mat) = instanced_materials.team_materials.get(&(b.model_hull.mesh.id(), *team_queue.0)) {
                                         material_hull = mat.clone();
                                     } else {
                                         if let Some(original) = materials.get(b.model_hull.material.id()) {
@@ -6351,7 +6210,7 @@ pub fn game_starting_system (
                                             });
                                         }
 
-                                        instanced_materials.team_material.insert((b.model_hull.mesh.id(), *team_queue.0), material_hull.clone());
+                                        instanced_materials.team_materials.insert((b.model_hull.mesh.id(), *team_queue.0), material_hull.clone());
                                     }
 
                                     new_unit = commands.spawn((
@@ -6389,7 +6248,7 @@ pub fn game_starting_system (
                                         SelectableUnit,
                                         LOD{
                                             detailed: (b.model_hull.mesh.clone(), material_hull.clone()),
-                                            simplified: b.lod.clone(),
+                                            simplified: (b.lod.0.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).push_children(&[turret]).id();
                                 },
@@ -6463,7 +6322,7 @@ pub fn game_starting_system (
 
                                     let material;
 
-                                    if let Some(mat) = instanced_materials.team_material.get(&(b.model.mesh.id(), *team_queue.0)) {
+                                    if let Some(mat) = instanced_materials.team_materials.get(&(b.model.mesh.id(), *team_queue.0)) {
                                         material = mat.clone();
                                     } else {
                                         if let Some(original) = materials.get(b.model.material.id()) {
@@ -6484,7 +6343,7 @@ pub fn game_starting_system (
                                             });
                                         }
 
-                                        instanced_materials.team_material.insert((b.model.mesh.id(), *team_queue.0), material.clone());
+                                        instanced_materials.team_materials.insert((b.model.mesh.id(), *team_queue.0), material.clone());
                                     }
 
                                     new_unit = commands.spawn((
@@ -6523,7 +6382,7 @@ pub fn game_starting_system (
                                         SelectableUnit,
                                         LOD{
                                             detailed: (b.model.mesh.clone(), material.clone()),
-                                            simplified: b.lod.clone(),
+                                            simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
                                 },
@@ -6591,7 +6450,7 @@ pub fn game_starting_system (
 
                                     let material;
 
-                                    if let Some(mat) = instanced_materials.team_material.get(&(b.model.mesh.id(), *team_queue.0)) {
+                                    if let Some(mat) = instanced_materials.team_materials.get(&(b.model.mesh.id(), *team_queue.0)) {
                                         material = mat.clone();
                                     } else {
                                         if let Some(original) = materials.get(b.model.material.id()) {
@@ -6612,7 +6471,7 @@ pub fn game_starting_system (
                                             });
                                         }
 
-                                        instanced_materials.team_material.insert((b.model.mesh.id(), *team_queue.0), material.clone());
+                                        instanced_materials.team_materials.insert((b.model.mesh.id(), *team_queue.0), material.clone());
                                     }
                                     
                                     new_unit = commands.spawn((
@@ -6650,7 +6509,7 @@ pub fn game_starting_system (
                                         b.controller.clone(),
                                         LOD{
                                             detailed: (b.model.mesh.clone(), material.clone()),
-                                            simplified: b.lod.clone(),
+                                            simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
                                 },

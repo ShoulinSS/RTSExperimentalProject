@@ -1,10 +1,10 @@
 use std::{f32::consts::TAU, primitive};
 
-use bevy::{gltf::GltfMesh, pbr::{ExtendedMaterial, MaterialExtension, NotShadowCaster}, prelude::*, render::{mesh::{Indices, MeshVertexBufferLayout}, render_asset::RenderAssetUsages, render_resource::{AsBindGroup, DynamicUniformBuffer, PipelineDescriptor, RenderPipelineDescriptor, Sampler, ShaderRef, ShaderType, SpecializedMeshPipelineError}, texture::{ImageAddressMode, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor}}, transform::commands, utils::{hashbrown::HashMap, HashSet}};
+use bevy::{color::palettes::css::GRAY, gltf::GltfMesh, pbr::{ExtendedMaterial, MaterialExtension, NotShadowCaster}, prelude::*, render::{mesh::{Indices, MeshVertexBufferLayout, skinning::{SkinnedMesh, SkinnedMeshInverseBindposes}}, render_asset::RenderAssetUsages, render_resource::{AsBindGroup, DynamicUniformBuffer, PipelineDescriptor, RenderPipelineDescriptor, Sampler, ShaderRef, ShaderType, SpecializedMeshPipelineError}, texture::{ImageAddressMode, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor}}, scene::SceneInstance, transform::commands, utils::{HashSet, hashbrown::HashMap}};
 use bevy_rapier3d::{na::TGeneral, prelude::{Collider, CollisionGroups, ComputedColliderShape, Group}};
 use oxidized_navigation_serializable::NavMeshAffector;
 
-use crate::{components::{building::{BuildingBlueprint, UnactivatedBlueprints}, camera::CameraComponent, ui_manager::DisplayedModelHolder, unit::{AttackTypes, CombatComponent, CompanyTypes, FogOfWarTexture, UnitTypes}}, WORLD_SIZE};
+use crate::{WORLD_SIZE, components::{building::{BuildingBlueprint, UnactivatedBlueprints}, camera::CameraComponent, ui_manager::DisplayedModelHolder, unit::{AttackTypes, CombatComponent, CompanyTypes, FogOfWarTexture, NeedToMove, StoppedMoving, UnitComponent, UnitTypes}}};
 
 #[derive(Resource)]
 pub struct LevelAssets {
@@ -30,16 +30,16 @@ pub struct BuildingsAssets {
 }
 
 #[derive(Resource)]
-pub struct UnitsAssets {
-    pub regular_soldier: (Handle<Mesh>, Handle<StandardMaterial>),
-    pub assault_soldier: (Handle<Mesh>, Handle<StandardMaterial>),
-    pub atgm_soldier: (Handle<Mesh>, Handle<StandardMaterial>),
-    pub rpg_soldier: (Handle<Mesh>, Handle<StandardMaterial>),
-    pub sniper_soldier: (Handle<Mesh>, Handle<StandardMaterial>),
+pub struct UnitAssets {
+    pub regular_soldier: (Handle<Scene>, Vec<Handle<AnimationClip>>),
+    pub assault_soldier: (Handle<Scene>, Vec<Handle<AnimationClip>>),
+    pub atgm_soldier: (Handle<Scene>, Vec<Handle<AnimationClip>>),
+    pub rpg_soldier: (Handle<Scene>, Vec<Handle<AnimationClip>>),
+    pub sniper_soldier: (Handle<Scene>, Vec<Handle<AnimationClip>>),
     pub tank: (Handle<Mesh>, Handle<Mesh>, Handle<StandardMaterial>),
     pub ifv: (Handle<Mesh>, Handle<Mesh>, Handle<StandardMaterial>),
     pub artillery: (Handle<Mesh>, Handle<StandardMaterial>),
-    pub truck: (Handle<Mesh>, Handle<StandardMaterial>),
+    pub truck: (Handle<Mesh>, Handle<StandardMaterial>, Handle<Mesh>),
     pub engineer: (Handle<Mesh>, Handle<StandardMaterial>),
 }
 
@@ -279,20 +279,41 @@ pub fn load_assets (
     //Buildings^
 
     //Units
-    let regular_soldier_mesh: Handle<Mesh> = asset_server.load("units/soldier.glb#Mesh0/Primitive0");
-    let regular_soldier_material: Handle<StandardMaterial> = asset_server.load("units/soldier.glb#Material0");
+    let regular_soldier_scene: Handle<Scene> = asset_server.load(GltfAssetLabel::Scene(0).from_asset("units/soldier.glb"));
+    let regular_soldier_animation1: Handle<AnimationClip> = asset_server.load(GltfAssetLabel::Animation(0).from_asset("units/soldier.glb"));
+    let regular_soldier_animation2: Handle<AnimationClip> = asset_server.load(GltfAssetLabel::Animation(1).from_asset("units/soldier.glb"));
 
-    let assault_soldier_mesh: Handle<Mesh> = asset_server.load("units/soldier_assault.glb#Mesh0/Primitive0");
-    let assault_soldier_material: Handle<StandardMaterial> = asset_server.load("units/soldier_assault.glb#Material0");
+    let assault_soldier_scene: Handle<Scene> = asset_server.load(GltfAssetLabel::Scene(0).from_asset("units/soldier_assault.glb"));
+    let assault_soldier_animation1: Handle<AnimationClip> = asset_server.load(GltfAssetLabel::Animation(0).from_asset("units/soldier_assault.glb"));
+    let assault_soldier_animation2: Handle<AnimationClip> = asset_server.load(GltfAssetLabel::Animation(1).from_asset("units/soldier_assault.glb"));
 
-    let atgm_soldier_mesh: Handle<Mesh> = asset_server.load("units/soldier_atgm.glb#Mesh0/Primitive0");
-    let atgm_soldier_material: Handle<StandardMaterial> = asset_server.load("units/soldier_atgm.glb#Material0");
+    let atgm_soldier_scene: Handle<Scene> = asset_server.load(GltfAssetLabel::Scene(0).from_asset("units/soldier_atgm.glb"));
+    let atgm_soldier_animation1: Handle<AnimationClip> = asset_server.load(GltfAssetLabel::Animation(0).from_asset("units/soldier_atgm.glb"));
+    let atgm_soldier_animation2: Handle<AnimationClip> = asset_server.load(GltfAssetLabel::Animation(1).from_asset("units/soldier_atgm.glb"));
+    
 
-    let rpg_soldier_mesh: Handle<Mesh> = asset_server.load("units/soldier_rpg.glb#Mesh0/Primitive0");
-    let rpg_soldier_material: Handle<StandardMaterial> = asset_server.load("units/soldier_rpg.glb#Material0");
+    let rpg_soldier_scene: Handle<Scene> = asset_server.load(GltfAssetLabel::Scene(0).from_asset("units/soldier_rpg.glb"));
+    let rpg_soldier_animation1: Handle<AnimationClip> = asset_server.load(GltfAssetLabel::Animation(0).from_asset("units/soldier_rpg.glb"));
+    let rpg_soldier_animation2: Handle<AnimationClip> = asset_server.load(GltfAssetLabel::Animation(1).from_asset("units/soldier_rpg.glb"));
 
-    let sniper_soldier_mesh: Handle<Mesh> = asset_server.load("units/soldier_sniper.glb#Mesh0/Primitive0");
-    let sniper_soldier_material: Handle<StandardMaterial> = asset_server.load("units/soldier_sniper.glb#Material0");
+    let sniper_soldier_scene: Handle<Scene> = asset_server.load(GltfAssetLabel::Scene(0).from_asset("units/soldier_sniper.glb"));
+    let sniper_soldier_animation1: Handle<AnimationClip> = asset_server.load(GltfAssetLabel::Animation(0).from_asset("units/soldier_sniper.glb"));
+    let sniper_soldier_animation2: Handle<AnimationClip> = asset_server.load(GltfAssetLabel::Animation(1).from_asset("units/soldier_sniper.glb"));
+
+    // let regular_soldier_scene: Handle<Scene> = asset_server.load(GltfAssetLabel::Scene(0).from_asset("units/soldier.glb"));
+    // let regular_soldier_animation: Handle<AnimationClip> = asset_server.load(GltfAssetLabel::Animation(0).from_asset("units/soldier.glb"));
+
+    // let assault_soldier_scene: Handle<Scene> = asset_server.load(GltfAssetLabel::Scene(0).from_asset("units/soldier_assault.glb"));
+    // let assault_soldier_animation: Handle<AnimationClip> = asset_server.load(GltfAssetLabel::Animation(0).from_asset("units/soldier_assault.glb"));
+
+    // let atgm_soldier_scene: Handle<Scene> = asset_server.load(GltfAssetLabel::Scene(0).from_asset("units/soldier_atgm.glb"));
+    // let atgm_soldier_animation: Handle<AnimationClip> = asset_server.load(GltfAssetLabel::Animation(0).from_asset("units/soldier_atgm.glb"));
+
+    // let rpg_soldier_scene: Handle<Scene> = asset_server.load(GltfAssetLabel::Scene(0).from_asset("units/soldier_rpg.glb"));
+    // let rpg_soldier_animation: Handle<AnimationClip> = asset_server.load(GltfAssetLabel::Animation(0).from_asset("units/soldier_rpg.glb"));
+
+    // let sniper_soldier_scene: Handle<Scene> = asset_server.load(GltfAssetLabel::Scene(0).from_asset("units/soldier_sniper.glb"));
+    // let sniper_soldier_animation: Handle<AnimationClip> = asset_server.load(GltfAssetLabel::Animation(0).from_asset("units/soldier_sniper.glb"));
 
     let tank_mesh_hull: Handle<Mesh> = asset_server.load("units/tank.glb#Mesh0/Primitive0");
     let tank_mesh_turret: Handle<Mesh> = asset_server.load("units/tank.glb#Mesh1/Primitive0");
@@ -307,20 +328,21 @@ pub fn load_assets (
 
     let truck_mesh: Handle<Mesh> = asset_server.load("units/truck.glb#Mesh0/Primitive0");
     let truck_material: Handle<StandardMaterial> = asset_server.load("units/truck.glb#Material0");
+    let truck_simplified_mesh = meshes.add(Mesh::from(Cuboid{ half_size: Vec3::new(2., 1.5, 4.) }.mesh()));
 
     let engineer_mesh: Handle<Mesh> = asset_server.load("units/engineer.glb#Mesh0/Primitive0");
     let engineer_material: Handle<StandardMaterial> = asset_server.load("units/engineer.glb#Material0");
 
-    commands.insert_resource(UnitsAssets{
-        regular_soldier: (regular_soldier_mesh, regular_soldier_material),
-        assault_soldier: (assault_soldier_mesh, assault_soldier_material),
-        atgm_soldier: (atgm_soldier_mesh, atgm_soldier_material),
-        rpg_soldier: (rpg_soldier_mesh, rpg_soldier_material),
-        sniper_soldier: (sniper_soldier_mesh, sniper_soldier_material),
+    commands.insert_resource(UnitAssets{
+        regular_soldier: (regular_soldier_scene, vec![regular_soldier_animation1, regular_soldier_animation2]),
+        assault_soldier: (assault_soldier_scene, vec![assault_soldier_animation1, assault_soldier_animation2]),
+        atgm_soldier: (atgm_soldier_scene, vec![atgm_soldier_animation1, atgm_soldier_animation2]),
+        rpg_soldier: (rpg_soldier_scene, vec![rpg_soldier_animation1, rpg_soldier_animation2]),
+        sniper_soldier: (sniper_soldier_scene, vec![sniper_soldier_animation1, sniper_soldier_animation2]),
         tank: (tank_mesh_hull, tank_mesh_turret, tank_material),
         ifv: (ifv_mesh_hull, ifv_mesh_turret, ifv_material),
         artillery: (artillery_mesh, artillery_material),
-        truck: (truck_mesh, truck_material),
+        truck: (truck_mesh, truck_material, truck_simplified_mesh),
         engineer: (engineer_mesh, engineer_material),
     });
     //Units^
@@ -488,7 +510,8 @@ pub fn initialize_level_gltf_objects (
                 })
                 .insert(collider)
                 .insert(NavMeshAffector)
-                .insert(Terrain);
+                .insert(Terrain)
+                .insert(CollisionGroups::new(Group::GROUP_10, Group::all()));
 
                 commands.spawn(SceneBundle{
                     scene: level_assets.trees_2d.clone(),
@@ -620,30 +643,42 @@ pub fn blueprint_placement_color_definer (
 
 #[derive(Resource)]
 pub struct InstancedMaterials{
-    pub team_material: HashMap<(AssetId<Mesh>, i32), Handle<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>>,
+    pub team_materials: HashMap<(AssetId<Mesh>, i32), Handle<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>>,
     pub blue_solid: Handle<StandardMaterial>,
     pub red_solid: Handle<StandardMaterial>,
     pub blue_transparent: Handle<StandardMaterial>,
     pub red_transparent: Handle<StandardMaterial>,
 }
 
+#[derive(Resource)]
+pub struct InstancedAnimations {
+    pub running_animations: HashMap<String, (Vec<AnimationNodeIndex>, Handle<AnimationGraph>)>,
+}
+
 #[derive(Component, Clone)]
 pub struct LOD{
     pub detailed: (Handle<Mesh>, Handle<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>),
-    pub simplified: PbrBundle,
+    pub simplified: (Handle<Mesh>, Handle<StandardMaterial>),
 }
 
-const LOD_SWITCH_HEIGHT: f32 = 500.;
+const LOD_SWITCH_HEIGHT: f32 = 300.;
 
 pub fn lod_system(
     camera_q: Query<&Transform, With<CameraComponent>>,
-    mut lods_q: Query<(Entity, &LOD, &CombatComponent), (With<LOD>, With<CombatComponent>)>,
-    mut child_lods_q: Query<(Entity, &Parent, &LOD), (Without<CombatComponent>, With<LOD>)>,
+    mut lods_q: Query<(Entity, &LOD, Option<&mut AnimatedMesh>, Option<&SkinnedMesh>), (With<LOD>, Without<AnimationComponent>)>,
     mut commands: Commands,
-    instanced_materials: Res<InstancedMaterials>,
     mut less: Local<bool>,
     mut more: Local<bool>,
+    time: Res<Time>,
+    mut elapsed_time: Local<u128>,
 ){
+    if lods_q.is_empty() {return;}
+
+    if *elapsed_time < 1000 {
+        *elapsed_time += time.delta().as_millis();
+        return;
+    }
+    
     let camera = camera_q.single();
 
     if camera.translation.y < LOD_SWITCH_HEIGHT {
@@ -654,19 +689,17 @@ pub fn lod_system(
             for model in lods_q.iter_mut() {
                 commands.entity(model.0).remove::<(Handle<Mesh>, Handle<StandardMaterial>, Handle<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>)>();
 
-                commands.entity(model.0).insert((
-                    model.1.detailed.0.clone(),
-                    model.1.detailed.1.clone(),
-                ));
-            }
+                if let Some(animated_mesh) = model.2 {
+                    if !animated_mesh.joints.is_empty() {
+                        commands.entity(model.0).insert(SkinnedMesh{
+                            inverse_bindposes: animated_mesh.inverse_bindposes.clone(),
+                            joints: animated_mesh.joints.clone(),
+                        });
+                    }
+                }
 
-            for model in child_lods_q.iter_mut() {
-                commands.entity(model.0).remove::<(Handle<Mesh>, Handle<StandardMaterial>, Handle<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>)>();
-
-                commands.entity(model.0).insert((
-                    model.2.detailed.0.clone(),
-                    model.2.detailed.1.clone(),
-                ));
+                commands.entity(model.0).insert(model.1.detailed.0.clone());
+                commands.entity(model.0).insert(model.1.detailed.1.clone());
             }
         }
     } else if !*more {
@@ -674,39 +707,19 @@ pub fn lod_system(
         *more = true;
 
         for model in lods_q.iter_mut() {
-            let mat;
-
-            if model.2.team == 1 {
-                mat = instanced_materials.blue_solid.clone();
-            } else {
-                mat = instanced_materials.red_solid.clone();
-            }
-
             commands.entity(model.0).remove::<(Handle<Mesh>, Handle<StandardMaterial>, Handle<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>)>();
-            
-            commands.entity(model.0).insert((
-                model.1.simplified.mesh.clone(),
-                mat,
-            ));
-        }
 
-        for model in child_lods_q.iter_mut() {
-            if let Ok(parent) = lods_q.get(**model.1) {
-                let mat;
+            if let Some(skinned_mesh) = model.3 {
+                if let Some(mut animated_mesh) = model.2 {
+                    animated_mesh.inverse_bindposes = skinned_mesh.inverse_bindposes.clone();
+                    animated_mesh.joints = skinned_mesh.joints.clone();
 
-                if parent.2.team == 1 {
-                    mat = instanced_materials.blue_solid.clone();
-                } else {
-                    mat = instanced_materials.red_solid.clone();
+                    commands.entity(model.0).remove::<SkinnedMesh>();
                 }
-
-                commands.entity(model.0).remove::<(Handle<Mesh>, Handle<StandardMaterial>, Handle<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>)>();
-
-                commands.entity(model.0).insert((
-                    model.2.simplified.mesh.clone(),
-                    mat,
-                ));
             }
+
+            commands.entity(model.0).insert(model.1.simplified.0.clone());
+            commands.entity(model.0).insert(model.1.simplified.1.clone());
         }
     }
 }
@@ -832,4 +845,299 @@ fn generate_trail_mesh(positions: Vec<Vec3>, width: f32, object_transform: &Tran
     mesh.insert_indices(bevy::render::mesh::Indices::U32(indices));
 
     mesh
+}
+
+#[derive(Component, Clone)]
+pub struct ChangeMaterial;
+
+pub fn testing_system(
+    meshes: Res<Assets<Mesh>>,
+    materials: Res<Assets<StandardMaterial>>,
+    team_materials: Res<Assets<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>>,
+    time: Res<Time>,
+    mut elapsed_time: Local<u128>,
+) {
+    *elapsed_time += time.delta().as_millis();
+
+    if *elapsed_time >= 1000 {
+        *elapsed_time = 0;
+
+        println!("meshes: {}", meshes.iter().count());
+        println!("materials: {}", materials.iter().count());
+        println!("team_materials: {}", team_materials.iter().count());
+        println!("=================================================");
+    }
+}
+
+#[derive(Component)]
+pub struct AnimatedMesh{
+    pub inverse_bindposes: Handle<SkinnedMeshInverseBindposes>,
+    pub joints: Vec<Entity>,
+}
+
+pub fn apply_team_material_to_scenes (
+    scenes_q: Query<(Entity, &CombatComponent, &LOD), With<ChangeMaterial>>,
+    children_q: Query<&Children>,
+    mesh_material_q: Query<(&Handle<Mesh>, &Handle<StandardMaterial>, Option<&LOD>)>,
+    mut instanced_materials: ResMut<InstancedMaterials>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    materials: Res<Assets<StandardMaterial>>,
+    mut extended_materials: ResMut<Assets<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>>,
+    mut commands: Commands,
+) {
+    for scene in scenes_q.iter() {
+        let mut parents = vec![scene.0];
+        let mut is_mesh_material_found = false;
+
+        loop {
+            let mut new_parents = Vec::new();
+            for parent in parents.iter() {
+                if is_mesh_material_found {
+                    new_parents.clear();
+                    break;
+                }
+
+                if let Ok(children) = children_q.get(*parent) {
+                    for child in children.iter() {
+                        new_parents.push(*child);
+
+                        if let Ok(mesh_material) = mesh_material_q.get(*child) {
+                            let color;
+
+                            let simplified_material;
+                            match scene.1.team {
+                                1 => {
+                                    color = Vec4::new(0., 0., 1., 1.);
+                                    simplified_material = instanced_materials.blue_solid.clone();
+                                }
+                                2 => {
+                                    color = Vec4::new(1., 0., 0., 1.);
+                                    simplified_material = instanced_materials.red_solid.clone();
+                                }
+                                _ => {
+                                    color = Vec4::new(1., 1., 1., 1.);
+                                    simplified_material = instanced_materials.red_transparent.clone();
+                                }
+                            }
+
+                            let material;
+
+                            if let Some(mat) = instanced_materials.team_materials.get(&(mesh_material.0.id(), scene.1.team)) {
+                                material = mat.clone();
+                            } else {
+                                if let Some(original) = materials.get(mesh_material.1.id()) {
+                                    material = extended_materials.add(ExtendedMaterial {
+                                        base: original.clone(),
+                                        extension: TeamMaterialExtension {
+                                            team_color: color,
+                                        },
+                                    });
+                                } else {
+                                    material = extended_materials.add(ExtendedMaterial {
+                                        base: StandardMaterial{
+                                            ..default()
+                                        },
+                                        extension: TeamMaterialExtension {
+                                            team_color: color,
+                                        },
+                                    });
+                                }
+
+                                instanced_materials.team_materials.insert((mesh_material.0.id(), scene.1.team), material.clone());
+                            }
+
+                            commands.entity(*child).insert(material.clone());
+                            commands.entity(*child).remove::<ChangeMaterial>();
+
+                            if mesh_material.2.is_none() {
+                                commands.entity(*child).insert((
+                                    LOD{
+                                        detailed: (mesh_material.0.clone(), material),
+                                        simplified: (
+                                            scene.2.simplified.0.clone(),
+                                            scene.2.simplified.1.clone(),
+                                        ),
+                                    },
+                                    AnimatedMesh{
+                                        inverse_bindposes: Handle::default(),
+                                        joints: Vec::new(),
+                                    },
+                                ));
+                            }
+
+                            is_mesh_material_found = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if new_parents.is_empty() {
+                break;
+            }
+
+            parents = new_parents;
+        }
+    }
+}
+
+#[derive(Component, Clone)]
+pub struct AnimationComponent(pub Vec<Handle<AnimationClip>>);
+
+pub fn running_animation_manager(
+    running_q: Query<(&CombatComponent, &AnimationComponent, Entity), Added<NeedToMove>>,
+    stopped_q: Query<(&CombatComponent, &AnimationComponent, Entity), Added<StoppedMoving>>,
+    mut animation_players_q: Query<(Entity, &mut AnimationPlayer)>,
+    children_q: Query<&Children>,
+    mut instanced_animations: ResMut<InstancedAnimations>,
+    mut graphs: ResMut<Assets<AnimationGraph>>,
+    mut commands: Commands,
+) {
+    for runner in running_q.iter() {
+        let mut parents = vec![runner.2];
+        let mut is_animation_found = false;
+
+        loop {
+            let mut new_parents = Vec::new();
+
+            for parent in parents.iter() {
+                if is_animation_found {
+                    new_parents.clear();
+                    break;
+                }
+
+                if let Ok(children) = children_q.get(*parent) {
+                    for child in children.iter() {
+                        new_parents.push(*child);
+
+                        if let Ok(mut animation_player) = animation_players_q.get_mut(*child) {
+                            if let Some(animation) = instanced_animations.running_animations.get_mut(&runner.0.unit_data.1.2) {
+                                let mut transitions = AnimationTransitions::new();
+
+                                transitions
+                                .play(&mut animation_player.1, animation.0[1], std::time::Duration::ZERO)
+                                .repeat();
+
+                                commands
+                                .entity(animation_player.0)
+                                .insert(animation.1.clone())
+                                .insert(transitions);
+
+                                animation_player.1.stop(animation.0[0]);
+                                animation_player.1.play(animation.0[1]).repeat().set_speed(2.);
+                            } else {
+                                let mut graph = AnimationGraph::new();
+
+                                let animation_indices: Vec<AnimationNodeIndex> = graph
+                                    .add_clips(runner.1.0.clone(), 1.0, graph.root)
+                                    .collect();
+
+                                let graph_handle = graphs.add(graph);
+
+                                instanced_animations.running_animations.insert(runner.0.unit_data.1.2.clone(), (animation_indices.clone(), graph_handle.clone()));
+
+                                let mut transitions = AnimationTransitions::new();
+
+                                transitions
+                                .play(&mut animation_player.1, animation_indices[1], std::time::Duration::ZERO)
+                                .repeat();
+
+                                commands
+                                .entity(animation_player.0)
+                                .insert(graph_handle)
+                                .insert(transitions);
+
+                                animation_player.1.stop(animation_indices[0]);
+                                animation_player.1.play(animation_indices[1]).repeat().set_speed(2.);
+                            }
+
+                            is_animation_found = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if new_parents.is_empty() {
+                break;
+            }
+
+            parents = new_parents;
+        }
+    }
+
+    for runner in stopped_q.iter() {
+        let mut parents = vec![runner.2];
+        let mut is_animation_found = false;
+
+        commands.entity(runner.2).remove::<StoppedMoving>();
+
+        loop {
+            let mut new_parents = Vec::new();
+
+            for parent in parents.iter() {
+                if is_animation_found {
+                    new_parents.clear();
+                    break;
+                }
+
+                if let Ok(children) = children_q.get(*parent) {
+                    for child in children.iter() {
+                        new_parents.push(*child);
+
+                        if let Ok(mut animation_player) = animation_players_q.get_mut(*child) {
+                            if let Some(animation) = instanced_animations.running_animations.get_mut(&runner.0.unit_data.1.2) {
+                                let mut transitions = AnimationTransitions::new();
+
+                                transitions
+                                .play(&mut animation_player.1, animation.0[0], std::time::Duration::ZERO)
+                                .repeat();
+
+                                commands
+                                .entity(animation_player.0)
+                                .insert(animation.1.clone())
+                                .insert(transitions);
+
+                                animation_player.1.stop(animation.0[1]);
+                                animation_player.1.play(animation.0[0]);
+                            } else {
+                                let mut graph = AnimationGraph::new();
+
+                                let animation_indices: Vec<AnimationNodeIndex> = graph
+                                    .add_clips(runner.1.0.clone(), 1.0, graph.root)
+                                    .collect();
+
+                                let graph_handle = graphs.add(graph);
+
+                                instanced_animations.running_animations.insert(runner.0.unit_data.1.2.clone(), (animation_indices.clone(), graph_handle.clone()));
+
+                                let mut transitions = AnimationTransitions::new();
+
+                                transitions
+                                .play(&mut animation_player.1, animation_indices[0], std::time::Duration::ZERO)
+                                .repeat();
+
+                                commands
+                                .entity(animation_player.0)
+                                .insert(graph_handle)
+                                .insert(transitions);
+
+                                animation_player.1.stop(animation_indices[1]);
+                                animation_player.1.play(animation_indices[0]);
+                            }
+
+                            is_animation_found = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if new_parents.is_empty() {
+                break;
+            }
+
+            parents = new_parents;
+        }
+    }
 }

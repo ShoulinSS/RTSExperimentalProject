@@ -12,7 +12,7 @@ use oxidized_navigation_serializable::{
 use bevy_tasks::{TaskPool, TaskPoolBuilder};
 use bevy_egui::{egui::{self, Color32, Context, Stroke}, EguiContext};
 
-use crate::components::{asset_manager::{BuildingsAssets, InstancedMaterials, TeamMaterialExtension, UnitsAssets}, building::{BuildingStageCache, BuildingsDeletionStates, PillboxBundle}, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, BattalionSelectionEvent, BrigadeSelectionEvent, BuildingButtonHovered, BuildingHints, ChangeTacticalSymbolsLevel, CompanySelectionEvent, DisplayedTacicalSymbolsLevel, OpenTacticalSymbolsLevels, PlatoonSelectionEvent, RebuildApartments, RegimentSelectionEvent, SwitchBuildingState, UiBlocker}, unit::{AttackAnimationTypes, FogOfWarTexture, IsUnitSelectionAllowed, TILE_SIZE, UnitsTileMap}};
+use crate::components::{asset_manager::{AnimationComponent, BuildingsAssets, InstancedAnimations, InstancedMaterials, TeamMaterialExtension, UnitAssets}, building::{BuildingStageCache, BuildingsDeletionStates, PillboxBundle}, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, BattalionSelectionEvent, BrigadeSelectionEvent, BuildingButtonHovered, BuildingHints, ChangeTacticalSymbolsLevel, CompanySelectionEvent, DisplayedTacicalSymbolsLevel, OpenTacticalSymbolsLevels, PlatoonSelectionEvent, RebuildApartments, RegimentSelectionEvent, SwitchBuildingState, UiBlocker}, unit::{AttackAnimationTypes, FogOfWarTexture, IsUnitSelectionAllowed, TILE_SIZE, UnitsTileMap}};
 
 mod components;
 
@@ -22,8 +22,8 @@ const FOG_TEXTURE_SIZE: f32 = WORLD_SIZE / 8.;
 
 fn main() {
     App::new()
-    //.add_plugins(FrameTimeDiagnosticsPlugin::default())
-    //.add_plugins(LogDiagnosticsPlugin::default())
+    // .add_plugins(FrameTimeDiagnosticsPlugin::default())
+    // .add_plugins(LogDiagnosticsPlugin::default())
     .add_plugins(DefaultPlugins.set(bevy_mod_raycast::low_latency_window_plugin()))
     .add_plugins(EguiPlugin)
     .add_plugins(CursorRayPlugin)
@@ -246,7 +246,7 @@ fn main() {
     .insert_resource(UnitsToDamage(Vec::new()))
     .insert_resource(UnitsToInsertPath(Vec::new()))
     .insert_resource(InstancedMaterials{
-        team_material: HashMap::new(),
+        team_materials: HashMap::new(),
         blue_solid: Handle::default(),
         red_solid: Handle::default(),
         blue_transparent: Handle::default(),
@@ -265,6 +265,9 @@ fn main() {
     })
     .insert_resource(BuildingStageCache{
         buildings: HashMap::new(),
+    })
+    .insert_resource(InstancedAnimations{
+        running_animations: HashMap::new(),
     })
     .run();
 }
@@ -286,7 +289,7 @@ fn setup(
     player_data: Res<PlayerData>,
     mut producable_units: ResMut<ProducableUnits>,
     buildings_assets: Res<BuildingsAssets>,
-    units_assets: Res<UnitsAssets>,
+    unit_assets: Res<UnitAssets>,
     mut images: ResMut<Assets<Image>>,
     mut event_writer: EventWriter<SetupDoneEvent>,
 ){
@@ -634,9 +637,9 @@ fn setup(
         army.0.get_mut(&player_data.team).unwrap().engineers.insert(i, ((None, "engineer".to_string()), Entity::PLACEHOLDER));
     }
 
-    specializations.regular = vec!["atgm".to_string(), "sniper".to_string()];
-    specializations.shock = vec!["lat".to_string(), "grenadier".to_string()];
-    specializations.armored = vec!["tank".to_string(), "ifv".to_string()];
+    specializations.regular = vec![("atgm".to_string(), "ATGM".to_string()), ("sniperr".to_string(), "Sniper".to_string())];
+    specializations.shock = vec![("lat".to_string(), "LAT".to_string()), ("snipers".to_string(), "Sniper".to_string())];
+    specializations.armored = vec![("tank".to_string(), "Tank".to_string()), ("ifv".to_string(), "IFV".to_string())];
 
     let mut x = 30.;
     let mut z = 30.;
@@ -663,248 +666,366 @@ fn setup(
         x += 15.;
 
         barracks_buildables.insert(
-            "regular_soldier".to_string(),
-             (building::UnitBundles::Soldier(SoldierBundle{
-                model: MaterialMeshBundle{
-                    mesh: units_assets.regular_soldier.0.clone(),
-                    material: units_assets.regular_soldier.1.clone(),
-                    ..default()
-                },
-                lod: soldier_lod.clone(),
-                unit_component: UnitComponent {
-                    path: Vec::new(),
-                    speed: 10.,
-                },
-                combat_component: CombatComponent {
-                    team: 1,
-                    current_health: 100,
-                    max_health: 100,
-                    unit_type: UnitTypes::Infantry,
-                    attack_type: AttackTypes::Direct(30, 0.5, DamageTypes::AntiInfantry),
-                    attack_animation_type: AttackAnimationTypes::LowCaliber(Vec3::new(0., 1., 0.)),
-                    attack_frequency: 250,
-                    attack_elapsed_time: 250,
-                    enemies: Vec::new(),
-                    detection_range: 30.,
-                    attack_range: 30.,
-                    is_static: false,
-                    unit_data: (
-                        (0, 0),
-                        (
-                            CompanyTypes::None,
-                            (-1, -1, -1, -1, -1, -1, -1),
-                            "".to_string(),
-                        ),
+        "regular_soldier".to_string(),
+            (building::UnitBundles::Soldier(SoldierBundle{
+            scene: unit_assets.regular_soldier.0.clone(),
+            lod: soldier_lod.clone(),
+            unit_component: UnitComponent {
+                path: Vec::new(),
+                speed: 10.,
+                waypoint_check_factor: 0.5,
+            },
+            combat_component: CombatComponent {
+                team: 1,
+                current_health: 100,
+                max_health: 100,
+                unit_type: UnitTypes::Infantry,
+                attack_type: AttackTypes::Direct(30, 0.5, DamageTypes::AntiInfantry),
+                attack_animation_type: AttackAnimationTypes::LowCaliber(Vec3::new(0., 1., 0.)),
+                attack_frequency: 250,
+                attack_elapsed_time: 250,
+                enemies: Vec::new(),
+                detection_range: 50.,
+                attack_range: 50.,
+                is_static: false,
+                unit_data: (
+                    (0, 0),
+                    (
+                        CompanyTypes::None,
+                        (-1, -1, -1, -1, -1, -1, -1),
+                        "".to_string(),
                     ),
-                },
-                supplies_consumer: SuppliesConsumerComponent {
-                    supplies_capacity: 100,
-                    supplies: 100,
-                    consume_rate: 1,
-                    supply_range: 20.,
-                    supply_frequency: 180000,
-                    elapsed_time: 0,
-                },
-                selectable: components::unit::SelectableUnit,
-                controller: KinematicCharacterController{
-                    custom_shape: custom_shape_infantry.clone(),
-                    up: Vec3::Y,
-                    offset: CharacterLength::Absolute(0.1),
-                    slide: true,
-                    autostep: None,
-                    apply_impulse_to_dynamic_bodies: false,
-                    snap_to_ground: Some(CharacterLength::Absolute(1.)),
-                    ..default()
-                },
-                }),
-                building::ProductionData {
-                    time_to_produce: 5000,
-                    resource_cost: 70,
-                    human_resource_cost: 1,
-                }),
+                ),
+            },
+            supplies_consumer: SuppliesConsumerComponent {
+                supplies_capacity: 100,
+                supplies: 100,
+                consume_rate: 1,
+                supply_range: 20.,
+                supply_frequency: 180000,
+                elapsed_time: 0,
+            },
+            selectable: components::unit::SelectableUnit,
+            controller: KinematicCharacterController{
+                custom_shape: custom_shape_infantry.clone(),
+                up: Vec3::Y,
+                offset: CharacterLength::Absolute(0.1),
+                slide: true,
+                autostep: None,
+                apply_impulse_to_dynamic_bodies: false,
+                snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                ..default()
+            },
+            animation_component: AnimationComponent(unit_assets.regular_soldier.1.clone()),
+            material_change_marker: components::asset_manager::ChangeMaterial,
+            }),
+            building::ProductionData {
+                time_to_produce: 5000,
+                resource_cost: 70,
+                human_resource_cost: 1,
+            }),
         );
         barracks_buildables.insert(
-            "atgm".to_string(),
-             (building::UnitBundles::Soldier(SoldierBundle{
-                model: MaterialMeshBundle{
-                    mesh: units_assets.atgm_soldier.0.clone(),
-                    material: units_assets.atgm_soldier.1.clone(),
-                    ..default()
-                },
-                lod: soldier_lod.clone(),
-                unit_component: UnitComponent {
-                    path: Vec::new(),
-                    speed: 10.,
-                },
-                combat_component: CombatComponent {
-                    team: 1,
-                    current_health: 100,
-                    max_health: 100,
-                    unit_type: UnitTypes::Infantry,
-                    attack_type: AttackTypes::HomingProjectile(20., 5., 5, 1., (1000, DamageTypes::AntiTank), (5., 1000, DamageTypes::AntiInfantry), Vec3::new(0., 1., 0.)),
-                    attack_animation_type: AttackAnimationTypes::MissileLaunch(Vec3::new(0., 1., 0.)),
-                    attack_frequency: 5000,
-                    attack_elapsed_time: 5000,
-                    enemies: Vec::new(),
-                    detection_range: 100.,
-                    attack_range: 100.,
-                    is_static: false,
-                    unit_data: (
-                        (0, 0),
-                        (
-                            CompanyTypes::None,
-                            (-1, -1, -1, -1, -1, -1, -1),
-                            "".to_string(),
-                        ),
+        "atgm".to_string(),
+            (building::UnitBundles::Soldier(SoldierBundle{
+            scene: unit_assets.atgm_soldier.0.clone(),
+            lod: soldier_lod.clone(),
+            unit_component: UnitComponent {
+                path: Vec::new(),
+                speed: 10.,
+                waypoint_check_factor: 0.5,
+            },
+            combat_component: CombatComponent {
+                team: 1,
+                current_health: 100,
+                max_health: 100,
+                unit_type: UnitTypes::Infantry,
+                attack_type: AttackTypes::HomingProjectile(20., 5., 5, 1., (1000, DamageTypes::AntiTank), (5., 1000, DamageTypes::AntiInfantry), Vec3::new(0., 1., 0.)),
+                attack_animation_type: AttackAnimationTypes::MissileLaunch(Vec3::new(0., 1., 0.)),
+                attack_frequency: 5000,
+                attack_elapsed_time: 5000,
+                enemies: Vec::new(),
+                detection_range: 100.,
+                attack_range: 100.,
+                is_static: false,
+                unit_data: (
+                    (0, 0),
+                    (
+                        CompanyTypes::None,
+                        (-1, -1, -1, -1, -1, -1, -1),
+                        "".to_string(),
                     ),
-                },
-                supplies_consumer: SuppliesConsumerComponent {
-                    supplies_capacity: 100,
-                    supplies: 100,
-                    consume_rate: 1,
-                    supply_range: 20.,
-                    supply_frequency: 180000,
-                    elapsed_time: 0,
-                },
-                selectable: components::unit::SelectableUnit,
-                controller: KinematicCharacterController{
-                    custom_shape: custom_shape_infantry.clone(),
-                    up: Vec3::Y,
-                    offset: CharacterLength::Absolute(0.1),
-                    slide: true,
-                    autostep: None,
-                    apply_impulse_to_dynamic_bodies: false,
-                    snap_to_ground: Some(CharacterLength::Absolute(1.)),
-                    ..default()
-                },
-                }),
-                building::ProductionData {
-                    time_to_produce: 5000,
-                    resource_cost: 200,
-                    human_resource_cost: 1,
-                }),
+                ),
+            },
+            supplies_consumer: SuppliesConsumerComponent {
+                supplies_capacity: 100,
+                supplies: 100,
+                consume_rate: 1,
+                supply_range: 20.,
+                supply_frequency: 180000,
+                elapsed_time: 0,
+            },
+            selectable: components::unit::SelectableUnit,
+            controller: KinematicCharacterController{
+                custom_shape: custom_shape_infantry.clone(),
+                up: Vec3::Y,
+                offset: CharacterLength::Absolute(0.1),
+                slide: true,
+                autostep: None,
+                apply_impulse_to_dynamic_bodies: false,
+                snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                ..default()
+            },
+            animation_component: AnimationComponent(unit_assets.atgm_soldier.1.clone()),
+            material_change_marker: components::asset_manager::ChangeMaterial,
+            }),
+            building::ProductionData {
+                time_to_produce: 5000,
+                resource_cost: 200,
+                human_resource_cost: 1,
+            }),
         );
         barracks_buildables.insert(
-            "shock_soldier".to_string(),
-             (building::UnitBundles::Shock(AssaultBundle{
-                model: MaterialMeshBundle{
-                    mesh: units_assets.assault_soldier.0.clone(),
-                    material: units_assets.assault_soldier.1.clone(),
-                    ..default()
-                },
-                lod: soldier_lod.clone(),
-                unit_component: UnitComponent {
-                    path: Vec::new(),
-                    speed: 10.,
-                },
-                combat_component: CombatComponent {
-                    team: 1,
-                    current_health: 100,
-                    max_health: 100,
-                    unit_type: UnitTypes::Infantry,
-                    attack_type: AttackTypes::Direct(30, 0.5, DamageTypes::AntiInfantry),
-                    attack_animation_type: AttackAnimationTypes::LowCaliber(Vec3::new(0., 1., 0.)),
-                    attack_frequency: 250,
-                    attack_elapsed_time: 250,
-                    enemies: Vec::new(),
-                    detection_range: 30.,
-                    attack_range: 30.,
-                    is_static: false,
-                    unit_data: (
-                        (0, 0),
-                        (
-                            CompanyTypes::None,
-                            (-1, -1, -1, -1, -1, -1, -1),
-                            "".to_string(),
-                        ),
+        "shock_soldier".to_string(),
+            (building::UnitBundles::Shock(AssaultBundle{
+            scene: unit_assets.assault_soldier.0.clone(),
+            lod: soldier_lod.clone(),
+            unit_component: UnitComponent {
+                path: Vec::new(),
+                speed: 10.,
+                waypoint_check_factor: 0.5,
+            },
+            combat_component: CombatComponent {
+                team: 1,
+                current_health: 100,
+                max_health: 100,
+                unit_type: UnitTypes::Infantry,
+                attack_type: AttackTypes::Direct(30, 0.5, DamageTypes::AntiInfantry),
+                attack_animation_type: AttackAnimationTypes::LowCaliber(Vec3::new(0., 1., 0.)),
+                attack_frequency: 250,
+                attack_elapsed_time: 250,
+                enemies: Vec::new(),
+                detection_range: 50.,
+                attack_range: 50.,
+                is_static: false,
+                unit_data: (
+                    (0, 0),
+                    (
+                        CompanyTypes::None,
+                        (-1, -1, -1, -1, -1, -1, -1),
+                        "".to_string(),
                     ),
-                },
-                supplies_consumer: SuppliesConsumerComponent {
-                    supplies_capacity: 100,
-                    supplies: 100,
-                    consume_rate: 1,
-                    supply_range: 20.,
-                    supply_frequency: 180000,
-                    elapsed_time: 0,
-                },
-                selectable: components::unit::SelectableUnit,
-                controller: KinematicCharacterController{
-                    custom_shape: custom_shape_infantry.clone(),
-                    up: Vec3::Y,
-                    offset: CharacterLength::Absolute(0.1),
-                    slide: true,
-                    autostep: None,
-                    apply_impulse_to_dynamic_bodies: false,
-                    snap_to_ground: Some(CharacterLength::Absolute(1.)),
-                    ..default()
-                },
-                }),
-                building::ProductionData {
-                    time_to_produce: 5000,
-                    resource_cost: 100,
-                    human_resource_cost: 1,
-                }),
+                ),
+            },
+            supplies_consumer: SuppliesConsumerComponent {
+                supplies_capacity: 100,
+                supplies: 100,
+                consume_rate: 1,
+                supply_range: 20.,
+                supply_frequency: 180000,
+                elapsed_time: 0,
+            },
+            selectable: components::unit::SelectableUnit,
+            controller: KinematicCharacterController{
+                custom_shape: custom_shape_infantry.clone(),
+                up: Vec3::Y,
+                offset: CharacterLength::Absolute(0.1),
+                slide: true,
+                autostep: None,
+                apply_impulse_to_dynamic_bodies: false,
+                snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                ..default()
+            },
+            animation_component: AnimationComponent(unit_assets.assault_soldier.1.clone()),
+            material_change_marker: components::asset_manager::ChangeMaterial,
+            }),
+            building::ProductionData {
+                time_to_produce: 5000,
+                resource_cost: 100,
+                human_resource_cost: 1,
+            }),
         );
         barracks_buildables.insert(
-            "lat".to_string(),
-             (building::UnitBundles::Shock(AssaultBundle{
-                model: MaterialMeshBundle{
-                    mesh: units_assets.rpg_soldier.0.clone(),
-                    material: units_assets.rpg_soldier.1.clone(),
-                    ..default()
-                },
-                lod: soldier_lod.clone(),
-                unit_component: UnitComponent {
-                    path: Vec::new(),
-                    speed: 10.,
-                },
-                combat_component: CombatComponent {
-                    team: 1,
-                    current_health: 100,
-                    max_health: 100,
-                    unit_type: UnitTypes::Infantry,
-                    attack_type: AttackTypes::BallisticProjectile(5., 2, 20., 5., 0., (500, DamageTypes::AntiTank), (5., 500, DamageTypes::AntiInfantry), Vec3::new(0., 1., 0.)),
-                    attack_animation_type: AttackAnimationTypes::MissileLaunch(Vec3::new(0., 1., 0.)),
-                    attack_frequency: 5000,
-                    attack_elapsed_time: 5000,
-                    enemies: Vec::new(),
-                    detection_range: 50.,
-                    attack_range: 50.,
-                    is_static: false,
-                    unit_data: (
-                        (0, 0),
-                        (
-                            CompanyTypes::None,
-                            (-1, -1, -1, -1, -1, -1, -1),
-                            "".to_string(),
-                        ),
+        "lat".to_string(),
+            (building::UnitBundles::Shock(AssaultBundle{
+            scene: unit_assets.rpg_soldier.0.clone(),
+            lod: soldier_lod.clone(),
+            unit_component: UnitComponent {
+                path: Vec::new(),
+                speed: 10.,
+                waypoint_check_factor: 0.5,
+            },
+            combat_component: CombatComponent {
+                team: 1,
+                current_health: 100,
+                max_health: 100,
+                unit_type: UnitTypes::Infantry,
+                attack_type: AttackTypes::BallisticProjectile(5., 2, 20., 5., 0., (500, DamageTypes::AntiTank), (5., 500, DamageTypes::AntiInfantry), Vec3::new(0., 1., 0.)),
+                attack_animation_type: AttackAnimationTypes::MissileLaunch(Vec3::new(0., 1., 0.)),
+                attack_frequency: 5000,
+                attack_elapsed_time: 5000,
+                enemies: Vec::new(),
+                detection_range: 50.,
+                attack_range: 50.,
+                is_static: false,
+                unit_data: (
+                    (0, 0),
+                    (
+                        CompanyTypes::None,
+                        (-1, -1, -1, -1, -1, -1, -1),
+                        "".to_string(),
                     ),
-                },
-                supplies_consumer: SuppliesConsumerComponent {
-                    supplies_capacity: 100,
-                    supplies: 100,
-                    consume_rate: 1,
-                    supply_range: 20.,
-                    supply_frequency: 180000,
-                    elapsed_time: 0,
-                },
-                selectable: components::unit::SelectableUnit,
-                controller: KinematicCharacterController{
-                    custom_shape: custom_shape_infantry.clone(),
-                    up: Vec3::Y,
-                    offset: CharacterLength::Absolute(0.1),
-                    slide: true,
-                    autostep: None,
-                    apply_impulse_to_dynamic_bodies: false,
-                    snap_to_ground: Some(CharacterLength::Absolute(1.)),
-                    ..default()
-                },
-                }),
-                building::ProductionData {
-                    time_to_produce: 5000,
-                    resource_cost: 100,
-                    human_resource_cost: 1,
-                }),
+                ),
+            },
+            supplies_consumer: SuppliesConsumerComponent {
+                supplies_capacity: 100,
+                supplies: 100,
+                consume_rate: 1,
+                supply_range: 20.,
+                supply_frequency: 180000,
+                elapsed_time: 0,
+            },
+            selectable: components::unit::SelectableUnit,
+            controller: KinematicCharacterController{
+                custom_shape: custom_shape_infantry.clone(),
+                up: Vec3::Y,
+                offset: CharacterLength::Absolute(0.1),
+                slide: true,
+                autostep: None,
+                apply_impulse_to_dynamic_bodies: false,
+                snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                ..default()
+            },
+            animation_component: AnimationComponent(unit_assets.rpg_soldier.1.clone()),
+            material_change_marker: components::asset_manager::ChangeMaterial,
+            }),
+            building::ProductionData {
+                time_to_produce: 5000,
+                resource_cost: 100,
+                human_resource_cost: 1,
+            }),
+        );
+
+        barracks_buildables.insert(
+        "sniperr".to_string(),
+            (building::UnitBundles::Soldier(SoldierBundle{
+            scene: unit_assets.sniper_soldier.0.clone(),
+            lod: soldier_lod.clone(),
+            unit_component: UnitComponent {
+                path: Vec::new(),
+                speed: 10.,
+                waypoint_check_factor: 0.5,
+            },
+            combat_component: CombatComponent {
+                team: 1,
+                current_health: 100,
+                max_health: 100,
+                unit_type: UnitTypes::Infantry,
+                attack_type: AttackTypes::Direct(150, 0.5, DamageTypes::AntiInfantry),
+                attack_animation_type: AttackAnimationTypes::LowCaliber(Vec3::new(0., 1., 0.)),
+                attack_frequency: 3000,
+                attack_elapsed_time: 3000,
+                enemies: Vec::new(),
+                detection_range: 100.,
+                attack_range: 100.,
+                is_static: false,
+                unit_data: (
+                    (0, 0),
+                    (
+                        CompanyTypes::None,
+                        (-1, -1, -1, -1, -1, -1, -1),
+                        "".to_string(),
+                    ),
+                ),
+            },
+            supplies_consumer: SuppliesConsumerComponent {
+                supplies_capacity: 100,
+                supplies: 100,
+                consume_rate: 1,
+                supply_range: 20.,
+                supply_frequency: 180000,
+                elapsed_time: 0,
+            },
+            selectable: components::unit::SelectableUnit,
+            controller: KinematicCharacterController{
+                custom_shape: custom_shape_infantry.clone(),
+                up: Vec3::Y,
+                offset: CharacterLength::Absolute(0.1),
+                slide: true,
+                autostep: None,
+                apply_impulse_to_dynamic_bodies: false,
+                snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                ..default()
+            },
+            animation_component: AnimationComponent(unit_assets.sniper_soldier.1.clone()),
+            material_change_marker: components::asset_manager::ChangeMaterial,
+            }),
+            building::ProductionData {
+                time_to_produce: 5000,
+                resource_cost: 70,
+                human_resource_cost: 1,
+            }),
+        );
+
+        barracks_buildables.insert(
+        "snipers".to_string(),
+            (building::UnitBundles::Shock(AssaultBundle{
+            scene: unit_assets.sniper_soldier.0.clone(),
+            lod: soldier_lod.clone(),
+            unit_component: UnitComponent {
+                path: Vec::new(),
+                speed: 10.,
+                waypoint_check_factor: 0.5,
+            },
+            combat_component: CombatComponent {
+                team: 1,
+                current_health: 100,
+                max_health: 100,
+                unit_type: UnitTypes::Infantry,
+                attack_type: AttackTypes::Direct(150, 0.5, DamageTypes::AntiInfantry),
+                attack_animation_type: AttackAnimationTypes::LowCaliber(Vec3::new(0., 1., 0.)),
+                attack_frequency: 3000,
+                attack_elapsed_time: 3000,
+                enemies: Vec::new(),
+                detection_range: 100.,
+                attack_range: 100.,
+                is_static: false,
+                unit_data: (
+                    (0, 0),
+                    (
+                        CompanyTypes::None,
+                        (-1, -1, -1, -1, -1, -1, -1),
+                        "".to_string(),
+                    ),
+                ),
+            },
+            supplies_consumer: SuppliesConsumerComponent {
+                supplies_capacity: 100,
+                supplies: 100,
+                consume_rate: 1,
+                supply_range: 20.,
+                supply_frequency: 180000,
+                elapsed_time: 0,
+            },
+            selectable: components::unit::SelectableUnit,
+            controller: KinematicCharacterController{
+                custom_shape: custom_shape_infantry.clone(),
+                up: Vec3::Y,
+                offset: CharacterLength::Absolute(0.1),
+                slide: true,
+                autostep: None,
+                apply_impulse_to_dynamic_bodies: false,
+                snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                ..default()
+            },
+            animation_component: AnimationComponent(unit_assets.sniper_soldier.1.clone()),
+            material_change_marker: components::asset_manager::ChangeMaterial,
+            }),
+            building::ProductionData {
+                time_to_produce: 5000,
+                resource_cost: 70,
+                human_resource_cost: 1,
+            }),
         );
 
 
@@ -978,21 +1099,20 @@ fn setup(
         "tank".to_string(),
          (building::UnitBundles::Tank(TankBundle{
             model_hull: MaterialMeshBundle{
-                mesh: units_assets.tank.0.clone(),
-                material: units_assets.tank.2.clone(),
+                mesh: unit_assets.tank.0.clone(),
+                material: unit_assets.tank.2.clone(),
                 ..default()
             },
-            model_turret: (MaterialMeshBundle{
-                    mesh: units_assets.tank.1.clone(),
-                    material: units_assets.tank.2.clone(),
-                    ..default()
-                },
-                tank_turret_lod.clone(),
-            ),
-            lod: tank_lod.clone(),
+            model_turret: MaterialMeshBundle{
+                mesh: unit_assets.tank.1.clone(),
+                material: unit_assets.tank.2.clone(),
+                ..default()
+            },
+            lod: (tank_lod.clone(), tank_turret_lod.clone()),
             unit_component: UnitComponent {
                 path: Vec::new(),
                 speed: 15.,
+                waypoint_check_factor: 0.5,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -1047,21 +1167,20 @@ fn setup(
         "IFV".to_string(),
          (building::UnitBundles::IFV(IFVBundle{
             model_hull: MaterialMeshBundle{
-                mesh: units_assets.ifv.0.clone(),
-                material: units_assets.ifv.2.clone(),
+                mesh: unit_assets.ifv.0.clone(),
+                material: unit_assets.ifv.2.clone(),
                 ..default()
             },
-            model_turret: (MaterialMeshBundle{
-                    mesh: units_assets.tank.1.clone(),
-                    material: units_assets.tank.2.clone(),
-                    ..default()
-                },
-                tank_turret_lod.clone(),
-            ),
-            lod: tank_lod.clone(),
+            model_turret: MaterialMeshBundle{
+                mesh: unit_assets.tank.1.clone(),
+                material: unit_assets.tank.2.clone(),
+                ..default()
+            },
+            lod: (tank_lod.clone(), tank_turret_lod.clone()),
             unit_component: UnitComponent {
                 path: Vec::new(),
                 speed: 15.,
+                waypoint_check_factor: 0.5,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -1073,8 +1192,8 @@ fn setup(
                 attack_frequency: 1000,
                 attack_elapsed_time: 1000,
                 enemies: Vec::new(),
-                detection_range: 50.,
-                attack_range: 50.,
+                detection_range: 70.,
+                attack_range: 70.,
                 is_static: false,
                 unit_data: (
                     (0, 0),
@@ -1116,14 +1235,15 @@ fn setup(
         "artillery".to_string(),
          (building::UnitBundles::Artillery(ArtilleryBundle{
             model: MaterialMeshBundle{
-                mesh: units_assets.artillery.0.clone(),
-                material: units_assets.artillery.1.clone(),
+                mesh: unit_assets.artillery.0.clone(),
+                material: unit_assets.artillery.1.clone(),
                 ..default()
             },
             lod: tank_lod.clone(),
             unit_component: UnitComponent {
                 path: Vec::new(),
                 speed: 15.,
+                waypoint_check_factor: 0.5,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -1190,27 +1310,28 @@ fn setup(
         "engineer".to_string(),
          (building::UnitBundles::Engineer(EngineerBundle{
             model: MaterialMeshBundle{
-                mesh: units_assets.engineer.0.clone(),
-                material: units_assets.engineer.1.clone(),
+                mesh: unit_assets.engineer.0.clone(),
+                material: unit_assets.engineer.1.clone(),
                 ..default()
             },
             lod: tank_lod.clone(),
             unit_component: UnitComponent {
                 path: Vec::new(),
                 speed: 15.,
+                waypoint_check_factor: 0.5,
             },
             combat_component: CombatComponent {
                 team: 1,
                 current_health: 1000,
                 max_health: 1000,
                 unit_type: UnitTypes::LightVehicle,
-                attack_type: AttackTypes::Direct(110, 0.8, DamageTypes::AntiTank),
+                attack_type: AttackTypes::None,
                 attack_animation_type: AttackAnimationTypes::None(Vec3::ZERO),
-                attack_frequency: 1000,
-                attack_elapsed_time: 1000,
+                attack_frequency: 0,
+                attack_elapsed_time: 0,
                 enemies: Vec::new(),
-                detection_range: 50.,
-                attack_range: 50.,
+                detection_range: 0.,
+                attack_range: 0.,
                 is_static: false,
                 unit_data: (
                     (0, 0),
@@ -1278,7 +1399,7 @@ fn setup(
                 attack_frequency: 0,
                 attack_elapsed_time: 0,
                 enemies: Vec::new(),
-                detection_range: 50.,
+                detection_range: 100.,
                 attack_range: 0.,
                 is_static: true,
                 unit_data: (
@@ -1343,7 +1464,7 @@ fn setup(
                 attack_frequency: 0,
                 attack_elapsed_time: 0,
                 enemies: Vec::new(),
-                detection_range: 50.,
+                detection_range: 100.,
                 attack_range: 0.,
                 is_static: true,
                 unit_data: (
@@ -2120,6 +2241,9 @@ impl Plugin for SingleplayerPlugin {
             components::building::apartments_rebuilding_system,
             components::building::capturing_displays_processing_system,
             components::ui_manager::hint_management_system,
+            components::asset_manager::testing_system,
+            components::asset_manager::apply_team_material_to_scenes,
+            components::asset_manager::running_animation_manager,
             components::ui_manager::ui_nodes_unlocker,//keep last
         ).run_if(in_state(GameState::Singleplayer)));
     }
