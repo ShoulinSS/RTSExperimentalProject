@@ -12,7 +12,7 @@ use oxidized_navigation_serializable::{
 use bevy_tasks::{TaskPool, TaskPoolBuilder};
 use bevy_egui::{egui::{self, Color32, Context, Stroke}, EguiContext};
 
-use crate::components::{asset_manager::{AnimationComponent, BuildingsAssets, InstancedAnimations, InstancedMaterials, TeamMaterialExtension, UnitAssets}, building::{BuildingStageCache, BuildingsDeletionStates, PillboxBundle}, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, BattalionSelectionEvent, BrigadeSelectionEvent, BuildingButtonHovered, BuildingHints, ChangeTacticalSymbolsLevel, CompanySelectionEvent, DisplayedTacicalSymbolsLevel, OpenTacticalSymbolsLevels, PlatoonSelectionEvent, RebuildApartments, RegimentSelectionEvent, SwitchBuildingState, UiBlocker}, unit::{AttackAnimationTypes, FogOfWarTexture, IsUnitSelectionAllowed, TILE_SIZE, UnitsTileMap}};
+use crate::components::{asset_manager::{AnimationComponent, BuildingsAssets, InstancedAnimations, InstancedMaterials, TeamMaterialExtension, UnitAssets}, building::{BuildingStageCache, BuildingsDeletionStates, PillboxBundle}, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, BattalionSelectionEvent, BrigadeSelectionEvent, BuildingButtonHovered, BuildingHints, ChangeTacticalSymbolsLevel, CompanySelectionEvent, DisplayedTacicalSymbolsLevel, OpenTacticalSymbolsLevels, PlatoonSelectionEvent, RebuildApartments, RegimentSelectionEvent, SwitchBuildingState, TransportDisembarkEvent, UiBlocker}, unit::{AttackAnimationTypes, FogOfWarTexture, InfantryTransport, IsUnitSelectionAllowed, RemainsCount, TILE_SIZE, UnitsTileMap}};
 
 mod components;
 
@@ -120,6 +120,7 @@ fn main() {
     .add_event::<SwitchBuildingState>()
     .add_event::<RebuildApartments>()
     .add_event::<BuildingButtonHovered>()
+    .add_event::<TransportDisembarkEvent>()
     .insert_resource(PlayerData{
         team: 1,
         is_all_settlements_placed: false,
@@ -251,6 +252,7 @@ fn main() {
         red_solid: Handle::default(),
         blue_transparent: Handle::default(),
         red_transparent: Handle::default(),
+        wreck_material: Handle::default(),
     })
     .insert_resource(DisplayedTacicalSymbolsLevel(1))
     .insert_resource(IsUnitSelectionAllowed(true))
@@ -269,6 +271,7 @@ fn main() {
     .insert_resource(InstancedAnimations{
         running_animations: HashMap::new(),
     })
+    .insert_resource(RemainsCount(0))
     .run();
 }
 
@@ -290,9 +293,18 @@ fn setup(
     mut producable_units: ResMut<ProducableUnits>,
     buildings_assets: Res<BuildingsAssets>,
     unit_assets: Res<UnitAssets>,
+    //assets: Res<components::asset_manager::AttackVisualisationAssets>,
     mut images: ResMut<Assets<Image>>,
     mut event_writer: EventWriter<SetupDoneEvent>,
 ){
+    // commands.spawn(MaterialMeshBundle{
+    //     mesh: assets.explosion_regular.1[0].clone(),
+    //     material: assets.explosion_regular.0.clone(),
+    //     transform: Transform::from_translation(Vec3::new(0., 5., 0.)),
+    //     ..default()
+    // })
+    // .insert(components::asset_manager::ExplosionComponent((0, 0)));
+
     commands.spawn(PbrBundle{
         mesh: meshes.add(Mesh::from(Cuboid{ half_size: Vec3::new(1., 10., 1.) }.mesh())),
         transform: Transform::from_translation(Vec3::new(0., 1., 0.)),
@@ -361,10 +373,13 @@ fn setup(
         }
     );
 
+    let wreck_material = materials.add(Color::srgb(0.1, 0.1, 0.1));
+
     instanced_materials.blue_solid = blue_solid;
     instanced_materials.red_solid = red_solid;
     instanced_materials.blue_transparent = blue_transparent;
     instanced_materials.red_transparent = red_transparent;
+    instanced_materials.wreck_material = wreck_material;
 
     commands.spawn(LineHolder(vec![
         LineData{
@@ -647,12 +662,12 @@ fn setup(
     let mut barracks_buildables: HashMap<String, (building::UnitBundles, building::ProductionData)> = HashMap::new();
 
     let soldier_lod = MaterialMeshBundle{
-        mesh: meshes.add(Mesh::from(Cuboid{ half_size: Vec3::new(0.5, 1., 0.5) }.mesh())),
+        mesh: unit_assets.infantry_simplified_mesh.clone(),
         ..default()
     };
 
     let tank_lod = MaterialMeshBundle{
-        mesh: meshes.add(Mesh::from(Cuboid{ half_size: Vec3::new(2., 1.5, 4.) }.mesh())),
+        mesh: unit_assets.vehicle_simplified_mesh.clone(),
         ..default()
     };
 
@@ -1164,7 +1179,7 @@ fn setup(
     );
 
     vehicle_factory_buildables.insert(
-        "IFV".to_string(),
+        "ifv".to_string(),
          (building::UnitBundles::IFV(IFVBundle{
             model_hull: MaterialMeshBundle{
                 mesh: unit_assets.ifv.0.clone(),
@@ -1172,8 +1187,8 @@ fn setup(
                 ..default()
             },
             model_turret: MaterialMeshBundle{
-                mesh: unit_assets.tank.1.clone(),
-                material: unit_assets.tank.2.clone(),
+                mesh: unit_assets.ifv.1.clone(),
+                material: unit_assets.ifv.2.clone(),
                 ..default()
             },
             lod: (tank_lod.clone(), tank_turret_lod.clone()),
@@ -1211,6 +1226,10 @@ fn setup(
                 supply_range: 20.,
                 supply_frequency: 180000,
                 elapsed_time: 0,
+            },
+            transport: InfantryTransport {
+                max_units: 9,
+                units_inside: HashSet::new(),
             },
             selectable: components::unit::SelectableUnit,
             controller: KinematicCharacterController{
@@ -2244,6 +2263,13 @@ impl Plugin for SingleplayerPlugin {
             components::asset_manager::testing_system,
             components::asset_manager::apply_team_material_to_scenes,
             components::asset_manager::running_animation_manager,
+            components::asset_manager::explosion_effects_handler,
+            components::unit::transport_assignation_system,
+            components::unit::transport_disturb_system,
+            components::unit::transport_embark_system,
+            components::unit::transport_disembark_system,
+            components::ui_manager::disembark_button_system,
+            components::unit::remains_processing_system,
             components::ui_manager::ui_nodes_unlocker,//keep last
         ).run_if(in_state(GameState::Singleplayer)));
     }

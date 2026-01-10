@@ -36,11 +36,16 @@ pub struct UnitAssets {
     pub atgm_soldier: (Handle<Scene>, Vec<Handle<AnimationClip>>),
     pub rpg_soldier: (Handle<Scene>, Vec<Handle<AnimationClip>>),
     pub sniper_soldier: (Handle<Scene>, Vec<Handle<AnimationClip>>),
+    pub corpse: (Handle<Mesh>, Handle<StandardMaterial>),
     pub tank: (Handle<Mesh>, Handle<Mesh>, Handle<StandardMaterial>),
     pub ifv: (Handle<Mesh>, Handle<Mesh>, Handle<StandardMaterial>),
     pub artillery: (Handle<Mesh>, Handle<StandardMaterial>),
     pub truck: (Handle<Mesh>, Handle<StandardMaterial>, Handle<Mesh>),
     pub engineer: (Handle<Mesh>, Handle<StandardMaterial>),
+
+    pub infantry_simplified_mesh: Handle<Mesh>,
+    pub vehicle_simplified_mesh: Handle<Mesh>,
+    pub corpse_simplified_mesh: Handle<Mesh>,
 }
 
 #[derive(Resource)]
@@ -80,6 +85,8 @@ pub struct AttackVisualisationAssets {
 
     pub missile_launch_sound: Handle<AudioSource>,
     pub tank_shot_sound: Handle<AudioSource>,
+
+    pub explosion_regular: (Handle<StandardMaterial>, Vec<Handle<Mesh>>),
     pub explosion_small_sound: Handle<AudioSource>,
     pub explosion_big_sound: Handle<AudioSource>,
 }
@@ -300,6 +307,9 @@ pub fn load_assets (
     let sniper_soldier_animation1: Handle<AnimationClip> = asset_server.load(GltfAssetLabel::Animation(0).from_asset("units/soldier_sniper.glb"));
     let sniper_soldier_animation2: Handle<AnimationClip> = asset_server.load(GltfAssetLabel::Animation(1).from_asset("units/soldier_sniper.glb"));
 
+    let corpse_mesh: Handle<Mesh> = asset_server.load("units/corpse.glb#Mesh0/Primitive0");
+    let corpse_material: Handle<StandardMaterial> = asset_server.load("units/corpse.glb#Material0");
+
     // let regular_soldier_scene: Handle<Scene> = asset_server.load(GltfAssetLabel::Scene(0).from_asset("units/soldier.glb"));
     // let regular_soldier_animation: Handle<AnimationClip> = asset_server.load(GltfAssetLabel::Animation(0).from_asset("units/soldier.glb"));
 
@@ -333,17 +343,26 @@ pub fn load_assets (
     let engineer_mesh: Handle<Mesh> = asset_server.load("units/engineer.glb#Mesh0/Primitive0");
     let engineer_material: Handle<StandardMaterial> = asset_server.load("units/engineer.glb#Material0");
 
+    let infantry_simplified_mesh = meshes.add(Mesh::from(Cuboid{ half_size: Vec3::new(0.5, 1., 0.5) }.mesh()));
+    let vehicle_simplified_mesh = meshes.add(Mesh::from(Cuboid{ half_size: Vec3::new(2., 1.5, 4.) }.mesh()));
+    let corpse_simplified_mesh = meshes.add(Mesh::from(Cuboid{ half_size: Vec3::new(0.5, 0.5, 1.) }.mesh()));
+
     commands.insert_resource(UnitAssets{
         regular_soldier: (regular_soldier_scene, vec![regular_soldier_animation1, regular_soldier_animation2]),
         assault_soldier: (assault_soldier_scene, vec![assault_soldier_animation1, assault_soldier_animation2]),
         atgm_soldier: (atgm_soldier_scene, vec![atgm_soldier_animation1, atgm_soldier_animation2]),
         rpg_soldier: (rpg_soldier_scene, vec![rpg_soldier_animation1, rpg_soldier_animation2]),
         sniper_soldier: (sniper_soldier_scene, vec![sniper_soldier_animation1, sniper_soldier_animation2]),
+        corpse: (corpse_mesh, corpse_material),
         tank: (tank_mesh_hull, tank_mesh_turret, tank_material),
         ifv: (ifv_mesh_hull, ifv_mesh_turret, ifv_material),
         artillery: (artillery_mesh, artillery_material),
         truck: (truck_mesh, truck_material, truck_simplified_mesh),
         engineer: (engineer_mesh, engineer_material),
+
+        infantry_simplified_mesh: infantry_simplified_mesh,
+        vehicle_simplified_mesh: vehicle_simplified_mesh,
+        corpse_simplified_mesh: corpse_simplified_mesh,
     });
     //Units^
 
@@ -427,6 +446,32 @@ pub fn load_assets (
 
     let tank_shot_sound: Handle<AudioSource> = asset_server.load("audio/cannon/cannon.ogg");
 
+    let explosion_atlas: Handle<Image> = asset_server.load("textures/explosions/explosion_atlas.png");
+
+    let explosion_material = materials.add(StandardMaterial{
+        base_color_texture: Some(explosion_atlas),
+        alpha_mode: AlphaMode::Blend,
+        unlit: true,
+        cull_mode: None,
+        ..default() 
+    });
+
+    let mut explosion_frame_meshes: Vec<Handle<Mesh>> = Vec::new();
+
+    for i in 0..48 {
+        explosion_frame_meshes.push(
+            meshes.add(atlas_mesh_frame_generator(
+                i,
+                2000,
+                1500,
+                250,
+                250,
+                50.,
+                50.,
+            ))
+        );
+    }
+
     let explosion_small_sound: Handle<AudioSource> = asset_server.load("audio/explosions/explosion_small.ogg");
 
     let explosion_big_sound: Handle<AudioSource> = asset_server.load("audio/explosions/explosion_big.ogg");
@@ -451,6 +496,7 @@ pub fn load_assets (
         shell: (shell_mesh, shell_material),
         missile_launch_sound: missile_launch_sound,
         tank_shot_sound: tank_shot_sound,
+        explosion_regular: (explosion_material, explosion_frame_meshes),
         explosion_small_sound: explosion_small_sound,
         explosion_big_sound: explosion_big_sound,
     });
@@ -648,6 +694,7 @@ pub struct InstancedMaterials{
     pub red_solid: Handle<StandardMaterial>,
     pub blue_transparent: Handle<StandardMaterial>,
     pub red_transparent: Handle<StandardMaterial>,
+    pub wreck_material: Handle<StandardMaterial>,
 }
 
 #[derive(Resource)]
@@ -657,7 +704,7 @@ pub struct InstancedAnimations {
 
 #[derive(Component, Clone)]
 pub struct LOD{
-    pub detailed: (Handle<Mesh>, Handle<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>),
+    pub detailed: (Handle<Mesh>, Option<Handle<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>>, Option<Handle<StandardMaterial>>),
     pub simplified: (Handle<Mesh>, Handle<StandardMaterial>),
 }
 
@@ -699,7 +746,12 @@ pub fn lod_system(
                 }
 
                 commands.entity(model.0).insert(model.1.detailed.0.clone());
-                commands.entity(model.0).insert(model.1.detailed.1.clone());
+
+                if let Some(team_material) = &model.1.detailed.1 {
+                    commands.entity(model.0).insert(team_material.clone());
+                } else if let Some(simple_material) = &model.1.detailed.2 {
+                    commands.entity(model.0).insert(simple_material.clone());
+                }
             }
         }
     } else if !*more {
@@ -952,7 +1004,7 @@ pub fn apply_team_material_to_scenes (
                             if mesh_material.2.is_none() {
                                 commands.entity(*child).insert((
                                     LOD{
-                                        detailed: (mesh_material.0.clone(), material),
+                                        detailed: (mesh_material.0.clone(), Some(material), None),
                                         simplified: (
                                             scene.2.simplified.0.clone(),
                                             scene.2.simplified.1.clone(),
@@ -1138,6 +1190,100 @@ pub fn running_animation_manager(
             }
 
             parents = new_parents;
+        }
+    }
+}
+
+pub fn atlas_mesh_frame_generator(
+    frame_index: usize,
+    atlas_width_px: u32,
+    atlas_height_px: u32,
+    frame_width_px: u32,
+    frame_height_px: u32,
+    mesh_width: f32,
+    mesh_height: f32,
+) -> Mesh {
+    let cols = (atlas_width_px / frame_width_px) as usize;
+    let rows = (atlas_height_px / frame_height_px) as usize;
+
+    let row = frame_index / cols;
+    let col = frame_index - cols * row;
+
+    let row_inverted = (rows - 1) - row;
+
+    let frame_x = col as u32 * frame_width_px;
+    let frame_y = row_inverted as u32 * frame_height_px;
+
+    let atlas_w = atlas_width_px as f32;
+    let atlas_h = atlas_height_px as f32;
+    let fw = frame_width_px as f32;
+    let fh = frame_height_px as f32;
+    let fx = frame_x as f32;
+    let fy = frame_y as f32;
+
+    let u1 = fx / atlas_w;
+    let u0 = (fx + fw) / atlas_w;
+    let v1 = 1.0 - (fy + fh) / atlas_h;
+    let v0 = 1.0 - fy / atlas_h;
+
+    let half_w = mesh_width * 0.5;
+    let half_h = mesh_height * 0.5;
+
+    let positions = vec![
+        [-half_w, -half_h, 0.0],
+        [ half_w, -half_h, 0.0],
+        [ half_w,  half_h, 0.0],
+        [-half_w,  half_h, 0.0],
+    ];
+
+    let uvs = vec![
+        [u0, v0],
+        [u1, v0],
+        [u1, v1],
+        [u0, v1],
+    ];
+
+    let mut mesh = Mesh::new(
+        bevy::render::render_resource::PrimitiveTopology::TriangleList,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[0.0, 0.0, -1.0]; 4]);
+    mesh.insert_indices(bevy::render::mesh::Indices::U32(vec![0, 1, 2, 0, 2, 3]));
+
+    mesh
+}
+
+#[derive(Component)]
+pub struct ExplosionComponent(pub (usize, u128));
+
+pub fn explosion_effects_handler(
+    mut explosions_q: Query<(Entity, &mut ExplosionComponent, &mut Transform), Without<CameraComponent>>,
+    camera_q: Query<&Transform, With<CameraComponent>>,
+    assets: Res<AttackVisualisationAssets>,
+    mut commands: Commands,
+    time: Res<Time>,
+){
+    let camera_pos = camera_q.single().translation;
+
+    for mut explosion in explosions_q.iter_mut() {
+        explosion.2.look_at(camera_pos, Vec3::Y);
+
+        explosion.1.0.1 += time.delta().as_millis();
+
+        if explosion.1.0.1 > 20 {
+            explosion.1.0.1 = 0;
+            explosion.1.0.0 += 1;
+
+            if explosion.1.0.0 >= assets.explosion_regular.1.len() {
+                commands.entity(explosion.0).despawn();
+
+                continue;
+            }
+
+            commands.entity(explosion.0).insert(assets.explosion_regular.1[explosion.1.0.0].clone());
         }
     }
 }

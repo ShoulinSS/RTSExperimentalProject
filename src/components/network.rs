@@ -2657,7 +2657,7 @@ pub fn server_messages_handler(
                                 b.animation_component.clone(),
                                 ChangeMaterial,
                                 LOD{
-                                    detailed: (Handle::default(), Handle::default()),
+                                    detailed: (Handle::default(), None, None),
                                     simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                 },
                             )).id();
@@ -2695,7 +2695,7 @@ pub fn server_messages_handler(
                                 b.animation_component.clone(),
                                 ChangeMaterial,
                                 LOD{
-                                    detailed: (Handle::default(), Handle::default()),
+                                    detailed: (Handle::default(), None, None),
                                     simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                 },
                             )).id();
@@ -2736,7 +2736,7 @@ pub fn server_messages_handler(
                                     ..default()
                                 },
                                 LOD{
-                                    detailed: (b.model_turret.mesh.clone(), material_turret.clone()),
+                                    detailed: (b.model_turret.mesh.clone(), Some(material_turret.clone()), None),
                                     simplified: (b.lod.1.mesh.clone(), simplified_material.clone()).clone(),
                                 },
                             )).id();
@@ -2796,7 +2796,7 @@ pub fn server_messages_handler(
                                 b.supplies_consumer.clone(),
                                 SelectableUnit,
                                 LOD{
-                                    detailed: (b.model_hull.mesh.clone(), material_hull.clone()),
+                                    detailed: (b.model_hull.mesh.clone(), Some(material_hull.clone()), None),
                                     simplified: (b.lod.0.mesh.clone(), simplified_material.clone()),
                                 },
                             )).push_children(&[turret]).id();
@@ -2837,7 +2837,7 @@ pub fn server_messages_handler(
                                     ..default()
                                 },
                                 LOD{
-                                    detailed: (b.model_turret.mesh.clone(), material_turret.clone()),
+                                    detailed: (b.model_turret.mesh.clone(), Some(material_turret.clone()), None),
                                     simplified: (b.lod.1.mesh.clone(), simplified_material.clone()).clone(),
                                 },
                             )).id();
@@ -2894,10 +2894,11 @@ pub fn server_messages_handler(
                                         unit_data.1.clone(),
                                     ),
                                 },
+                                b.transport.clone(),
                                 b.supplies_consumer.clone(),
                                 SelectableUnit,
                                 LOD{
-                                    detailed: (b.model_hull.mesh.clone(), material_hull.clone()),
+                                    detailed: (b.model_hull.mesh.clone(), Some(material_hull.clone()), None),
                                     simplified: (b.lod.0.mesh.clone(), simplified_material.clone()),
                                 },
                             )).push_children(&[turret]).id();
@@ -3031,7 +3032,7 @@ pub fn server_messages_handler(
                                 b.animation_component.clone(),
                                 ChangeMaterial,
                                 LOD{
-                                    detailed: (Handle::default(), Handle::default()),
+                                    detailed: (Handle::default(), None, None),
                                     simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                 },
                             )).id();
@@ -3069,7 +3070,7 @@ pub fn server_messages_handler(
                                 b.animation_component.clone(),
                                 ChangeMaterial,
                                 LOD{
-                                    detailed: (Handle::default(), Handle::default()),
+                                    detailed: (Handle::default(), None, None),
                                     simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                 },
                             )).id();
@@ -3110,7 +3111,7 @@ pub fn server_messages_handler(
                                     ..default()
                                 },
                                 LOD{
-                                    detailed: (b.model_turret.mesh.clone(), material_turret.clone()),
+                                    detailed: (b.model_turret.mesh.clone(), Some(material_turret.clone()), None),
                                     simplified: (b.lod.1.mesh.clone(), simplified_material.clone()).clone(),
                                 },
                             )).id();
@@ -3170,7 +3171,7 @@ pub fn server_messages_handler(
                                 b.supplies_consumer.clone(),
                                 SelectableUnit,
                                 LOD{
-                                    detailed: (b.model_hull.mesh.clone(), material_hull.clone()),
+                                    detailed: (b.model_hull.mesh.clone(), Some(material_hull.clone()), None),
                                     simplified: (b.lod.0.mesh.clone(), simplified_material.clone()),
                                 },
                             )).push_children(&[turret]).id();
@@ -3211,7 +3212,7 @@ pub fn server_messages_handler(
                                     ..default()
                                 },
                                 LOD{
-                                    detailed: (b.model_turret.mesh.clone(), material_turret.clone()),
+                                    detailed: (b.model_turret.mesh.clone(), Some(material_turret.clone()), None),
                                     simplified: (b.lod.1.mesh.clone(), simplified_material.clone()).clone(),
                                 },
                             )).id();
@@ -3268,10 +3269,11 @@ pub fn server_messages_handler(
                                         unit_data.1.clone(),
                                     ),
                                 },
+                                b.transport.clone(),
                                 b.supplies_consumer.clone(),
                                 SelectableUnit,
                                 LOD{
-                                    detailed: (b.model_hull.mesh.clone(), material_hull.clone()),
+                                    detailed: (b.model_hull.mesh.clone(), Some(material_hull.clone()), None),
                                     simplified: (b.lod.0.mesh.clone(), simplified_material.clone()),
                                 },
                             )).push_children(&[turret]).id();
@@ -3335,7 +3337,7 @@ pub fn server_messages_handler(
                                 b.supplies_consumer.clone(),
                                 SelectableUnit,
                                 LOD{
-                                    detailed: (b.model.mesh.clone(), material.clone()),
+                                    detailed: (b.model.mesh.clone(), Some(material.clone()), None),
                                     simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                 },
                             )).id();
@@ -3398,7 +3400,7 @@ pub fn server_messages_handler(
                                 b.engineer_component.clone(),
                                 b.supplies_consumer.clone(),
                                 LOD{
-                                    detailed: (b.model.mesh.clone(), material.clone()),
+                                    detailed: (b.model.mesh.clone(), Some(material.clone()), None),
                                     simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                 },
                             )).id();

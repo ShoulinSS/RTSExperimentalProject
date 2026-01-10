@@ -303,7 +303,7 @@ pub fn assign_supply_tasks (
                                         snap_to_ground: Some(CharacterLength::Absolute(1.)),
                                         ..default()
                                     }).insert(LOD{
-                                        detailed: (units_assets.truck.0.clone(), material.clone()),
+                                        detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
                                         simplified: (units_assets.truck.2.clone(), simplified_material.clone()),
                                     }).insert(CombatComponent{
                                         team: supply_producer.2.team,
@@ -452,7 +452,7 @@ pub fn assign_supply_tasks (
                                             snap_to_ground: Some(CharacterLength::Absolute(1.)),
                                             ..default()
                                         }).insert(LOD{
-                                            detailed: (units_assets.truck.0.clone(), material.clone()),
+                                            detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
                                             simplified: (units_assets.truck.2.clone(), simplified_material.clone()),
                                         }).insert(CombatComponent{
                                             team: supply_producer.2.team,
@@ -601,7 +601,7 @@ pub fn assign_supply_tasks (
                                                 snap_to_ground: Some(CharacterLength::Absolute(1.)),
                                                 ..default()
                                             }).insert(LOD{
-                                                detailed: (units_assets.truck.0.clone(), material.clone()),
+                                                detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
                                                 simplified: (units_assets.truck.2.clone(), simplified_material.clone()),
                                             }).insert(CombatComponent{
                                                 team: supply_producer.2.team,
@@ -752,7 +752,7 @@ pub fn assign_supply_tasks (
                                                         snap_to_ground: Some(CharacterLength::Absolute(1.)),
                                                         ..default()
                                                     }).insert(LOD{
-                                                        detailed: (units_assets.truck.0.clone(), material.clone()),
+                                                        detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
                                                         simplified: (units_assets.truck.2.clone(), simplified_material.clone()),
                                                     }).insert(CombatComponent{
                                                         team: supply_producer.2.team,
@@ -1265,7 +1265,7 @@ pub fn material_producers_processing_system(
                                     snap_to_ground: Some(CharacterLength::Absolute(1.)),
                                     ..default()
                                 }).insert(LOD{
-                                    detailed: (units_assets.truck.0.clone(), material.clone()),
+                                    detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
                                     simplified: (units_assets.truck.2.clone(), simplified_material.clone()),
                                 }).insert(CombatComponent{
                                     team: material_producer.2.team,
@@ -1459,7 +1459,7 @@ pub fn human_resource_producers_processing_system(
                                     snap_to_ground: Some(CharacterLength::Absolute(1.)),
                                     ..default()
                                 }).insert(LOD{
-                                    detailed: (units_assets.truck.0.clone(), material.clone()),
+                                    detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
                                     simplified: (units_assets.truck.2.clone(), simplified_material.clone()),
                                 }).insert(CombatComponent{
                                     team: human_resource_producer.1.0.team,

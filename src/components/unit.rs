@@ -11,7 +11,7 @@ use std::hash::Hash;
 use bevy_tasks::TaskPool;
 use serde::{Deserialize, Serialize};
 
-use crate::{FOG_TEXTURE_SIZE, GameStage, GameStages, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, PlayerData, WORLD_SIZE, components::{asset_manager::{AttackVisualisationAssets, ChangeMaterial, InstancedMaterials, LOD, OtherAssets, TeamMaterialExtension, TrailComponent, TrailEmmiterComponent}, building::{CONSTRUCTION_PROGRESS_COLOR, ConstructionProgressBar, DeconstructableBuilding, DontTouch, HumanResourcesDisplay, MaterialsDisplay, MaterialsProductionComponent, SwitchableBuilding, ToDeconstruct}, camera::{self, CameraComponent}, ui_manager::{BattalionSelectionEvent, BrigadeSelectionEvent, CompanySelectionEvent, PlatoonSelectionEvent, RegimentSelectionEvent, UiButtonNodes}}};
+use crate::{FOG_TEXTURE_SIZE, GameStage, GameStages, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, PlayerData, WORLD_SIZE, components::{asset_manager::{AttackVisualisationAssets, ChangeMaterial, ExplosionComponent, InstancedMaterials, LOD, OtherAssets, TeamMaterialExtension, TrailComponent, TrailEmmiterComponent}, building::{CONSTRUCTION_PROGRESS_COLOR, ConstructionProgressBar, DeconstructableBuilding, DontTouch, HumanResourcesDisplay, MaterialsDisplay, MaterialsProductionComponent, SwitchableBuilding, ToDeconstruct}, camera::{self, CameraComponent}, ui_manager::{BattalionSelectionEvent, BrigadeSelectionEvent, CompanySelectionEvent, PlatoonSelectionEvent, RegimentSelectionEvent, TransportDisembarkEvent, UiButtonNodes}}};
 
 use super::{building::{ArtilleryBundle, BuildingBlueprint, BuildingConstructionSite, BuildingsBundles, CoverComponent, EngineerBundle, IFVBundle, InfantryBarracksBundle, InfantryProducer, LogisticHubBundle, ProductionQueue, ProductionState, ResourceMinerBundle, SoldierBundle, SuppliesProductionComponent, TankBundle, UnactivatedBlueprints, UnitBundles, UnitProductionBuildingComponent, VehicleFactoryBundle, VehiclesProducer}, camera::MoveOrderEvent, logistics::ResourceZone, network::{self, ClientList, ClientMessage, EntityMaps, NetworkStatus, NetworkStatuses, ServerMessage}, ui_manager::{CancelArtilleryTargets, GameStartedEvent, SquadSelectionEvent, ProductionStateChanged, ToggleArtilleryDesignation}};
 
@@ -243,9 +243,10 @@ pub struct SerializableArmyObject{
 pub struct UnitDeathEvent {
     pub dead_unit_data: (
         i32,                                                                            //team
-        ((i32, i32), (CompanyTypes, (i32, i32, i32, i32, i32, i32, i32), String)),    //unit data
+        ((i32, i32), (CompanyTypes, (i32, i32, i32, i32, i32, i32, i32), String)),      //unit data
         Option<Entity>,                                                                 //cover entity
-        Entity                                                                          //unit entity
+        Entity,                                                                         //unit entity
+        Transform,                                                                      //unit transform
     ),
 }
 
@@ -283,7 +284,7 @@ pub fn add_selected_units(
     units: Vec<Entity>,
     selected_units: &mut ResMut<SelectedUnits>,
     commands: &mut Commands,
-    units_q: &Query<(&Transform, Entity, &CombatComponent), With<SelectableUnit>>,
+    units_q: &Query<(&Transform, Entity, &CombatComponent), (With<SelectableUnit>, Without<DisabledUnit>)>,
 ){
     for unit_entity in units {
         if !selected_units.platoons.values().any(|units| units.contains(&unit_entity)) {
@@ -310,7 +311,7 @@ pub fn add_selected_units(
 pub fn clear_selected_units(
     selected_units: &mut ResMut<SelectedUnits>,
     commands: &mut Commands,
-    units_q: &Query<(&Transform, Entity, &CombatComponent), With<SelectableUnit>>,
+    units_q: &Query<(&Transform, Entity, &CombatComponent), (With<SelectableUnit>, Without<DisabledUnit>)>,
 ){
     for platoon in selected_units.platoons.clone(){
         for unit_entity in platoon.1.iter() {
@@ -1259,8 +1260,8 @@ pub fn find_targets(
 }
 
 pub fn process_combat (
-    mut units_q: Query<(&mut CombatComponent, &mut Transform, Option<&Covered>, Entity, Option<&Children>, &GlobalTransform, Option<&SuppliesConsumerComponent>),
-    (With<CombatComponent>, Without<CameraComponent>)>,
+    mut units_q: Query<(&mut CombatComponent, &mut Transform, Option<&Covered>, Entity, Option<&Children>, &GlobalTransform, Option<&SuppliesConsumerComponent>, Option<&CoverComponent>, Option<&InfantryTransport>),
+    (With<CombatComponent>, Without<CameraComponent>, Without<DisabledUnit>)>,
     mut transforms_q: Query<(&mut Transform, &GlobalTransform), (Without<CombatComponent>, Without<CameraComponent>)>,
     camera_q: Query<&Transform, (With<CameraComponent>, Without<CombatComponent>)>,
     mut event_writer:(
@@ -1355,6 +1356,8 @@ pub fn process_combat (
     }
 
     let mut sounds_needs_to_play: HashMap<AttackAnimationTypes, Vec<(Entity, f32)>> = HashMap::new();
+
+    let mut extra_units_to_kill: Vec<Entity> = Vec::new();
 
     for attacker_entity in attacker_entities.iter() {
         let mut enemies: Vec<(Entity, f32)> = Vec::new();
@@ -1470,8 +1473,21 @@ pub fn process_combat (
                                             enemy.0.unit_data.clone(),
                                             cover_entity,
                                             enemy.3,
+                                            *enemy.1,
                                         )
                                     });
+
+                                    if let Some(cover) = enemy.7 {
+                                        for unit in cover.units_inside.iter() {
+                                            extra_units_to_kill.push(*unit);
+                                        }
+                                    }
+
+                                    if let Some(transport) = enemy.8 {
+                                        for unit in transport.units_inside.iter() {
+                                            extra_units_to_kill.push(*unit);
+                                        }
+                                    }
                                 }
                             }
                         },
@@ -1778,6 +1794,26 @@ pub fn process_combat (
             AttackAnimationTypes::None(_) => {},
         }
     }
+
+    for extra_unit_to_kill in extra_units_to_kill.iter() {
+        if let Ok(unit) = units_q.get(*extra_unit_to_kill) {
+            let mut cover_entity: Option<Entity> = None;
+
+            if let Some(cover) = unit.2 {
+                cover_entity = Some(cover.cover_entity);
+            }
+
+            event_writer.0.send(UnitDeathEvent { dead_unit_data:
+                (
+                    unit.0.team,
+                    unit.0.unit_data.clone(),
+                    cover_entity,
+                    unit.3,
+                    *unit.1,
+                )
+            });
+        }
+    }
 }
 
 pub fn platoon_leaders_monitoring_system (
@@ -1912,7 +1948,7 @@ pub fn squad_selection_system (
     army: Res<Armies>,
     mut selected_units: ResMut<SelectedUnits>,
     mut commands: Commands,
-    units_q: Query<(&Transform, Entity, &CombatComponent), With<SelectableUnit>>,
+    units_q: Query<(&Transform, Entity, &CombatComponent), (With<SelectableUnit>, Without<DisabledUnit>)>,
     player_data: Res<PlayerData>,
     mut event_reader: EventReader<SquadSelectionEvent>,
 ){
@@ -1958,7 +1994,7 @@ pub fn platoon_selection_system (
     army: Res<Armies>,
     mut selected_units: ResMut<SelectedUnits>,
     mut commands: Commands,
-    units_q: Query<(&Transform, Entity, &CombatComponent), With<SelectableUnit>>,
+    units_q: Query<(&Transform, Entity, &CombatComponent), (With<SelectableUnit>, Without<DisabledUnit>)>,
     player_data: Res<PlayerData>,
     mut event_reader: EventReader<PlatoonSelectionEvent>,
 ){
@@ -2022,7 +2058,7 @@ pub fn company_selection_system (
     army: Res<Armies>,
     mut selected_units: ResMut<SelectedUnits>,
     mut commands: Commands,
-    units_q: Query<(&Transform, Entity, &CombatComponent), With<SelectableUnit>>,
+    units_q: Query<(&Transform, Entity, &CombatComponent), (With<SelectableUnit>, Without<DisabledUnit>)>,
     player_data: Res<PlayerData>,
     mut event_reader: EventReader<CompanySelectionEvent>,
 ){
@@ -2086,7 +2122,7 @@ pub fn battalion_selection_system (
     army: Res<Armies>,
     mut selected_units: ResMut<SelectedUnits>,
     mut commands: Commands,
-    units_q: Query<(&Transform, Entity, &CombatComponent), With<SelectableUnit>>,
+    units_q: Query<(&Transform, Entity, &CombatComponent), (With<SelectableUnit>, Without<DisabledUnit>)>,
     player_data: Res<PlayerData>,
     mut event_reader: EventReader<BattalionSelectionEvent>,
 ){
@@ -2132,7 +2168,7 @@ pub fn regiment_selection_system (
     army: Res<Armies>,
     mut selected_units: ResMut<SelectedUnits>,
     mut commands: Commands,
-    units_q: Query<(&Transform, Entity, &CombatComponent), With<SelectableUnit>>,
+    units_q: Query<(&Transform, Entity, &CombatComponent), (With<SelectableUnit>, Without<DisabledUnit>)>,
     player_data: Res<PlayerData>,
     mut event_reader: EventReader<RegimentSelectionEvent>,
 ){
@@ -2178,7 +2214,7 @@ pub fn brigade_selection_system (
     army: Res<Armies>,
     mut selected_units: ResMut<SelectedUnits>,
     mut commands: Commands,
-    units_q: Query<(&Transform, Entity, &CombatComponent), With<SelectableUnit>>,
+    units_q: Query<(&Transform, Entity, &CombatComponent), (With<SelectableUnit>, Without<DisabledUnit>)>,
     player_data: Res<PlayerData>,
     mut event_reader: EventReader<BrigadeSelectionEvent>,
 ){
@@ -2222,7 +2258,8 @@ pub fn brigade_selection_system (
 
 pub fn cover_assignation_system (
     selected_units_q: Query<(Entity, &CombatComponent, &Transform), With<SelectedUnit>>,
-    covers_q: Query<(Entity, &mut CoverComponent, &Transform), With<CoverComponent>>,
+    covers_q: Query<(Entity, &mut CoverComponent, &Transform, &CombatComponent), With<CoverComponent>>,
+    player_data: Res<PlayerData>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     cursor_ray: Res<CursorRay>,
     mut raycast: Raycast,
@@ -2239,6 +2276,10 @@ pub fn cover_assignation_system (
         
                 if hits.len() > 0 {
                     if let Ok(cover) = covers_q.get(hits[0].0) {
+                        if cover.3.team != player_data.team || cover.1.points.len() <= cover.1.units_inside.len() {
+                            return;
+                        }
+
                         let mut selected_units_iter = selected_units_q.iter();
 
                         let nav_mesh_lock = nav_mesh.get();
@@ -5245,7 +5286,7 @@ pub fn game_starting_system (
                                         b.animation_component.clone(),
                                         ChangeMaterial,
                                         LOD{
-                                            detailed: (Handle::default(), Handle::default()),
+                                            detailed: (Handle::default(), None, None),
                                             simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
@@ -5289,7 +5330,7 @@ pub fn game_starting_system (
                                         b.animation_component.clone(),
                                         ChangeMaterial,
                                         LOD{
-                                            detailed: (Handle::default(), Handle::default()),
+                                            detailed: (Handle::default(), None, None),
                                             simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
@@ -5331,7 +5372,7 @@ pub fn game_starting_system (
                                             ..default()
                                         },
                                         LOD{
-                                            detailed: (b.model_turret.mesh.clone(), material_turret.clone()),
+                                            detailed: (b.model_turret.mesh.clone(), Some(material_turret.clone()), None),
                                             simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
@@ -5396,7 +5437,7 @@ pub fn game_starting_system (
                                         b.controller.clone(),
                                         SelectableUnit,
                                         LOD{
-                                            detailed: (b.model_hull.mesh.clone(), material_hull.clone()),
+                                            detailed: (b.model_hull.mesh.clone(), Some(material_hull.clone()), None),
                                             simplified: (b.lod.0.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).push_children(&[turret]).id();
@@ -5438,7 +5479,7 @@ pub fn game_starting_system (
                                             ..default()
                                         },
                                         LOD{
-                                            detailed: (b.model_turret.mesh.clone(), material_turret.clone()),
+                                            detailed: (b.model_turret.mesh.clone(), Some(material_turret.clone()), None),
                                             simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
@@ -5499,11 +5540,12 @@ pub fn game_starting_system (
                                                 ),
                                             ),
                                         },
+                                        b.transport.clone(),
                                         b.supplies_consumer.clone(),
                                         b.controller.clone(),
                                         SelectableUnit,
                                         LOD{
-                                            detailed: (b.model_hull.mesh.clone(), material_hull.clone()),
+                                            detailed: (b.model_hull.mesh.clone(), Some(material_hull.clone()), None),
                                             simplified: (b.lod.0.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).push_children(&[turret]).id();
@@ -5617,7 +5659,7 @@ pub fn game_starting_system (
                                         b.animation_component.clone(),
                                         ChangeMaterial,
                                         LOD{
-                                            detailed: (Handle::default(), Handle::default()),
+                                            detailed: (Handle::default(), None, None),
                                             simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
@@ -5661,7 +5703,7 @@ pub fn game_starting_system (
                                         b.animation_component.clone(),
                                         ChangeMaterial,
                                         LOD{
-                                            detailed: (Handle::default(), Handle::default()),
+                                            detailed: (Handle::default(), None, None),
                                             simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
@@ -5703,7 +5745,7 @@ pub fn game_starting_system (
                                             ..default()
                                         },
                                         LOD{
-                                            detailed: (b.model_turret.mesh.clone(), material_turret.clone()),
+                                            detailed: (b.model_turret.mesh.clone(), Some(material_turret.clone()), None),
                                             simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
@@ -5768,7 +5810,7 @@ pub fn game_starting_system (
                                         b.controller.clone(),
                                         SelectableUnit,
                                             LOD{
-                                                detailed: (b.model_hull.mesh.clone(), material_hull.clone()),
+                                                detailed: (b.model_hull.mesh.clone(), Some(material_hull.clone()), None),
                                                 simplified: (b.lod.0.mesh.clone(), simplified_material.clone()),
                                             },
                                     )).push_children(&[turret]).id();
@@ -5810,7 +5852,7 @@ pub fn game_starting_system (
                                             ..default()
                                         },
                                         LOD{
-                                            detailed: (b.model_turret.mesh.clone(), material_turret.clone()),
+                                            detailed: (b.model_turret.mesh.clone(), Some(material_turret.clone()), None),
                                             simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
@@ -5871,11 +5913,12 @@ pub fn game_starting_system (
                                                 ),
                                             ),
                                         },
+                                        b.transport.clone(),
                                         b.supplies_consumer.clone(),
                                         b.controller.clone(),
                                         SelectableUnit,
                                             LOD{
-                                                detailed: (b.model_hull.mesh.clone(), material_hull.clone()),
+                                                detailed: (b.model_hull.mesh.clone(), Some(material_hull.clone()), None),
                                                 simplified: (b.lod.0.mesh.clone(), simplified_material.clone()),
                                             },
                                     )).push_children(&[turret]).id();
@@ -5989,7 +6032,7 @@ pub fn game_starting_system (
                                         b.animation_component.clone(),
                                         ChangeMaterial,
                                         LOD{
-                                            detailed: (Handle::default(), Handle::default()),
+                                            detailed: (Handle::default(), None, None),
                                             simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
@@ -6033,7 +6076,7 @@ pub fn game_starting_system (
                                         b.animation_component.clone(),
                                         ChangeMaterial,
                                         LOD{
-                                            detailed: (Handle::default(), Handle::default()),
+                                            detailed: (Handle::default(), None, None),
                                             simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
@@ -6075,7 +6118,7 @@ pub fn game_starting_system (
                                             ..default()
                                         },
                                         LOD{
-                                            detailed: (b.model_turret.mesh.clone(), material_turret.clone()),
+                                            detailed: (b.model_turret.mesh.clone(), Some(material_turret.clone()), None),
                                             simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
@@ -6140,7 +6183,7 @@ pub fn game_starting_system (
                                         b.controller.clone(),
                                         SelectableUnit,
                                         LOD{
-                                            detailed: (b.model_hull.mesh.clone(), material_hull.clone()),
+                                            detailed: (b.model_hull.mesh.clone(), Some(material_hull.clone()), None),
                                             simplified: (b.lod.0.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).push_children(&[turret]).id();
@@ -6182,7 +6225,7 @@ pub fn game_starting_system (
                                             ..default()
                                         },
                                         LOD{
-                                            detailed: (b.model_turret.mesh.clone(), material_turret.clone()),
+                                            detailed: (b.model_turret.mesh.clone(), Some(material_turret.clone()), None),
                                             simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
@@ -6243,11 +6286,12 @@ pub fn game_starting_system (
                                                 ),
                                             ),
                                         },
+                                        b.transport.clone(),
                                         b.supplies_consumer.clone(),
                                         b.controller.clone(),
                                         SelectableUnit,
                                         LOD{
-                                            detailed: (b.model_hull.mesh.clone(), material_hull.clone()),
+                                            detailed: (b.model_hull.mesh.clone(), Some(material_hull.clone()), None),
                                             simplified: (b.lod.0.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).push_children(&[turret]).id();
@@ -6381,7 +6425,7 @@ pub fn game_starting_system (
                                         b.controller.clone(),
                                         SelectableUnit,
                                         LOD{
-                                            detailed: (b.model.mesh.clone(), material.clone()),
+                                            detailed: (b.model.mesh.clone(), Some(material.clone()), None),
                                             simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
@@ -6508,7 +6552,7 @@ pub fn game_starting_system (
                                         b.supplies_consumer.clone(),
                                         b.controller.clone(),
                                         LOD{
-                                            detailed: (b.model.mesh.clone(), material.clone()),
+                                            detailed: (b.model.mesh.clone(), Some(material.clone()), None),
                                             simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                         },
                                     )).id();
@@ -6681,7 +6725,8 @@ pub fn predict_intercept_time(
 pub fn explosion_processing_system (
     mut event_reader: EventReader<ExplosionEvent>,
     mut tile_map: ResMut<UnitsTileMap>,
-    mut units_q: Query<(&mut CombatComponent, &Transform, Option<&Covered>), With<CombatComponent>>,
+    mut units_q: Query<(&mut CombatComponent, &Transform, Option<&Covered>, Option<&CoverComponent>, Option<&InfantryTransport>, Entity), With<CombatComponent>>,
+    assets: Res<AttackVisualisationAssets>,
     mut event_writer: (
         //EventWriter<UnsentServerMessage>,
         EventWriter<UnitDeathEvent>,
@@ -6689,8 +6734,28 @@ pub fn explosion_processing_system (
     network_status: Res<NetworkStatus>,
     mut server: ResMut<QuinnetServer>,
     clients: Res<ClientList>,
+    mut commands: Commands,
 ){
     for event in event_reader.read() {
+        commands.spawn(MaterialMeshBundle{
+            mesh: assets.explosion_regular.1[0].clone(),
+            material: assets.explosion_regular.0.clone(),
+            transform: Transform::from_translation(event.0.0),
+            ..default()
+        })
+        .insert(ExplosionComponent((0, 0)))
+        .insert(AudioBundle{
+            source: assets.explosion_small_sound.clone(),
+            settings: PlaybackSettings{
+                mode: PlaybackMode::Remove,
+                volume: Volume::new(100.),
+                speed: 1.,
+                paused: false,
+                spatial: true,
+                spatial_scale: None,
+            },
+        });
+
         let top_right_tile = (
             ((event.0.0.x + event.0.2.0) / TILE_SIZE) as i32,
             ((event.0.0.z + event.0.2.0) / TILE_SIZE) as i32
@@ -6702,6 +6767,8 @@ pub fn explosion_processing_system (
         let mut tile_to_scan = bottom_left_tile;
         let rows = top_right_tile.1 - bottom_left_tile.1;
         let columns = top_right_tile.0 - bottom_left_tile.0;
+
+        let mut extra_units_to_kill: Vec<Entity> = Vec::new();
 
         let mut nearest_entity = (Entity::PLACEHOLDER, f32::INFINITY);
         for _row in 0..rows + 1 {
@@ -6799,8 +6866,21 @@ pub fn explosion_processing_system (
                                             unit.0.unit_data.clone(),
                                             cover_entity,
                                             *unit_entity,
+                                            *unit.1,
                                         )
                                     });
+
+                                    if let Some(cover) = unit.3 {
+                                        for covered_unit in cover.units_inside.iter() {
+                                            extra_units_to_kill.push(*covered_unit);
+                                        }
+                                    }
+
+                                    if let Some(transport) = unit.4 {
+                                        for unit in transport.units_inside.iter() {
+                                            extra_units_to_kill.push(*unit);
+                                        }
+                                    }
                                 } else {
                                     if distance_to_unit < nearest_entity.1 {
                                         nearest_entity.0 = *unit_entity;
@@ -6908,9 +6988,42 @@ pub fn explosion_processing_system (
                             unit.0.unit_data.clone(),
                             cover_entity,
                             nearest_entity.0,
+                            *unit.1,
                         )
                     });
+
+                    if let Some(cover) = unit.3 {
+                        for covered_unit in cover.units_inside.iter() {
+                            extra_units_to_kill.push(*covered_unit);
+                        }
+                    }
+
+                    if let Some(transport) = unit.4 {
+                        for unit in transport.units_inside.iter() {
+                            extra_units_to_kill.push(*unit);
+                        }
+                    }
                 }
+            }
+        }
+
+        for extra_unit_to_kill in extra_units_to_kill.iter() {
+            if let Ok(unit) = units_q.get(*extra_unit_to_kill) {
+                let mut cover_entity: Option<Entity> = None;
+
+                if let Some(cover) = unit.2 {
+                    cover_entity = Some(cover.cover_entity);
+                }
+
+                event_writer.0.send(UnitDeathEvent { dead_unit_data:
+                    (
+                        unit.0.team,
+                        unit.0.unit_data.clone(),
+                        cover_entity,
+                        unit.5,
+                        *unit.1,
+                    )
+                });
             }
         }
     }
@@ -7089,6 +7202,296 @@ pub fn supplies_consumption_system (
         for mut consumer in supplies_consumers_q.iter_mut() {
             if consumer.supplies > 0 {
                 consumer.supplies -= consumer.consume_rate;
+            }
+        }
+    }
+}
+
+#[derive(Component, Clone)]
+pub struct InfantryTransport {
+    pub max_units: usize,
+    pub units_inside: HashSet<Entity>,
+}
+
+#[derive(Component)]
+pub struct MovingToTransport{
+    pub transport_entity: Entity,
+    pub transport_position: Vec3,
+}
+
+#[derive(Component)]
+pub struct InTransport{
+    pub transport_entity: Entity,
+}
+
+#[derive(Component)]
+pub struct DisabledUnit;
+
+pub fn transport_assignation_system(
+    selected_units_q: Query<(Entity, &CombatComponent, &Transform), With<SelectedUnit>>,
+    transports_q: Query<(Entity, &mut InfantryTransport, &Transform, &CombatComponent), With<InfantryTransport>>,
+    player_data: Res<PlayerData>,
+    mouse_buttons: Res<ButtonInput<MouseButton>>,
+    cursor_ray: Res<CursorRay>,
+    mut raycast: Raycast,
+    nav_mesh: Res<NavMesh>,
+    nav_mesh_settings: Res<NavMeshSettings>,
+    mut pathfinding_task: ResMut<AsyncPathfindingTasks>,
+    async_task_pools: Res<AsyncTaskPools>,
+    mut commands: Commands,
+){
+    if mouse_buttons.just_released(MouseButton::Right){
+        if !selected_units_q.is_empty() && !transports_q.is_empty() {
+            if let Some(cursor_ray) = **cursor_ray {
+                let hits = raycast.cast_ray(cursor_ray, &default());
+        
+                if hits.len() > 0 {
+                    if let Ok(transport) = transports_q.get(hits[0].0) {
+                        if transport.3.team != player_data.team || transport.1.max_units <= transport.1.units_inside.len() {
+                            return;
+                        }
+
+                        let mut selected_units_iter = selected_units_q.iter();
+
+                        let nav_mesh_lock = nav_mesh.get();
+
+                        for _i in 0..transport.1.max_units - transport.1.units_inside.len() {
+                            if let Some(unit) = selected_units_iter.next() {
+                                if unit.1.unit_data.1.0 != CompanyTypes::Armored {
+                                    commands.entity(unit.0).insert(MovingToTransport{
+                                        transport_entity: transport.0,
+                                        transport_position: transport.2.translation,
+                                    });
+
+                                    let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
+                                        nav_mesh_lock.clone(),
+                                        nav_mesh_settings.clone(),
+                                        unit.2.translation,
+                                        transport.2.translation,
+                                        Some(100.),
+                                        Some(&[1.0, 1.5]),
+                                        unit.0,
+                                    ));
+                    
+                                    pathfinding_task.tasks.push(task);
+                                }
+                            }
+                            else {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn transport_disturb_system(
+    units_q: Query<(Entity, &MovingToTransport), (With<SelectedUnit>, With<MovingToTransport>)>,
+    transports_q: Query<Entity, (With<InfantryTransport>, Without<MovingToTransport>, Added<NeedToMove>)>,
+    mouse_buttons: Res<ButtonInput<MouseButton>>,
+    mut commands: Commands,
+) {
+    if mouse_buttons.just_pressed(MouseButton::Right) {
+        for unit in units_q.iter() {
+            commands.entity(unit.0).remove::<MovingToTransport>();
+            commands.entity(unit.0).remove::<NeedToMove>();
+        }
+    }
+
+    for transport in transports_q.iter() {
+        for unit in units_q.iter() {
+            if unit.1.transport_entity == transport {
+                commands.entity(unit.0).remove::<MovingToTransport>();
+                commands.entity(unit.0).remove::<NeedToMove>();
+            }
+        }
+    }
+}
+
+pub fn transport_embark_system (
+    mut units_q: Query<(Entity, &mut Transform, &MovingToTransport, &CombatComponent), (With<SelectedUnit>, With<MovingToTransport>)>,
+    mut transports_q: Query<(Entity, &Transform, &mut InfantryTransport), (With<InfantryTransport>, Without<MovingToTransport>)>,
+    mut tile_map: ResMut<UnitsTileMap>,
+    mut commands: Commands,
+    time: Res<Time>,
+    mut elapsed_time: Local<u128>,
+) {
+    *elapsed_time += time.delta().as_millis();
+
+    if *elapsed_time > 100 {
+        *elapsed_time = 0;
+
+        for mut unit in units_q.iter_mut() {
+            if let Ok(mut transport) = transports_q.get_mut(unit.2.transport_entity) {
+                if unit.1.translation.distance(unit.2.transport_position) < 10. {
+                    if transport.2.max_units < transport.2.units_inside.len() {
+                        commands.entity(unit.0).remove::<MovingToTransport>();
+                        commands.entity(unit.0).remove::<NeedToMove>();
+                    } else if transport.1.translation == unit.2.transport_position {
+                        commands.entity(unit.0).remove::<MovingToTransport>();
+                        commands.entity(unit.0).remove::<NeedToMove>();
+                        commands.entity(unit.0).insert(DisabledUnit);
+                        commands.entity(unit.0).insert(InTransport{
+                            transport_entity: transport.0,
+                        });
+
+                        if let Some(team_map) = tile_map.tiles.get_mut(&unit.3.team) {
+                            if let Some(tile) = team_map.get_mut(&unit.3.unit_data.0) {
+                                tile.remove(&unit.0);
+                            }
+                        }
+
+                        unit.1.translation = Vec3::new(0., 10000., 0.);
+
+                        transport.2.units_inside.insert(unit.0);
+                    } else {
+                        commands.entity(unit.0).remove::<MovingToTransport>();
+                        commands.entity(unit.0).remove::<NeedToMove>();
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn transport_disembark_system(
+    mut event_reader: EventReader<TransportDisembarkEvent>,
+    mut transports_q: Query<(&Transform, &mut InfantryTransport), (With<InfantryTransport>, With<SelectedUnit>)>,
+    mut units_q: Query<(&mut Transform, &mut UnitComponent), (With<InTransport>, Without<InfantryTransport>)>,
+    nav_mesh: Res<NavMesh>,
+    nav_mesh_settings: Res<NavMeshSettings>,
+    mut pathfinding_task: ResMut<AsyncPathfindingTasks>,
+    async_task_pools: Res<AsyncTaskPools>,
+    mut commands: Commands,
+){
+    for _event in event_reader.read() {
+        let nav_mesh_lock = nav_mesh.get();
+
+        for mut transport in transports_q.iter_mut() {
+            let mut disembarked_units: Vec<Entity> = Vec::new();
+
+            for unit_entity in transport.1.units_inside.iter() {
+                if let Ok(mut unit) = units_q.get_mut(*unit_entity) {
+                    commands.entity(*unit_entity).remove::<DisabledUnit>();
+                    commands.entity(*unit_entity).remove::<InTransport>();
+
+                    unit.0.translation = transport.0.translation + Vec3::new(0., 0., 0.);
+
+                    disembarked_units.push(*unit_entity);
+                }
+            }
+
+            transport.1.units_inside.clear();
+
+            let mut origin_position = -transport.0.forward() * 20. + transport.0.translation;
+
+            let mut counter = 0;
+            let mut operation_counter = 0;
+            let mut operation_number = 1;   //\/
+            let mut z_minus = 2;            //1
+            let mut x_minus = 2;            //2
+            let mut z_plus = 3;             //3
+            let mut x_plus = 3;             //4
+            let offset = 5.;
+
+            for unit_entity in disembarked_units.iter(){
+                if let Ok(mut unit) = units_q.get_mut(*unit_entity){
+                    match counter {
+                        0 => {}
+                        1 => origin_position.z += offset,
+                        2 => origin_position.x += offset,
+                        _ =>
+                        match operation_number {
+                            1 => {
+                                origin_position.z -= offset;
+                                operation_counter += 1;
+                                if operation_counter == z_minus {
+                                    operation_counter = 0;
+                                    z_minus += 2;
+                                    operation_number = 2;
+                                }
+                            },
+                            2 => {
+                                origin_position.x -= offset;
+                                operation_counter += 1;
+                                if operation_counter == x_minus {
+                                    operation_counter = 0;
+                                    x_minus += 2;
+                                    operation_number = 3;
+                                }
+                            }
+                            3 => {
+                                origin_position.z += offset;
+                                operation_counter += 1;
+                                if operation_counter == z_plus {
+                                    operation_counter = 0;
+                                    z_plus += 2;
+                                    operation_number = 4;
+                                }
+                            }
+                            4 => {
+                                origin_position.x += offset;
+                                operation_counter += 1;
+                                if operation_counter == x_plus {
+                                    operation_counter = 0;
+                                    x_plus += 2;
+                                    operation_number = 1;
+                                }
+                            }
+                            _ => {},
+                        }
+                    }
+
+                    unit.1.path = Vec::new();
+
+                    let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
+                        nav_mesh_lock.clone(),
+                        nav_mesh_settings.clone(),
+                        unit.0.translation,
+                        origin_position,
+                        Some(100.),
+                        Some(&[1.0, 1.5]),
+                        *unit_entity,
+                    ));
+        
+                    pathfinding_task.tasks.push(task);
+    
+                    counter += 1;
+                }
+            }
+        }
+    }
+}
+
+#[derive(Component)]
+pub struct UnitRemains{
+    pub number: i32,
+}
+
+#[derive(Resource)]
+pub struct RemainsCount(pub i32);
+
+const MAX_UNIT_REMAINS_COUNT: i32 = 100;
+
+pub fn remains_processing_system (
+    remains_q: Query<(Entity, &UnitRemains), With<UnitRemains>>,
+    remains_count: Res<RemainsCount>,
+    mut commands: Commands,
+    time: Res<Time>,
+    mut elapsed_time: Local<u128>,
+){
+    *elapsed_time += time.delta().as_millis();
+
+    if *elapsed_time > 1000 {
+        *elapsed_time = 0;
+
+        let lower_bound = remains_count.0 - MAX_UNIT_REMAINS_COUNT;
+
+        for remains in remains_q.iter() {
+            if remains.1.number <= lower_bound {
+                commands.entity(remains.0).despawn();
             }
         }
     }

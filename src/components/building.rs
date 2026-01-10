@@ -7,7 +7,7 @@ use bevy_rapier3d::{na::ComplexField, plugin::RapierContext, prelude::{Character
 use oxidized_navigation_serializable::{colliders, query::{find_polygon_path, perform_string_pulling_on_path}, Area, NavMesh, NavMeshAffector, NavMeshAreaType, NavMeshSettings};
 use rand::Rng;
 use serde::{de, Deserialize, Serialize};
-use crate::{GameStage, GameStages, PlayerData, WORLD_SIZE, components::{asset_manager::{AnimationComponent, BuildingsAssets, ChangeMaterial, CircleData, CircleHolder, InstancedMaterials, LOD, TeamMaterialExtension, Terrain}, camera::{self, CameraComponent, SelectionBounds, SelectionBox}, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, DisplayedModelHolder, OpenBuildingsListEvent, RebuildApartments, SwitchBuildingState}, unit::{self, AttackAnimationTypes, BusyEngineer, DeleteAfterStart, EngineerActions, IsUnitSelectionAllowed}}};
+use crate::{GameStage, GameStages, PlayerData, WORLD_SIZE, components::{asset_manager::{AnimationComponent, BuildingsAssets, ChangeMaterial, CircleData, CircleHolder, InstancedMaterials, LOD, TeamMaterialExtension, Terrain, UnitAssets}, camera::{self, CameraComponent, SelectionBounds, SelectionBox}, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, DisplayedModelHolder, OpenBuildingsListEvent, RebuildApartments, SwitchBuildingState}, unit::{self, AttackAnimationTypes, BusyEngineer, DeleteAfterStart, EngineerActions, InfantryTransport, IsUnitSelectionAllowed, RemainsCount, UnitRemains}}};
 
 use super::{asset_manager::{generate_circle_segments, LineData, LineHolder}, logistics::{create_curved_mesh, create_plane_between_points, ResourceZone, RESOURCE_ZONES_COUNT /*RoadComponent, RoadObject*/}, network::{ClientList, ClientMessage, NetworkStatus, NetworkStatuses, ServerMessage}, ui_manager::{Actions, ButtonAction, GameStartedEvent, ProductionStateChanged, UiButtonNodes}, unit::{Armies, ArtilleryUnit, AttackTypes, CompanyTypes, CombatComponent, EngineerComponent, SelectableUnit, SuppliesConsumerComponent, UnitComponent, UnitDeathEvent, UnitNeedsToBeUncovered, UnitTypes, UnitsTileMap, TILE_SIZE}};
 
@@ -223,6 +223,7 @@ pub struct IFVBundle {
     pub unit_component: UnitComponent,
     pub combat_component: CombatComponent,
     pub supplies_consumer: SuppliesConsumerComponent,
+    pub transport: InfantryTransport,
     pub selectable: SelectableUnit,
     pub controller: KinematicCharacterController,
 }
@@ -404,7 +405,7 @@ pub fn unit_production_system (
     network_status: Res<NetworkStatus>,
     mut server: ResMut<QuinnetServer>,
     clients: Res<ClientList>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    materials: Res<Assets<StandardMaterial>>,
     mut instanced_materials: ResMut<InstancedMaterials>,
     mut extended_materials: ResMut<Assets<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>>,
     mut tile_map: ResMut<UnitsTileMap>,
@@ -509,7 +510,7 @@ pub fn unit_production_system (
                                     b.animation_component.clone(),
                                     ChangeMaterial,
                                     LOD{
-                                        detailed: (Handle::default(), Handle::default()),
+                                        detailed: (Handle::default(), None, None),
                                         simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                     },
                                 )).id();
@@ -552,7 +553,7 @@ pub fn unit_production_system (
                                     b.animation_component.clone(),
                                     ChangeMaterial,
                                     LOD{
-                                        detailed: (Handle::default(), Handle::default()),
+                                        detailed: (Handle::default(), None, None),
                                         simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                     },
                                 )).id();
@@ -593,7 +594,7 @@ pub fn unit_production_system (
                                         ..default()
                                     },
                                     LOD{
-                                        detailed: (b.model_turret.mesh.clone(), material_turret.clone()),
+                                        detailed: (b.model_turret.mesh.clone(), Some(material_turret.clone()), None),
                                         simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                     },
                                 )).id();
@@ -658,7 +659,7 @@ pub fn unit_production_system (
                                     b.controller.clone(),
                                     SelectableUnit,
                                     LOD{
-                                        detailed: (b.model_hull.mesh.clone(), material_hull.clone()),
+                                        detailed: (b.model_hull.mesh.clone(), Some(material_hull.clone()), None),
                                         simplified: (b.lod.0.mesh.clone(), simplified_material.clone()),
                                     },
                                 )).push_children(&[turret]).id();
@@ -699,7 +700,7 @@ pub fn unit_production_system (
                                         ..default()
                                     },
                                     LOD{
-                                        detailed: (b.lod.1.mesh.clone(), material_turret.clone()),
+                                        detailed: (b.lod.1.mesh.clone(), Some(material_turret.clone()), None),
                                         simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                     },
                                 )).id();
@@ -760,11 +761,12 @@ pub fn unit_production_system (
                                             ),
                                         ),
                                     },
+                                    b.transport.clone(),
                                     b.supplies_consumer.clone(),
                                     b.controller.clone(),
                                     SelectableUnit,
                                     LOD{
-                                        detailed: (b.model_hull.mesh.clone(), material_hull.clone()),
+                                        detailed: (b.model_hull.mesh.clone(), Some(material_hull.clone()), None),
                                         simplified: (b.lod.0.mesh.clone(), simplified_material.clone()),
                                     },
                                 )).push_children(&[turret]).id();
@@ -1024,7 +1026,7 @@ pub fn unit_production_system (
                                     b.animation_component.clone(),
                                     ChangeMaterial,
                                     LOD{
-                                        detailed: (Handle::default(), Handle::default()),
+                                        detailed: (Handle::default(), None, None),
                                         simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                     },
                                 )).id();
@@ -1067,7 +1069,7 @@ pub fn unit_production_system (
                                     b.animation_component.clone(),
                                     ChangeMaterial,
                                     LOD{
-                                        detailed: (Handle::default(), Handle::default()),
+                                        detailed: (Handle::default(), None, None),
                                         simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                     },
                                 )).id();
@@ -1108,7 +1110,7 @@ pub fn unit_production_system (
                                         ..default()
                                     },
                                     LOD{
-                                        detailed: (b.lod.1.mesh.clone(), material_turret.clone()),
+                                        detailed: (b.lod.1.mesh.clone(), Some(material_turret.clone()), None),
                                         simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                     },
                                 )).id();
@@ -1173,7 +1175,7 @@ pub fn unit_production_system (
                                     b.controller.clone(),
                                     SelectableUnit,
                                     LOD{
-                                        detailed: (b.model_hull.mesh.clone(), material_hull.clone()),
+                                        detailed: (b.model_hull.mesh.clone(), Some(material_hull.clone()), None),
                                         simplified: (b.lod.0.mesh.clone(), simplified_material.clone()),
                                     },
                                 )).push_children(&[turret]).id();
@@ -1214,7 +1216,7 @@ pub fn unit_production_system (
                                         ..default()
                                     },
                                     LOD{
-                                        detailed: (b.lod.1.mesh.clone(), material_turret.clone()),
+                                        detailed: (b.lod.1.mesh.clone(), Some(material_turret.clone()), None),
                                         simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                     },
                                 )).id();
@@ -1275,11 +1277,12 @@ pub fn unit_production_system (
                                             ),
                                         ),
                                     },
+                                    b.transport.clone(),
                                     b.supplies_consumer.clone(),
                                     b.controller.clone(),
                                     SelectableUnit,
                                     LOD{
-                                        detailed: (b.model_hull.mesh.clone(), material_hull.clone()),
+                                        detailed: (b.model_hull.mesh.clone(), Some(material_hull.clone()), None),
                                         simplified: (b.lod.0.mesh.clone(), simplified_material.clone()),
                                     },
                                 )).push_children(&[turret]).id();
@@ -1348,7 +1351,7 @@ pub fn unit_production_system (
                                     b.controller.clone(),
                                     SelectableUnit,
                                     LOD{
-                                        detailed: (b.model.mesh.clone(), material.clone()),
+                                        detailed: (b.model.mesh.clone(), Some(material.clone()), None),
                                         simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                     },
                                 )).id();
@@ -1416,7 +1419,7 @@ pub fn unit_production_system (
                                     b.supplies_consumer.clone(),
                                     b.controller.clone(),
                                     LOD{
-                                        detailed: (b.model.mesh.clone(), material.clone()),
+                                        detailed: (b.model.mesh.clone(), Some(material.clone()), None),
                                         simplified: (b.lod.mesh.clone(), simplified_material.clone()),
                                     },
                                 )).id();
@@ -1665,6 +1668,11 @@ pub fn unit_replenishment_system(
     mut event_reader: EventReader<UnitDeathEvent>,
     mut army: ResMut<Armies>,
     mut tile_map: ResMut<UnitsTileMap>,
+    unit_assets: Res<UnitAssets>,
+    materials: Res<Assets<StandardMaterial>>,
+    mut instanced_materials: ResMut<InstancedMaterials>,
+    mut extended_materials: ResMut<Assets<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>>,
+    mut remains_count: ResMut<RemainsCount>,
     mut event_writer: (
         //EventWriter<UnsentServerMessage>,
         EventWriter<UnitNeedsToBeUncovered>,
@@ -1674,167 +1682,301 @@ pub fn unit_replenishment_system(
     mut server: ResMut<QuinnetServer>,
     clients: Res<ClientList>,
 ){
-    for event in event_reader.read() {
-        if commands.get_entity(event.dead_unit_data.3).is_some() {
-            tile_map.tiles.entry(event.dead_unit_data.0).or_insert_with(HashMap::new).entry(event.dead_unit_data.1.0)
-            .or_insert_with(HashMap::new).remove(&event.dead_unit_data.3);
+    if !event_reader.is_empty() {
+        let mut deleted_entities: HashSet<Entity> = HashSet::new();
 
-            if let Some(cover_entity) = event.dead_unit_data.2 {
-                event_writer.0.send(UnitNeedsToBeUncovered {
-                    cover_entity: cover_entity,
-                    unit_entity: event.dead_unit_data.3,
-                });
-            }
+        for event in event_reader.read() {
+            if deleted_entities.get(&event.dead_unit_data.3).is_none() && commands.get_entity(event.dead_unit_data.3).is_some() {
+                deleted_entities.insert(event.dead_unit_data.3);
 
-            commands.entity(event.dead_unit_data.3).despawn_recursive();
-    
-            if matches!(network_status.0, NetworkStatuses::Host) {
-                let mut channel_id = 60;
-                while channel_id <= 89 {
-                    if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnitRemoved {
-                        server_entity: event.dead_unit_data.3,
-                        unit_data: (
-                            event.dead_unit_data.0,
-                            event.dead_unit_data.1.0,
-                            event.dead_unit_data.1.1.clone(),
-                        ),
-                    }){
-                        channel_id += 1;
-                    } else {
-                        break;
+                let mut mesh: Handle<Mesh> = Handle::default();
+                let mut material: Handle<StandardMaterial> = Handle::default();
+                let mut remains_type = "unspecified";
+
+                match event.dead_unit_data.1.1.2.as_str() {
+                    "regular_soldier" => {
+                        mesh = unit_assets.corpse.0.clone();
+                        material = unit_assets.corpse.1.clone();
+                        remains_type = "infantry";
+                    }
+                    "atgm" => {
+                        mesh = unit_assets.corpse.0.clone();
+                        material = unit_assets.corpse.1.clone();
+                        remains_type = "infantry";
+                    }
+                    "shock_soldier" => {
+                        mesh = unit_assets.corpse.0.clone();
+                        material = unit_assets.corpse.1.clone();
+                        remains_type = "infantry";
+                    }
+                    "lat" => {
+                        mesh = unit_assets.corpse.0.clone();
+                        material = unit_assets.corpse.1.clone();
+                        remains_type = "infantry";
+                    }
+                    "sniperr" => {
+                        mesh = unit_assets.corpse.0.clone();
+                        material = unit_assets.corpse.1.clone();
+                        remains_type = "infantry";
+                    }
+                    "snipers" => {
+                        mesh = unit_assets.corpse.0.clone();
+                        material = unit_assets.corpse.1.clone();
+                        remains_type = "infantry";
+                    }
+                    "tank" => {
+                        mesh = unit_assets.tank.0.clone();
+                        material = instanced_materials.wreck_material.clone();
+                        remains_type = "vehicle";
+                    }
+                    "ifv" => {
+                        mesh = unit_assets.ifv.0.clone();
+                        material = instanced_materials.wreck_material.clone();
+                        remains_type = "vehicle";
+                    }
+                    "artillery" => {
+                        mesh = unit_assets.artillery.0.clone();
+                        material = instanced_materials.wreck_material.clone();
+                        remains_type = "vehicle";
+                    }
+                    "engineer" => {
+                        mesh = unit_assets.engineer.0.clone();
+                        material = instanced_materials.wreck_material.clone();
+                        remains_type = "vehicle";
+                    }
+                    _ => {}
+                }
+
+                remains_count.0 += 1;
+
+                match remains_type {
+                    "infantry" => {
+                        let color;
+                        let simplified_material;
+                        if event.dead_unit_data.0 == 1 {
+                            color = Vec4::new(0., 0., 1., 1.);
+                            simplified_material = instanced_materials.blue_solid.clone();
+                        } else {
+                            color = Vec4::new(1., 0., 0., 1.);
+                            simplified_material = instanced_materials.red_solid.clone();
+                        }
+
+                        let team_material;
+
+                        if let Some(mat) = instanced_materials.team_materials.get(&(mesh.id(), event.dead_unit_data.0)) {
+                            team_material = mat.clone();
+                        } else {
+                            if let Some(original) = materials.get(material.id()) {
+                                team_material = extended_materials.add(ExtendedMaterial {
+                                    base: original.clone(),
+                                    extension: TeamMaterialExtension {
+                                        team_color: color,
+                                    },
+                                });
+                            } else {
+                                team_material = extended_materials.add(ExtendedMaterial {
+                                    base: StandardMaterial{
+                                        ..default()
+                                    },
+                                    extension: TeamMaterialExtension {
+                                        team_color: color,
+                                    },
+                                });
+                            }
+
+                            instanced_materials.team_materials.insert((mesh.id(), event.dead_unit_data.0), team_material.clone());
+                        }
+
+                        commands.spawn(MaterialMeshBundle{
+                            mesh: mesh.clone(),
+                            material: team_material.clone(),
+                            transform: event.dead_unit_data.4,
+                            ..default()
+                        })
+                        .insert(UnitRemains{
+                            number: remains_count.0,
+                        }).insert(LOD{
+                            detailed: (mesh, Some(team_material), None),
+                            simplified: (unit_assets.corpse_simplified_mesh.clone(), simplified_material),
+                        });
+                    }
+                    "vehicle" => {
+                        commands.spawn(MaterialMeshBundle{
+                            mesh: mesh.clone(),
+                            material: material.clone(),
+                            transform: event.dead_unit_data.4,
+                            ..default()
+                        })
+                        .insert(UnitRemains{
+                            number: remains_count.0,
+                        }).insert(LOD{
+                            detailed: (mesh, None, Some(material.clone())),
+                            simplified: (unit_assets.vehicle_simplified_mesh.clone(), material),
+                        });
+                    }
+                    _ => {}
+                }
+
+                tile_map.tiles.entry(event.dead_unit_data.0).or_insert_with(HashMap::new).entry(event.dead_unit_data.1.0)
+                .or_insert_with(HashMap::new).remove(&event.dead_unit_data.3);
+
+                if let Some(cover_entity) = event.dead_unit_data.2 {
+                    event_writer.0.send(UnitNeedsToBeUncovered {
+                        cover_entity: cover_entity,
+                        unit_entity: event.dead_unit_data.3,
+                    });
+                }
+
+                commands.entity(event.dead_unit_data.3).despawn_recursive();
+        
+                if matches!(network_status.0, NetworkStatuses::Host) {
+                    let mut channel_id = 60;
+                    while channel_id <= 89 {
+                        if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnitRemoved {
+                            server_entity: event.dead_unit_data.3,
+                            unit_data: (
+                                event.dead_unit_data.0,
+                                event.dead_unit_data.1.0,
+                                event.dead_unit_data.1.1.clone(),
+                            ),
+                        }){
+                            channel_id += 1;
+                        } else {
+                            break;
+                        }
                     }
                 }
-            }
-    
-            match event.dead_unit_data.1.1.0 {
-                CompanyTypes::Regular => {
-                    production_queue.0.entry(event.dead_unit_data.0).or_insert_with(|| ProductionQueueObject{
-                        regular_infantry_queue: HashMap::new(),
-                        shock_infantry_queue: HashMap::new(),
-                        vehicles_queue: HashMap::new(),
-                        artillery_queue: HashMap::new(),
-                        engineers_queue: HashMap::new(),
-                    })
-                    .regular_infantry_queue
-                    .insert(
-                        event.dead_unit_data.1.1.1,
-                        (
-                            event.dead_unit_data.1.1.2.clone(),
-                            Entity::PLACEHOLDER,
-                        ),
-                    );
-    
-                    if let Some (platoon) = army.0.get_mut(&event.dead_unit_data.0).unwrap().regular_platoons.get_mut(&(
-                        event.dead_unit_data.1.1.1.0,
-                        event.dead_unit_data.1.1.1.1,
-                        event.dead_unit_data.1.1.1.2,
-                        event.dead_unit_data.1.1.1.3,
-                        event.dead_unit_data.1.1.1.4,
-                    )) {
-                        if event.dead_unit_data.1.1.1.5 == 0 {
-                            platoon.0.0.0.remove(&event.dead_unit_data.3);
-                        } else {
-                            platoon.0.0.1.remove(&event.dead_unit_data.3);
+        
+                match event.dead_unit_data.1.1.0 {
+                    CompanyTypes::Regular => {
+                        production_queue.0.entry(event.dead_unit_data.0).or_insert_with(|| ProductionQueueObject{
+                            regular_infantry_queue: HashMap::new(),
+                            shock_infantry_queue: HashMap::new(),
+                            vehicles_queue: HashMap::new(),
+                            artillery_queue: HashMap::new(),
+                            engineers_queue: HashMap::new(),
+                        })
+                        .regular_infantry_queue
+                        .insert(
+                            event.dead_unit_data.1.1.1,
+                            (
+                                event.dead_unit_data.1.1.2.clone(),
+                                Entity::PLACEHOLDER,
+                            ),
+                        );
+        
+                        if let Some (platoon) = army.0.get_mut(&event.dead_unit_data.0).unwrap().regular_platoons.get_mut(&(
+                            event.dead_unit_data.1.1.1.0,
+                            event.dead_unit_data.1.1.1.1,
+                            event.dead_unit_data.1.1.1.2,
+                            event.dead_unit_data.1.1.1.3,
+                            event.dead_unit_data.1.1.1.4,
+                        )) {
+                            if event.dead_unit_data.1.1.1.5 == 0 {
+                                platoon.0.0.0.remove(&event.dead_unit_data.3);
+                            } else {
+                                platoon.0.0.1.remove(&event.dead_unit_data.3);
+                            }
                         }
-                    }
-                },
-                CompanyTypes::Shock => {
-                    production_queue.0.entry(event.dead_unit_data.0).or_insert_with(|| ProductionQueueObject{
-                        regular_infantry_queue: HashMap::new(),
-                        shock_infantry_queue: HashMap::new(),
-                        vehicles_queue: HashMap::new(),
-                        artillery_queue: HashMap::new(),
-                        engineers_queue: HashMap::new(),
-                    })
-                    .shock_infantry_queue.insert(
-                        event.dead_unit_data.1.1.1,
-                        (
-                            event.dead_unit_data.1.1.2.clone(),
-                            Entity::PLACEHOLDER,
-                        ),
-                    );
-    
-                    if let Some (platoon) = army.0.get_mut(&event.dead_unit_data.0).unwrap().shock_platoons.get_mut(&(
-                        event.dead_unit_data.1.1.1.0,
-                        event.dead_unit_data.1.1.1.1,
-                        event.dead_unit_data.1.1.1.2,
-                        event.dead_unit_data.1.1.1.3,
-                        event.dead_unit_data.1.1.1.4,
-                    )) {
-                        if event.dead_unit_data.1.1.1.5 == 0 {
-                            platoon.0.0.0.remove(&event.dead_unit_data.3);
-                        } else {
-                            platoon.0.0.1.remove(&event.dead_unit_data.3);
+                    },
+                    CompanyTypes::Shock => {
+                        production_queue.0.entry(event.dead_unit_data.0).or_insert_with(|| ProductionQueueObject{
+                            regular_infantry_queue: HashMap::new(),
+                            shock_infantry_queue: HashMap::new(),
+                            vehicles_queue: HashMap::new(),
+                            artillery_queue: HashMap::new(),
+                            engineers_queue: HashMap::new(),
+                        })
+                        .shock_infantry_queue.insert(
+                            event.dead_unit_data.1.1.1,
+                            (
+                                event.dead_unit_data.1.1.2.clone(),
+                                Entity::PLACEHOLDER,
+                            ),
+                        );
+        
+                        if let Some (platoon) = army.0.get_mut(&event.dead_unit_data.0).unwrap().shock_platoons.get_mut(&(
+                            event.dead_unit_data.1.1.1.0,
+                            event.dead_unit_data.1.1.1.1,
+                            event.dead_unit_data.1.1.1.2,
+                            event.dead_unit_data.1.1.1.3,
+                            event.dead_unit_data.1.1.1.4,
+                        )) {
+                            if event.dead_unit_data.1.1.1.5 == 0 {
+                                platoon.0.0.0.remove(&event.dead_unit_data.3);
+                            } else {
+                                platoon.0.0.1.remove(&event.dead_unit_data.3);
+                            }
                         }
-                    }
-                },
-                CompanyTypes::Armored => {
-                    production_queue.0.entry(event.dead_unit_data.0).or_insert_with(|| ProductionQueueObject{
-                        regular_infantry_queue: HashMap::new(),
-                        shock_infantry_queue: HashMap::new(),
-                        vehicles_queue: HashMap::new(),
-                        artillery_queue: HashMap::new(),
-                        engineers_queue: HashMap::new(),
-                    })
-                    .vehicles_queue.insert(
-                        event.dead_unit_data.1.1.1,
-                        (
-                            event.dead_unit_data.1.1.2.clone(),
-                            Entity::PLACEHOLDER,
-                        ),
-                    );
-    
-                    if let Some (platoon) = army.0.get_mut(&event.dead_unit_data.0).unwrap().armored_platoons.get_mut(&(
-                        event.dead_unit_data.1.1.1.0,
-                        event.dead_unit_data.1.1.1.1,
-                        event.dead_unit_data.1.1.1.2,
-                        event.dead_unit_data.1.1.1.3,
-                        event.dead_unit_data.1.1.1.4,
-                    )) {
-                        platoon.0.0.remove(&event.dead_unit_data.3);
-                    }
-                },
-                CompanyTypes::Artillery => {
-                    production_queue.0.entry(event.dead_unit_data.0).or_insert_with(|| ProductionQueueObject{
-                        regular_infantry_queue: HashMap::new(),
-                        shock_infantry_queue: HashMap::new(),
-                        vehicles_queue: HashMap::new(),
-                        artillery_queue: HashMap::new(),
-                        engineers_queue: HashMap::new(),
-                    })
-                    .artillery_queue.insert(
-                        event.dead_unit_data.1.1.1,
-                        (
-                            event.dead_unit_data.1.1.2.clone(),
-                            Entity::PLACEHOLDER,
-                        ),
-                    );
-    
-                    if let Some(artillery) = army.0.get_mut(&event.dead_unit_data.0).unwrap().artillery_units.0.get_mut(&event.dead_unit_data.1.1.1.6){
-                        artillery.0.0 = None;
-                    }
-                },
-                CompanyTypes::Engineer => {
-                    production_queue.0.entry(event.dead_unit_data.0).or_insert_with(|| ProductionQueueObject{
-                        regular_infantry_queue: HashMap::new(),
-                        shock_infantry_queue: HashMap::new(),
-                        vehicles_queue: HashMap::new(),
-                        artillery_queue: HashMap::new(),
-                        engineers_queue: HashMap::new(),
-                    })
-                    .engineers_queue.insert(
-                        event.dead_unit_data.1.1.1,
-                        (
-                            event.dead_unit_data.1.1.2.clone(),
-                            Entity::PLACEHOLDER,
-                        ),
-                    );
-    
-                    if let Some(engineer) = army.0.get_mut(&event.dead_unit_data.0).unwrap().engineers.get_mut(&event.dead_unit_data.1.1.1.6){
-                        engineer.0.0 = None;
-                    }
-                },
-                CompanyTypes::None => {},
+                    },
+                    CompanyTypes::Armored => {
+                        production_queue.0.entry(event.dead_unit_data.0).or_insert_with(|| ProductionQueueObject{
+                            regular_infantry_queue: HashMap::new(),
+                            shock_infantry_queue: HashMap::new(),
+                            vehicles_queue: HashMap::new(),
+                            artillery_queue: HashMap::new(),
+                            engineers_queue: HashMap::new(),
+                        })
+                        .vehicles_queue.insert(
+                            event.dead_unit_data.1.1.1,
+                            (
+                                event.dead_unit_data.1.1.2.clone(),
+                                Entity::PLACEHOLDER,
+                            ),
+                        );
+        
+                        if let Some (platoon) = army.0.get_mut(&event.dead_unit_data.0).unwrap().armored_platoons.get_mut(&(
+                            event.dead_unit_data.1.1.1.0,
+                            event.dead_unit_data.1.1.1.1,
+                            event.dead_unit_data.1.1.1.2,
+                            event.dead_unit_data.1.1.1.3,
+                            event.dead_unit_data.1.1.1.4,
+                        )) {
+                            platoon.0.0.remove(&event.dead_unit_data.3);
+                        }
+                    },
+                    CompanyTypes::Artillery => {
+                        production_queue.0.entry(event.dead_unit_data.0).or_insert_with(|| ProductionQueueObject{
+                            regular_infantry_queue: HashMap::new(),
+                            shock_infantry_queue: HashMap::new(),
+                            vehicles_queue: HashMap::new(),
+                            artillery_queue: HashMap::new(),
+                            engineers_queue: HashMap::new(),
+                        })
+                        .artillery_queue.insert(
+                            event.dead_unit_data.1.1.1,
+                            (
+                                event.dead_unit_data.1.1.2.clone(),
+                                Entity::PLACEHOLDER,
+                            ),
+                        );
+        
+                        if let Some(artillery) = army.0.get_mut(&event.dead_unit_data.0).unwrap().artillery_units.0.get_mut(&event.dead_unit_data.1.1.1.6){
+                            artillery.0.0 = None;
+                        }
+                    },
+                    CompanyTypes::Engineer => {
+                        production_queue.0.entry(event.dead_unit_data.0).or_insert_with(|| ProductionQueueObject{
+                            regular_infantry_queue: HashMap::new(),
+                            shock_infantry_queue: HashMap::new(),
+                            vehicles_queue: HashMap::new(),
+                            artillery_queue: HashMap::new(),
+                            engineers_queue: HashMap::new(),
+                        })
+                        .engineers_queue.insert(
+                            event.dead_unit_data.1.1.1,
+                            (
+                                event.dead_unit_data.1.1.2.clone(),
+                                Entity::PLACEHOLDER,
+                            ),
+                        );
+        
+                        if let Some(engineer) = army.0.get_mut(&event.dead_unit_data.0).unwrap().engineers.get_mut(&event.dead_unit_data.1.1.1.6){
+                            engineer.0.0 = None;
+                        }
+                    },
+                    CompanyTypes::None => {},
+                }
             }
         }
     }

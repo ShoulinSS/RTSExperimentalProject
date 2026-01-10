@@ -3,7 +3,7 @@ use core::f32;
 use bevy::{core_pipeline::motion_blur::node, math::{vec2, VectorSpace}, prelude::*, render::render_resource::ShaderType, window::PrimaryWindow};
 use bevy_mod_raycast::prelude::*;
 
-use crate::{components::unit::IsUnitSelectionAllowed, PlayerData};
+use crate::{PlayerData, components::unit::{DisabledUnit, InfantryTransport, IsUnitSelectionAllowed}};
 
 use super::{building::{add_selected_buildings, clear_selected_buildings, CoverComponent, SelectableBuilding, SelectedBuilding, SelectedBuildings}, network::InsertedConnectionData, unit::{add_selected_units, clear_selected_units, CombatComponent, IsArtilleryDesignationActive, IsUnitDeselectionAllowed, SelectableUnit, SelectedUnits, TargetPosition}};
 
@@ -106,7 +106,7 @@ pub fn handle_mouse_buttons(
     camera_q: Query<(&CameraComponent, &Transform, &Camera, &GlobalTransform)>,
     buttons_keys: (Res<ButtonInput<MouseButton>>, Res<ButtonInput<KeyCode>>),
     selectables: (
-        Query<(&Transform, Entity, &CombatComponent), With<SelectableUnit>>,
+        Query<(&Transform, Entity, &CombatComponent), (With<SelectableUnit>, Without<DisabledUnit>)>,
         Query<Entity, With<SelectableBuilding>>,
         Res<PlayerData>,
     ),
@@ -125,7 +125,10 @@ pub fn handle_mouse_buttons(
     mut event_writer: (
         EventWriter<MoveOrderEvent>,
     ),
-    covers_q: Query<&CoverComponent>,
+    unit_containers_q: (
+        Query<&CoverComponent>,
+        Query<&InfantryTransport>,
+    ),
 ){
     let window = windows_q.single();
     //RMB
@@ -163,7 +166,7 @@ pub fn handle_mouse_buttons(
         if let Some(cursor_ray) = **cursor_ray {
             let hits = raycast.cast_ray(cursor_ray, &default());
 
-            if hits.len() > 0 && !covers_q.get(hits[0].0).is_ok() {
+            if hits.len() > 0 && !unit_containers_q.0.get(hits[0].0).is_ok() && !unit_containers_q.1.get(hits[0].0).is_ok() {
                 event_writer.0.send(MoveOrderEvent);
             }
         }

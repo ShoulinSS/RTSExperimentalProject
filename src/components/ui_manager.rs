@@ -6,7 +6,7 @@ use bevy_quinnet::{client::QuinnetClient, server::QuinnetServer};
 use bevy_rapier3d::{plugin::RapierContext, prelude::{Collider, QueryFilter}, rapier::crossbeam::epoch::CompareAndSetOrdering};
 use oxidized_navigation_serializable::NavMeshAffector;
 
-use crate::{GameStage, GameStages, GameState, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, PlayerData, SUPPLIES_COLOR, components::{asset_manager::{CircleData, CircleHolder, ForbiddenBlueprint, InstancedMaterials, OtherAssets, TeamMaterialExtension, Terrain}, building::{BuildingStageCache, BuildingsDeletionStates, HumanResourceStorageComponent, MaterialsProductionComponent, MaterialsStorageComponent, SettlementComponent, SwitchableBuilding}, camera::SelectionBox, unit::{ARMY_SIZE, BATTALION_SIZE, COMPANY_SIZE, IsUnitSelectionAllowed, PLATOON_SIZE, REGIMENT_SIZE, SuppliesConsumerComponent}}};
+use crate::{GameStage, GameStages, GameState, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, PlayerData, SUPPLIES_COLOR, components::{asset_manager::{CircleData, CircleHolder, ForbiddenBlueprint, InstancedMaterials, OtherAssets, TeamMaterialExtension, Terrain}, building::{BuildingStageCache, BuildingsDeletionStates, HumanResourceStorageComponent, MaterialsProductionComponent, MaterialsStorageComponent, SettlementComponent, SwitchableBuilding}, camera::SelectionBox, unit::{ARMY_SIZE, BATTALION_SIZE, COMPANY_SIZE, DisabledUnit, InfantryTransport, IsUnitSelectionAllowed, PLATOON_SIZE, REGIMENT_SIZE, SuppliesConsumerComponent}}};
 
 use super::{asset_manager::{generate_circle_segments, LineData, LineHolder}, building::{AllSettlementsPlaced, BuildingBlueprint, BuildingsBundles, BuildingsList, InfantryBarracksBundle, ProductionButtonPressed, ProductionQueue, ProductionState, SoldierBundle, UnactivatedBlueprints, UnitBundles, VehicleFactoryBundle, ALLOWED_DISTANCE_FROM_BORDERS, CITIES_COUNT}, camera::{CameraComponent, SelectionBounds}, logistics::ResourceZone, network::{ClientList, ClientMessage, InsertedConnectionData, NetworkStatus, NetworkStatuses, PlayerList, ServerMessage}, unit::{self, Armies, ArmoredPlatoon, ArtilleryUnit, CompanyTypes, CombatComponent, IsArtilleryDesignationActive, LimitedHashMap, LimitedHashSet, LimitedNumber, SquadLeader, RegularPlatoon, SelectedUnit, SerializableArmoredPlatoon, SerializableArmyObject, SerializableRegularPlatoon, SerializableShockPlatoon, ShockPlatoon, UnitTypes, UnitsTileMap, MAX_PLATOON_COUNT, START_ARMORED_SQUADS_AMOUNT, START_REGULAR_SQUADS_AMOUNT, START_SHOCK_SQUADS_AMOUNT, TILE_SIZE}};
 
@@ -36,6 +36,7 @@ pub enum Actions {
     ActivateBuildingsDeletionCancelationMode,
     SwitchBuildingState(Entity),
     RebuildApartments(Entity),
+    DisembarkInfantry,
 }
 
 #[derive(Event)]
@@ -121,6 +122,9 @@ pub struct SwitchBuildingState(pub Entity);
 
 #[derive(Event)]
 pub struct RebuildApartments(pub Entity);
+
+#[derive(Event)]
+pub struct TransportDisembarkEvent;
 
 #[derive(Event)]
 pub struct BuildingButtonHovered(pub String);
@@ -1661,6 +1665,7 @@ pub fn handle_button_clicks(
         EventWriter<ActivateBuildingsDeletionCancelationMode>,
         EventWriter<SwitchBuildingState>,
         EventWriter<RebuildApartments>,
+        EventWriter<TransportDisembarkEvent>,
     ),
     mut buttons_hover_event_writer: (
         EventWriter<BuildingButtonHovered>,
@@ -1753,6 +1758,9 @@ pub fn handle_button_clicks(
                     Actions::RebuildApartments(d) => {
                         event_writer2.8.send(RebuildApartments(*d));
                     },
+                    Actions::DisembarkInfantry => {
+                        event_writer2.9.send(TransportDisembarkEvent);
+                    }
                     _ => {},
                 }
 
@@ -3202,7 +3210,7 @@ pub fn platoon_nodes_positioning_system(
     (Without<PlatoonSelector>, Without<SquadSelector>, Without<CompanySelector>, Without<RegimentSelector>, Without<BattalionSelector>, Without<SuppliesBar>)>,
     mut supply_bars_q: Query<(&mut Style, &SuppliesBar),
     (Without<PlatoonSelector>, Without<SquadSelector>, Without<CompanySelector>, Without<RegimentSelector>, Without<BattalionSelector>, Without<BrigadeSelector>)>,
-    squad_leaders_q: Query<(&Transform, &SquadLeader, Option<&SuppliesConsumerComponent>), With<SquadLeader>>,
+    squad_leaders_q: Query<(&Transform, &SquadLeader, Option<&SuppliesConsumerComponent>), (With<SquadLeader>, Without<DisabledUnit>)>,
     other_assets: Res<OtherAssets>,
     symbols_level: Res<DisplayedTacicalSymbolsLevel>,
     mut commands: Commands,
@@ -5323,11 +5331,12 @@ pub fn switchable_buildings_ui_manager(
     cursor_ray: Res<CursorRay>,
     mut raycast: Raycast,
     selection_bounds: Res<SelectionBounds>,
+    game_stage: Res<GameStage>,
     mut commands: Commands,
     mut ui_blocker: ResMut<UiBlocker>,
     mut is_menu_opened: Local<bool>,
 ){
-    if mouse_buttons.just_pressed(MouseButton::Left) {
+    if mouse_buttons.just_pressed(MouseButton::Left) && matches!(game_stage.0, GameStages::GameStarted) {
         if !ui_button_nodes.is_middle_bottom_node_visible {
             if !selection_bounds.is_ui_hovered {
                 if let Some(cursor_ray) = **cursor_ray {
@@ -5536,5 +5545,70 @@ pub fn hint_management_system (
                 });
             }
         }
+    }
+}
+
+pub fn disembark_button_system(
+    transports_q: Query<Entity, (With<InfantryTransport>, With<SelectedUnit>)>,
+    mut ui_button_nodes: ResMut<UiButtonNodes>,
+    mut ui_blocker: ResMut<UiBlocker>,
+    mut is_menu_opened: Local<bool>,
+    mut commands: Commands,
+){
+    if transports_q.is_empty() && *is_menu_opened && !ui_blocker.is_bottom_left_node_blocked {
+        *is_menu_opened = false;
+
+        ui_button_nodes.is_left_bottom_node_visible = false;
+        commands.entity(ui_button_nodes.left_bottom_node).insert(Visibility::Hidden);
+
+        for row in ui_button_nodes.left_bottom_node_rows.iter() {
+            commands.entity(*row).despawn_descendants();
+        }
+    } else if !ui_blocker.is_bottom_left_node_blocked && !transports_q.is_empty() {
+        *is_menu_opened = true;
+        ui_blocker.is_bottom_left_node_blocked = true;
+
+        ui_button_nodes.is_left_bottom_node_visible = true;
+        commands.entity(ui_button_nodes.left_bottom_node).insert(Visibility::Visible);
+
+        for row in ui_button_nodes.left_bottom_node_rows.iter() {
+            commands.entity(*row).despawn_descendants();
+        }
+
+        commands.entity(ui_button_nodes.left_bottom_node_rows[0]).with_children(|parent|{
+            parent.spawn(ButtonBundle{
+                style: Style {
+                    position_type: PositionType::Relative,
+                    width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+                    height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+                    margin: UiRect {
+                        left: Val::Px(ui_button_nodes.margin),
+                        right: Val::Px(ui_button_nodes.margin),
+                        top: Val::Px(ui_button_nodes.margin),
+                        bottom: Val::Px(ui_button_nodes.margin),
+                    },
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                ..default()
+            }).insert(ButtonAction{action: Actions::DisembarkInfantry})
+            .with_children(|button_parent| {
+                button_parent.spawn(TextBundle {
+                    text: Text{
+                        sections: vec![TextSection {
+                            value: "Disbk".to_string(),
+                            ..default()
+                        }],
+                        justify: JustifyText::Center,
+                        ..default() 
+                    },
+                    ..default()
+                });
+            });
+        });
+    } else {
+        *is_menu_opened = false;
     }
 }
