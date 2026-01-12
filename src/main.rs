@@ -2391,6 +2391,7 @@ impl Plugin for GameServerPlugin {
             components::unit::brigade_selection_system,
             components::unit::update_fog_of_war,
             components::unit::visual_projectiles_processing_system,
+            components::asset_manager::blueprint_placement_color_definer,
         ).run_if(in_state(GameState::MultiplayerAsHost)));
     }
 }
@@ -2462,6 +2463,7 @@ impl Plugin for GameClientPlugin {
             components::unit::brigade_selection_system,
             components::unit::update_fog_of_war,
             components::unit::visual_projectiles_processing_system,
+            components::asset_manager::blueprint_placement_color_definer,
         ).run_if(in_state(GameState::MultiplayerAsClient)));
     }
 }

@@ -3847,17 +3847,17 @@ pub fn building_placement_handling_system(
         ResMut<BuildingStageCache>,
         Res<BuildingsList>,
     ),
-    mut materials: (
-        ResMut<Assets<StandardMaterial>>,
-        ResMut<InstancedMaterials>,
-        ResMut<Assets<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>>,
+    materials: (
+        Res<Assets<StandardMaterial>>,
+        Res<InstancedMaterials>,
+        Res<Assets<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>>,
     ),
     mut unactivated_blueprints: ResMut<UnactivatedBlueprints>,
     mut displayed_model_holders: Query<(Entity, &mut Transform, Option<&ResourceZoneRestricted>), (With<DisplayedModelHolder>, Without<ResourceZone>, Without<Terrain>)>,
     terrain_q: Query<Entity, With<Terrain>>,
     ui_resources: (
         Res<SelectionBounds>,
-        ResMut<UiButtonNodes>,
+        Res<UiButtonNodes>,
     ),
     cursor_ray: Res<CursorRay>,
     mut raycast: Raycast,
@@ -3977,10 +3977,123 @@ pub fn building_placement_handling_system(
                         }
                     }
 
-                    buildings_cache.0.is_active = false;
-                    buildings_cache.0.current_building = BuildingsBundles::None;
-                    for holder in displayed_model_holders.iter() {
-                        commands.entity(holder.0).despawn();
+                    let mut is_building_placed = false;
+        
+                    match &buildings_cache.0.current_building {
+                        BuildingsBundles::InfantryBarracks(bundle) => {
+                            is_building_placed = true;
+                        },
+                        BuildingsBundles::VehicleFactory(bundle) => {
+                            is_building_placed = true;
+                        },
+                        BuildingsBundles::LogisticHub(bundle) => {
+                            is_building_placed = true;
+                        },
+                        BuildingsBundles::ResourceMiner(bundle) => {
+                            for mut zone in resource_zones_q.iter_mut() {
+                                zone.0.current_miners.entry(player_data.team).or_insert_with(|| None);
+
+                                let mut is_some = false;
+
+                                if let Some(mut miner) = zone.0.current_miners.get_mut(&player_data.team) {
+                                    if let Some(entity) = miner {
+                                        if commands.get_entity(entity.0).is_none() {
+                                            miner = &mut None;
+                                        } else {
+                                            is_some = true;
+                                        }
+                                    }
+                                }
+                                
+                                if !is_some && zone.1.translation.xz().distance(cursor_on_plane_position.xz()) <= zone.0.zone_radius {
+                                    is_building_placed = true;
+    
+                                    break;
+                                }
+                            }
+                        },
+                        BuildingsBundles::Pillbox(bundle) => {
+                            is_building_placed = true;
+                        },
+                        _ => {},
+                    }
+
+                    if !button_inputs.1.pressed(KeyCode::ControlLeft) {
+                        buildings_cache.0.is_active = false;
+                        buildings_cache.0.current_building = BuildingsBundles::None;
+                        for holder in displayed_model_holders.iter() {
+                            commands.entity(holder.0).despawn();
+                        }
+                    }
+
+                    if matches!(game_stage.0, GameStages::BuildingsSetup) && is_building_placed {
+                        if let Some(building) = buildings_cache.1.buildings.get_mut(&buildings_cache.0.name) {
+                            building.0 -= 1;
+
+                            if building.0 < 1 {
+                                buildings_cache.0.is_active = false;
+                                buildings_cache.0.current_building = BuildingsBundles::None;
+                                for holder in displayed_model_holders.iter() {
+                                    commands.entity(holder.0).despawn();
+                                }
+                            }
+                        }
+
+                        commands.entity(ui_resources.1.middle_bottom_node_row).despawn_descendants();
+
+                        for building in buildings_cache.2.0.iter() {
+                            let mut count = "".to_string();
+                            let mut color = Color::srgb(0., 1., 0.);
+                            if let Some(building_cache) = buildings_cache.1.buildings.get_mut(&building.0) {
+                                count = building_cache.0.to_string();
+                                if building_cache.1 {
+                                    color = Color::srgb(1., 0., 0.);
+                                }
+
+                                if building_cache.0 < 1 {
+                                    color = Color::srgb(0., 1., 0.);
+                                }
+                            }
+                            
+                            commands.entity(ui_resources.1.middle_bottom_node_row).with_children(|parent| {
+                                parent.spawn(ButtonBundle{
+                                    style: Style {
+                                        position_type: PositionType::Relative,
+                                        width: Val::Px(ui_resources.1.button_size - ui_resources.1.margin * 2.),
+                                        height: Val::Px(ui_resources.1.button_size - ui_resources.1.margin * 2.),
+                                        margin: UiRect {
+                                            left: Val::Px(ui_resources.1.margin),
+                                            right: Val::Px(ui_resources.1.margin),
+                                            top: Val::Px(ui_resources.1.margin),
+                                            bottom: Val::Px(ui_resources.1.margin),
+                                        },
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                                    ..default()
+                                }).insert(ButtonAction{action: Actions::BuildingToBuildSelected(
+                                    (building.1.clone(), building.2.clone(), building.3, building.4, building.0.clone(), building.5, building.6))}
+                                )
+                                .with_children(|button_parent| {
+                                    button_parent.spawn(TextBundle {
+                                        text: Text{
+                                            sections: vec![TextSection {
+                                                value: count,
+                                                style: TextStyle{
+                                                    color: color,
+                                                    ..default()
+                                                }
+                                            }],
+                                            justify: JustifyText::Center,
+                                            ..default() 
+                                        },
+                                        ..default()
+                                    });
+                                });
+                            });
+                        }
                     }
                 } else {
                     let mut new_building_entity = Entity::PLACEHOLDER;

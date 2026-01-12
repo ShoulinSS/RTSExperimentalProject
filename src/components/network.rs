@@ -1441,8 +1441,10 @@ pub struct UnitsToInsertPath(pub Vec<(Entity, Vec<Vec3>)>);
 
 pub fn server_messages_handler(
     mut client: ResMut<QuinnetClient>,
-    mut connection_events: EventReader<ConnectionEvent>,
-    mut connection_failed_events: EventReader<ConnectionFailedEvent>,
+    mut connection_events: (
+        EventReader<ConnectionEvent>,
+        EventReader<ConnectionFailedEvent>,
+    ),
     ip_buffer: Res<InsertedConnectionData>,
     mut players: (
         ResMut<PlayerList>,
@@ -1458,6 +1460,7 @@ pub fn server_messages_handler(
         ResMut<InstancedMaterials>,
         ResMut<Assets<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>>,
     ),
+    mut resource_zones_q: Query<(Entity, &Transform, &mut ResourceZone), With<ResourceZone>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut commands: Commands,
     buildings_list: Res<BuildingsList>,
@@ -1471,7 +1474,7 @@ pub fn server_messages_handler(
         EventWriter<ClientGameStartedEvent>,
     ),
 ) {
-    if !connection_events.is_empty() {
+    if !connection_events.0.is_empty() {
         let username: String = ip_buffer.username.clone();
 
         client
@@ -1479,9 +1482,9 @@ pub fn server_messages_handler(
             .send_message_on(2, ClientMessage::Connected { name: username })
             .unwrap();
 
-        connection_events.clear();
+        connection_events.0.clear();
     }
-    for ev in connection_failed_events.read() {
+    for ev in connection_events.1.read() {
         println!(
             "Failed to connect: {:?}.",
             ev.err
@@ -1643,8 +1646,8 @@ pub fn server_messages_handler(
                 let raod_mesh = create_curved_mesh(
                     5.,
                     5.,
-                    road_points.clone(),
-                    -1.2,
+                    road_points,
+                    -2.9,
                     &Transform::from_translation(road_center),
                 );
 
@@ -1658,6 +1661,7 @@ pub fn server_messages_handler(
                 .insert(NavMeshAffector)
                 .insert(NavMeshAreaType(Some(Area(1))))
                 .insert(NotShadowCaster)
+                .insert(CollisionGroups::new(Group::GROUP_2, Group::all()))
                 .id();
 
                 entity_maps.client_to_server.insert(client_entity, server_entity);
@@ -1668,7 +1672,7 @@ pub fn server_messages_handler(
 
                 let client_entity = commands.spawn(Transform::from_translation(position))
                 .insert(ResourceZone{
-                    zone_radius: 0.,
+                    zone_radius: resource_zone_size,
                     current_miners: HashMap::new(),
                 })
                 .insert(CircleHolder(vec![
@@ -1860,6 +1864,24 @@ pub fn server_messages_handler(
                                 build_distance: building.5,
                                 resource_cost: building.6,
                             }).id();
+
+                            let mut nearest_zone = (f32::INFINITY, Entity::PLACEHOLDER);
+
+                            for zone in resource_zones_q.iter() {
+                                let distance = zone.1.translation.distance(position);
+
+                                if distance < nearest_zone.0 {
+                                    nearest_zone.0 = distance;
+                                    nearest_zone.1 = zone.0;
+                                }
+                            }
+
+                            if let Ok(mut zone) = resource_zones_q.get_mut(nearest_zone.1) {
+                                zone.2.current_miners.entry(team).or_insert_with(|| None);
+                                if let Some(miners) = zone.2.current_miners.get_mut(&team) {
+                                    *miners = Some((client_entity, 1));
+                                }
+                            }
                         },
                         BuildingsBundles::Pillbox(bundle) => {
                             let material;
@@ -2181,6 +2203,24 @@ pub fn server_messages_handler(
                             .id();
 
                             unit_type = bundle.combat_component.unit_type;
+
+                            let mut nearest_zone = (f32::INFINITY, Entity::PLACEHOLDER);
+
+                            for zone in resource_zones_q.iter() {
+                                let distance = zone.1.translation.distance(position);
+
+                                if distance < nearest_zone.0 {
+                                    nearest_zone.0 = distance;
+                                    nearest_zone.1 = zone.0;
+                                }
+                            }
+
+                            if let Ok(mut zone) = resource_zones_q.get_mut(nearest_zone.1) {
+                                zone.2.current_miners.entry(team).or_insert_with(|| None);
+                                if let Some(miners) = zone.2.current_miners.get_mut(&team) {
+                                    *miners = Some((client_entity, 1));
+                                }
+                            }
                         },
                         BuildingsBundles::Pillbox(bundle) => {
                             let material;
@@ -2533,6 +2573,24 @@ pub fn server_messages_handler(
                             .id();
 
                             unit_type = bundle.combat_component.unit_type;
+
+                            let mut nearest_zone = (f32::INFINITY, Entity::PLACEHOLDER);
+
+                            for zone in resource_zones_q.iter() {
+                                let distance = zone.1.translation.distance(position);
+
+                                if distance < nearest_zone.0 {
+                                    nearest_zone.0 = distance;
+                                    nearest_zone.1 = zone.0;
+                                }
+                            }
+
+                            if let Ok(mut zone) = resource_zones_q.get_mut(nearest_zone.1) {
+                                zone.2.current_miners.entry(team).or_insert_with(|| None);
+                                if let Some(miners) = zone.2.current_miners.get_mut(&team) {
+                                    *miners = Some((client_entity, 1));
+                                }
+                            }
                         },
                         BuildingsBundles::Pillbox(bundle) => {
                             let material;
@@ -2622,7 +2680,7 @@ pub fn server_messages_handler(
                     }
 
                     let unit_type;
-    
+
                     match &unit_production_data.0 {
                         UnitBundles::Soldier(b) => {
                             unit_type = b.combat_component.unit_type.clone();
@@ -2653,6 +2711,7 @@ pub fn server_messages_handler(
                                     ),
                                 },
                                 b.supplies_consumer.clone(),
+                                b.controller.clone(),
                                 SelectableUnit,
                                 b.animation_component.clone(),
                                 ChangeMaterial,
@@ -2687,10 +2746,13 @@ pub fn server_messages_handler(
                                     is_static: b.combat_component.is_static,
                                     unit_data: (
                                         tile,
-                                        unit_data.1.clone(),
+                                        (
+                                            unit_data.1.clone()
+                                        ),
                                     ),
                                 },
                                 b.supplies_consumer.clone(),
+                                b.controller.clone(),
                                 SelectableUnit,
                                 b.animation_component.clone(),
                                 ChangeMaterial,
@@ -2737,7 +2799,7 @@ pub fn server_messages_handler(
                                 },
                                 LOD{
                                     detailed: (b.model_turret.mesh.clone(), Some(material_turret.clone()), None),
-                                    simplified: (b.lod.1.mesh.clone(), simplified_material.clone()).clone(),
+                                    simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                 },
                             )).id();
 
@@ -2790,10 +2852,13 @@ pub fn server_messages_handler(
                                     is_static: b.combat_component.is_static,
                                     unit_data: (
                                         tile,
-                                        unit_data.1.clone(),
+                                        (
+                                            unit_data.1.clone()
+                                        ),
                                     ),
                                 },
                                 b.supplies_consumer.clone(),
+                                b.controller.clone(),
                                 SelectableUnit,
                                 LOD{
                                     detailed: (b.model_hull.mesh.clone(), Some(material_hull.clone()), None),
@@ -2806,10 +2871,10 @@ pub fn server_messages_handler(
 
                             let material_turret;
 
-                            if let Some(mat) = materials.1.team_materials.get(&(b.model_turret.mesh.id(), unit_data.0)) {
+                            if let Some(mat) = materials.1.team_materials.get(&(b.lod.1.mesh.id(), unit_data.0)) {
                                 material_turret = mat.clone();
                             } else {
-                                if let Some(original) = materials.0.get(b.model_turret.material.id()) {
+                                if let Some(original) = materials.0.get(b.lod.1.material.id()) {
                                     material_turret = materials.2.add(ExtendedMaterial {
                                         base: original.clone(),
                                         extension: TeamMaterialExtension {
@@ -2827,18 +2892,18 @@ pub fn server_messages_handler(
                                     });
                                 }
 
-                                materials.1.team_materials.insert((b.model_turret.mesh.id(), unit_data.0), material_turret.clone());
+                                materials.1.team_materials.insert((b.lod.1.mesh.id(), unit_data.0), material_turret.clone());
                             }
 
                             let turret = commands.spawn((
                                 MaterialMeshBundle{
-                                    mesh: b.model_turret.mesh.clone(),
-                                    material: b.model_turret.material.clone(),
+                                    mesh: b.lod.1.mesh.clone(),
+                                    material: b.lod.1.material.clone(),
                                     ..default()
                                 },
                                 LOD{
-                                    detailed: (b.model_turret.mesh.clone(), Some(material_turret.clone()), None),
-                                    simplified: (b.lod.1.mesh.clone(), simplified_material.clone()).clone(),
+                                    detailed: (b.lod.1.mesh.clone(), Some(material_turret.clone()), None),
+                                    simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                 },
                             )).id();
 
@@ -2891,11 +2956,14 @@ pub fn server_messages_handler(
                                     is_static: b.combat_component.is_static,
                                     unit_data: (
                                         tile,
-                                        unit_data.1.clone(),
+                                        (
+                                            unit_data.1.clone()
+                                        ),
                                     ),
                                 },
                                 b.transport.clone(),
                                 b.supplies_consumer.clone(),
+                                b.controller.clone(),
                                 SelectableUnit,
                                 LOD{
                                     detailed: (b.model_hull.mesh.clone(), Some(material_hull.clone()), None),
@@ -2905,7 +2973,7 @@ pub fn server_messages_handler(
                         },
                         _ => { unit_type = UnitTypes::None; },
                     }
-    
+
                     match unit_data.1.0 {
                         CompanyTypes::Regular => {
                             if let Some (platoon) = armies.0.get_mut(&unit_data.0).unwrap().regular_platoons.get_mut(&(
@@ -2997,7 +3065,7 @@ pub fn server_messages_handler(
                     }
 
                     let unit_type;
-    
+
                     match &unit_production_data.0 {
                         UnitBundles::Soldier(b) => {
                             unit_type = b.combat_component.unit_type.clone();
@@ -3028,6 +3096,7 @@ pub fn server_messages_handler(
                                     ),
                                 },
                                 b.supplies_consumer.clone(),
+                                b.controller.clone(),
                                 SelectableUnit,
                                 b.animation_component.clone(),
                                 ChangeMaterial,
@@ -3039,7 +3108,7 @@ pub fn server_messages_handler(
                         },
                         UnitBundles::Shock(b) => {
                             unit_type = b.combat_component.unit_type.clone();
-
+                            
                             client_entity = commands.spawn((
                                 SceneBundle{
                                     scene: b.scene.clone(),
@@ -3066,6 +3135,7 @@ pub fn server_messages_handler(
                                     ),
                                 },
                                 b.supplies_consumer.clone(),
+                                b.controller.clone(),
                                 SelectableUnit,
                                 b.animation_component.clone(),
                                 ChangeMaterial,
@@ -3080,10 +3150,10 @@ pub fn server_messages_handler(
 
                             let material_turret;
 
-                            if let Some(mat) = materials.1.team_materials.get(&(b.model_turret.mesh.id(), unit_data.0)) {
+                            if let Some(mat) = materials.1.team_materials.get(&(b.lod.1.mesh.id(), unit_data.0)) {
                                 material_turret = mat.clone();
                             } else {
-                                if let Some(original) = materials.0.get(b.model_turret.material.id()) {
+                                if let Some(original) = materials.0.get(b.lod.1.material.id()) {
                                     material_turret = materials.2.add(ExtendedMaterial {
                                         base: original.clone(),
                                         extension: TeamMaterialExtension {
@@ -3101,18 +3171,18 @@ pub fn server_messages_handler(
                                     });
                                 }
 
-                                materials.1.team_materials.insert((b.model_turret.mesh.id(), unit_data.0), material_turret.clone());
+                                materials.1.team_materials.insert((b.lod.1.mesh.id(), unit_data.0), material_turret.clone());
                             }
 
                             let turret = commands.spawn((
                                 MaterialMeshBundle{
-                                    mesh: b.model_turret.mesh.clone(),
-                                    material: b.model_turret.material.clone(),
+                                    mesh: b.lod.1.mesh.clone(),
+                                    material: b.lod.1.material.clone(),
                                     ..default()
                                 },
                                 LOD{
-                                    detailed: (b.model_turret.mesh.clone(), Some(material_turret.clone()), None),
-                                    simplified: (b.lod.1.mesh.clone(), simplified_material.clone()).clone(),
+                                    detailed: (b.lod.1.mesh.clone(), Some(material_turret.clone()), None),
+                                    simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                 },
                             )).id();
 
@@ -3169,6 +3239,7 @@ pub fn server_messages_handler(
                                     ),
                                 },
                                 b.supplies_consumer.clone(),
+                                b.controller.clone(),
                                 SelectableUnit,
                                 LOD{
                                     detailed: (b.model_hull.mesh.clone(), Some(material_hull.clone()), None),
@@ -3181,10 +3252,10 @@ pub fn server_messages_handler(
 
                             let material_turret;
 
-                            if let Some(mat) = materials.1.team_materials.get(&(b.model_turret.mesh.id(), unit_data.0)) {
+                            if let Some(mat) = materials.1.team_materials.get(&(b.lod.1.mesh.id(), unit_data.0)) {
                                 material_turret = mat.clone();
                             } else {
-                                if let Some(original) = materials.0.get(b.model_turret.material.id()) {
+                                if let Some(original) = materials.0.get(b.lod.1.material.id()) {
                                     material_turret = materials.2.add(ExtendedMaterial {
                                         base: original.clone(),
                                         extension: TeamMaterialExtension {
@@ -3202,18 +3273,18 @@ pub fn server_messages_handler(
                                     });
                                 }
 
-                                materials.1.team_materials.insert((b.model_turret.mesh.id(), unit_data.0), material_turret.clone());
+                                materials.1.team_materials.insert((b.lod.1.mesh.id(), unit_data.0), material_turret.clone());
                             }
 
                             let turret = commands.spawn((
                                 MaterialMeshBundle{
-                                    mesh: b.model_turret.mesh.clone(),
-                                    material: b.model_turret.material.clone(),
+                                    mesh: b.lod.1.mesh.clone(),
+                                    material: b.lod.1.material.clone(),
                                     ..default()
                                 },
                                 LOD{
-                                    detailed: (b.model_turret.mesh.clone(), Some(material_turret.clone()), None),
-                                    simplified: (b.lod.1.mesh.clone(), simplified_material.clone()).clone(),
+                                    detailed: (b.lod.1.mesh.clone(), Some(material_turret.clone()), None),
+                                    simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                 },
                             )).id();
 
@@ -3242,7 +3313,7 @@ pub fn server_messages_handler(
 
                                 materials.1.team_materials.insert((b.model_hull.mesh.id(), unit_data.0), material_hull.clone());
                             }
-
+                            
                             client_entity = commands.spawn((
                                 MaterialMeshBundle{
                                     mesh: b.model_hull.mesh.clone(),
@@ -3271,6 +3342,7 @@ pub fn server_messages_handler(
                                 },
                                 b.transport.clone(),
                                 b.supplies_consumer.clone(),
+                                b.controller.clone(),
                                 SelectableUnit,
                                 LOD{
                                     detailed: (b.model_hull.mesh.clone(), Some(material_hull.clone()), None),
@@ -3335,6 +3407,7 @@ pub fn server_messages_handler(
                                 },
                                 b.artillery_component.clone(),
                                 b.supplies_consumer.clone(),
+                                b.controller.clone(),
                                 SelectableUnit,
                                 LOD{
                                     detailed: (b.model.mesh.clone(), Some(material.clone()), None),
@@ -3370,7 +3443,7 @@ pub fn server_messages_handler(
 
                                 materials.1.team_materials.insert((b.model.mesh.id(), unit_data.0), material.clone());
                             }
-
+                            
                             client_entity = commands.spawn((
                                 MaterialMeshBundle{
                                     mesh: b.model.mesh.clone(),
@@ -3399,6 +3472,7 @@ pub fn server_messages_handler(
                                 },
                                 b.engineer_component.clone(),
                                 b.supplies_consumer.clone(),
+                                b.controller.clone(),
                                 LOD{
                                     detailed: (b.model.mesh.clone(), Some(material.clone()), None),
                                     simplified: (b.lod.mesh.clone(), simplified_material.clone()),
@@ -3683,99 +3757,16 @@ pub fn client_game_initialization_system(
 pub fn client_settlements_placement_completion(
     mut game_stage: ResMut<GameStage>,
     mut event_reader: EventReader<AllPlayersPlacedSettlementsEvent>,
-    mut ui_button_nodes: ResMut<UiButtonNodes>,
-    buildings_list: Res<BuildingsList>,
-    mut commands: Commands,
+    mut event_writer: (
+        EventWriter<AllSettlementsPlaced>,
+        EventWriter<DeleteTemporaryObjects>,
+    ),
 ){
     for _event in event_reader.read() {
         game_stage.0 = GameStages::BuildingsSetup;
 
-        commands.entity(ui_button_nodes.middle_bottom_node_row).despawn_descendants();
-        commands.entity(ui_button_nodes.middle_bottom_node).insert(Visibility::Visible);
-        ui_button_nodes.is_middle_bottom_node_visible = true;
-
-        for building in buildings_list.0.iter() {
-            commands.entity(ui_button_nodes.middle_bottom_node_row).with_children(|parent| {
-                parent.spawn(ButtonBundle{
-                    style: Style {
-                        position_type: PositionType::Relative,
-                        width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                        height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                        margin: UiRect {
-                            left: Val::Px(ui_button_nodes.margin),
-                            right: Val::Px(ui_button_nodes.margin),
-                            top: Val::Px(ui_button_nodes.margin),
-                            bottom: Val::Px(ui_button_nodes.margin),
-                        },
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
-                    ..default()
-                }).insert(ButtonAction{action: Actions::BuildingToBuildSelected(
-                    (building.1.clone(), building.2.clone(), building.3, building.4, building.0.clone(), building.5, building.6))}
-                )
-                .with_children(|button_parent| {
-                    button_parent.spawn(TextBundle {
-                        text: Text{
-                            sections: vec![TextSection {
-                                value: building.0.clone(),
-                                ..default()
-                            }],
-                            justify: JustifyText::Center,
-                            ..default() 
-                        },
-                        ..default()
-                    });
-                });
-            });
-        }
-
-        commands.entity(ui_button_nodes.middle_upper_node_row).despawn_descendants();
-        commands.entity(ui_button_nodes.middle_upper_node).insert(Visibility::Visible);
-        ui_button_nodes.is_middle_upper_node_visible = true;
-
-        commands.entity(ui_button_nodes.middle_upper_node_row).with_children(|parent| {
-            parent.spawn(ButtonBundle{
-                style: Style {
-                    position_type: PositionType::Relative,
-                    width: Val::Px(ui_button_nodes.middle_upper_node_width),
-                    height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                    margin: UiRect {
-                        left: Val::Px(ui_button_nodes.margin),
-                        right: Val::Px(ui_button_nodes.margin),
-                        top: Val::Px(ui_button_nodes.margin),
-                        bottom: Val::Px(ui_button_nodes.margin),
-                    },
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    ..default()
-                },
-                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
-                ..default()
-            })
-            .insert(ButtonAction{
-                action: Actions::CompleteConstruction,
-            })
-            .with_children(|button_parent| {
-                button_parent.spawn(TextBundle {
-                    text: Text{
-                        sections: vec![TextSection {
-                            value: "Complete the construction".to_string(),
-                            style: TextStyle {
-                                font_size: 20.,
-                                ..default()
-                            },
-                            ..default()
-                        }],
-                        justify: JustifyText::Center,
-                        ..default() 
-                    },
-                    ..default()
-                });
-            });
-        });
+        event_writer.0.send(AllSettlementsPlaced);
+        event_writer.1.send(DeleteTemporaryObjects);
     }
 }
 

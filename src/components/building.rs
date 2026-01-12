@@ -3885,7 +3885,7 @@ pub fn blueprints_deletion_system(
     player_data: Res<PlayerData>,
     mut commands: Commands,
 ){
-    if deletion_states.is_blueprints_deletion_active {
+    if deletion_states.is_blueprints_deletion_active && !selection_bounds.is_ui_hovered {
         if mouse_buttons.just_released(MouseButton::Left) {
             let min_x = selection_bounds.first_point.x.min(selection_bounds.second_point.x);
             let max_x = selection_bounds.first_point.x.max(selection_bounds.second_point.x);
@@ -3944,7 +3944,7 @@ pub fn buildings_deletion_system(
     mut commands: Commands,
 ){
     if deletion_states.is_buildings_deletion_active {
-        if mouse_buttons.just_released(MouseButton::Left) {
+        if mouse_buttons.just_released(MouseButton::Left) && !selection_bounds.is_ui_hovered  {
             let min_x = selection_bounds.first_point.x.min(selection_bounds.second_point.x);
             let max_x = selection_bounds.first_point.x.max(selection_bounds.second_point.x);
             let min_y = selection_bounds.first_point.y.min(selection_bounds.second_point.y);
@@ -4005,7 +4005,7 @@ pub fn buildings_deletion_cancelation_system(
     player_data: Res<PlayerData>,
     mut commands: Commands,
 ){
-    if deletion_states.is_buildings_deletion_cancelation_active {
+    if deletion_states.is_buildings_deletion_cancelation_active && !selection_bounds.is_ui_hovered  {
         if mouse_buttons.just_released(MouseButton::Left) {
             let min_x = selection_bounds.first_point.x.min(selection_bounds.second_point.x);
             let max_x = selection_bounds.first_point.x.max(selection_bounds.second_point.x);
@@ -4392,6 +4392,9 @@ pub fn roads_generation_system(
     mut event_writer: EventWriter<AllRoadsGenerated>,
     time: Res<Time>,
     mut commands: Commands,
+    network_status: Res<NetworkStatus>,
+    mut server: ResMut<QuinnetServer>,
+    clients: Res<ClientList>,
 ){
     for _event in event_reader.read() {
         let mut roads_to_generate: Vec<(Vec3, Vec3)> = Vec::new();
@@ -4624,7 +4627,7 @@ pub fn roads_generation_system(
                     &Transform::from_translation(road_center),
                 );
 
-                commands.spawn(MaterialMeshBundle{
+                let road_entity = commands.spawn(MaterialMeshBundle{
                     mesh: meshes.add(raod_mesh.clone()),
                     material: materials.add(Color::srgb(0.5, 0.5, 0.5)).into(),
                     transform: Transform::from_translation(road_center),
@@ -4634,7 +4637,23 @@ pub fn roads_generation_system(
                 .insert(NavMeshAffector)
                 .insert(NavMeshAreaType(Some(Area(1))))
                 .insert(NotShadowCaster)
-                .insert(CollisionGroups::new(Group::GROUP_2, Group::all()));
+                .insert(CollisionGroups::new(Group::GROUP_2, Group::all()))
+                .id();
+
+                if matches!(network_status.0, NetworkStatuses::Host) {
+                    let mut channel_id = 60;
+                    while channel_id <= 89 {
+                        if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::RoadGenerated {
+                            road_points: road_builder.2.result_road_points.clone(),
+                            road_center: road_center,
+                            server_entity: road_entity,
+                        }){
+                            channel_id += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                }
 
                 commands.entity(road_builder.0).despawn();
             }

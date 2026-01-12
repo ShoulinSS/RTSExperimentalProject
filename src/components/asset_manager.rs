@@ -680,9 +680,9 @@ pub fn blueprint_placement_color_definer (
 ){
     for blueprint in blueprints_q.iter() {
         if let Some(_) = blueprint.1 {
-            commands.entity(blueprint.0).insert(instanced_materials.red_transparent.clone());
+            commands.entity(blueprint.0).try_insert(instanced_materials.red_transparent.clone());
         } else {
-            commands.entity(blueprint.0).insert(instanced_materials.blue_transparent.clone());
+            commands.entity(blueprint.0).try_insert(instanced_materials.blue_transparent.clone());
         }
     }
 }
@@ -914,10 +914,10 @@ pub fn testing_system(
     if *elapsed_time >= 1000 {
         *elapsed_time = 0;
 
-        println!("meshes: {}", meshes.iter().count());
-        println!("materials: {}", materials.iter().count());
-        println!("team_materials: {}", team_materials.iter().count());
-        println!("=================================================");
+        // println!("meshes: {}", meshes.iter().count());
+        // println!("materials: {}", materials.iter().count());
+        // println!("team_materials: {}", team_materials.iter().count());
+        // println!("=================================================");
     }
 }
 
@@ -932,7 +932,6 @@ pub fn apply_team_material_to_scenes (
     children_q: Query<&Children>,
     mesh_material_q: Query<(&Handle<Mesh>, &Handle<StandardMaterial>, Option<&LOD>)>,
     mut instanced_materials: ResMut<InstancedMaterials>,
-    mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<Assets<StandardMaterial>>,
     mut extended_materials: ResMut<Assets<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>>,
     mut commands: Commands,
@@ -956,19 +955,15 @@ pub fn apply_team_material_to_scenes (
                         if let Ok(mesh_material) = mesh_material_q.get(*child) {
                             let color;
 
-                            let simplified_material;
                             match scene.1.team {
                                 1 => {
                                     color = Vec4::new(0., 0., 1., 1.);
-                                    simplified_material = instanced_materials.blue_solid.clone();
                                 }
                                 2 => {
                                     color = Vec4::new(1., 0., 0., 1.);
-                                    simplified_material = instanced_materials.red_solid.clone();
                                 }
                                 _ => {
                                     color = Vec4::new(1., 1., 1., 1.);
-                                    simplified_material = instanced_materials.red_transparent.clone();
                                 }
                             }
 
