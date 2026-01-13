@@ -6,7 +6,7 @@ use bevy_rapier3d::{prelude::{Collider, CollisionGroups, ComputedColliderShape, 
 use oxidized_navigation_serializable::{Area, NavMeshAffector, NavMeshAreaType};
 use serde::{Deserialize, Serialize};
 
-use crate::{GameStage, GameStages, GameState, PlayerData, components::{asset_manager::{BuildingsAssets, ChangeMaterial, CircleData, CircleHolder, InstancedMaterials, LOD, TeamMaterialExtension}, unit::AttackAnimationTypes}};
+use crate::{GameStage, GameStages, GameState, PlayerData, components::{asset_manager::{BuildingsAssets, ChangeMaterial, CircleData, CircleHolder, InstancedMaterials, LOD, TeamMaterialExtension}, unit::{AttackAnimationTypes, StoppedMoving}}};
 
 use super::{asset_manager::{generate_circle_segments, LineData, LineHolder}, building::{create_ring, AllSettlementsPlaced, ApartmentHouse, ArtilleryBundle, BuildingBlueprint, BuildingConstructionSite, BuildingsBundles, BuildingsList, CoverComponent, DeleteTemporaryObjects, EngineerBundle, IFVBundle, InfantryBarracksBundle, LogisticHubBundle, ProducableUnits, ProductionQueue, ProductionState, ResourceMinerBundle, SettlementComponent, SettlementObject, SoldierBundle, SuppliesProductionComponent, TankBundle, TemporaryObject, UnactivatedBlueprints, UnitBundles, VehicleFactoryBundle}, logistics::{create_curved_mesh, ResourceZone}, ui_manager::{Actions, ButtonAction, GameStartedEvent, ProductionStateChanged, UiButtonNodes}, unit::{self, Armies, ArmoredPlatoon, ArmyObject, ArtilleryNeedsToFire, ArtilleryUnit, AttackTypes, CompanyTypes, CombatComponent, DamageTypes, DeleteAfterStart, LimitedHashSet, NeedToMove, RegularPlatoon, SelectableUnit, SerializableArmyObject, ShockPlatoon, UnitComponent, UnitDeathEvent, UnitTypes, UnitsTileMap, ARMORED_PLATOON_SIZE, REGULAR_PLATOON_SIZE, SHOCK_PLATOON_SIZE, SPECIALISTS_PER_REGULAR_PLATOON, SPECIALISTS_PER_SHOCK_PLATOON, TILE_SIZE}};
 
@@ -3772,6 +3772,7 @@ pub fn client_settlements_placement_completion(
 
 pub fn client_game_starting_system(
     mut event_reader: EventReader<ClientGameStartedEvent>,
+
     mut game_stage: ResMut<GameStage>,
     delete_after_start_q: Query<Entity, With<DeleteAfterStart>>,
     mut commands: Commands,
@@ -3802,6 +3803,7 @@ pub fn client_entity_movement_system(
                 unit_component.path.clear();
 
                 commands.entity(entity.0).remove::<NeedToMove>();
+                commands.entity(entity.0).insert(StoppedMoving);
             }
         }
 

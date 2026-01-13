@@ -5586,7 +5586,7 @@ pub fn game_starting_system (
                                                 unit_to_produce.1.0.clone(),
                                             ),
                                         ),
-                                        position: Vec3::new(point.x, 0.5, point.z),
+                                        position: point,
                                         server_entity: new_unit,
                                     }){
                                         channel_id += 1;
@@ -5959,7 +5959,7 @@ pub fn game_starting_system (
                                                 unit_to_produce.1.0.clone(),
                                             ),
                                         ),
-                                        position: Vec3::new(point.x, 0.5, point.z),
+                                        position: point,
                                         server_entity: new_unit,
                                     }){
                                         channel_id += 1;
@@ -6326,7 +6326,7 @@ pub fn game_starting_system (
                                                 unit_to_produce.1.0.clone(),
                                             ),
                                         ),
-                                        position: Vec3::new(point.x, 0.5, point.z),
+                                        position: point,
                                         server_entity: new_unit,
                                     }){
                                         channel_id += 1;
@@ -6454,7 +6454,7 @@ pub fn game_starting_system (
                                                 unit_to_produce.1.0.clone(),
                                             ),
                                         ),
-                                        position: Vec3::new(point.x, 0.5, point.z),
+                                        position: point,
                                         server_entity: new_unit,
                                     }){
                                         channel_id += 1;
@@ -6581,7 +6581,7 @@ pub fn game_starting_system (
                                                 unit_to_produce.1.0.clone(),
                                             ),
                                         ),
-                                        position: Vec3::new(point.x, 0.5, point.z),
+                                        position: point,
                                         server_entity: new_unit,
                                     }){
                                         channel_id += 1;

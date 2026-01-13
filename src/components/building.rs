@@ -7,7 +7,7 @@ use bevy_rapier3d::{na::ComplexField, plugin::RapierContext, prelude::{Character
 use oxidized_navigation_serializable::{colliders, query::{find_polygon_path, perform_string_pulling_on_path}, Area, NavMesh, NavMeshAffector, NavMeshAreaType, NavMeshSettings};
 use rand::Rng;
 use serde::{de, Deserialize, Serialize};
-use crate::{GameStage, GameStages, PlayerData, WORLD_SIZE, components::{asset_manager::{AnimationComponent, BuildingsAssets, ChangeMaterial, CircleData, CircleHolder, InstancedMaterials, LOD, TeamMaterialExtension, Terrain, UnitAssets}, camera::{self, CameraComponent, SelectionBounds, SelectionBox}, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, DisplayedModelHolder, OpenBuildingsListEvent, RebuildApartments, SwitchBuildingState}, unit::{self, AttackAnimationTypes, BusyEngineer, DeleteAfterStart, EngineerActions, InfantryTransport, IsUnitSelectionAllowed, RemainsCount, UnitRemains}}};
+use crate::{GameStage, GameStages, PlayerData, WORLD_SIZE, components::{asset_manager::{AnimationComponent, BuildingsAssets, ChangeMaterial, CircleData, CircleHolder, ForbiddenBlueprint, InstancedMaterials, LOD, TeamMaterialExtension, Terrain, UnitAssets}, camera::{self, CameraComponent, SelectionBounds, SelectionBox}, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, DisplayedModelHolder, OpenBuildingsListEvent, RebuildApartments, SwitchBuildingState}, unit::{self, AttackAnimationTypes, BusyEngineer, DeleteAfterStart, EngineerActions, InfantryTransport, IsUnitSelectionAllowed, RemainsCount, UnitRemains}}};
 
 use super::{asset_manager::{generate_circle_segments, LineData, LineHolder}, logistics::{create_curved_mesh, create_plane_between_points, ResourceZone, RESOURCE_ZONES_COUNT /*RoadComponent, RoadObject*/}, network::{ClientList, ClientMessage, NetworkStatus, NetworkStatuses, ServerMessage}, ui_manager::{Actions, ButtonAction, GameStartedEvent, ProductionStateChanged, UiButtonNodes}, unit::{Armies, ArtilleryUnit, AttackTypes, CompanyTypes, CombatComponent, EngineerComponent, SelectableUnit, SuppliesConsumerComponent, UnitComponent, UnitDeathEvent, UnitNeedsToBeUncovered, UnitTypes, UnitsTileMap, TILE_SIZE}};
 
@@ -2350,9 +2350,9 @@ pub fn settlements_placement_system (
                     displayed_model.1.translation = Vec3::new(ray_hit.x, ray_hit.y + 5., ray_hit.z);
 
                     if is_forbidden {
-                        commands.entity(displayed_model.0).insert(materials_and_models.1.red_transparent.clone());
+                        commands.entity(displayed_model.0).insert(ForbiddenBlueprint);
                     } else {
-                        commands.entity(displayed_model.0).insert(materials_and_models.1.blue_transparent.clone());
+                        commands.entity(displayed_model.0).remove::<ForbiddenBlueprint>();
                     }
                 }
             }

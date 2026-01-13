@@ -2182,7 +2182,6 @@ impl Plugin for SingleplayerPlugin {
             components::ui_manager::setup_batallion,
             components::ui_manager::open_specializations_dropdown_list,
             components::ui_manager::choose_platoon_specialization,
-            components::building::unit_production_buttons_handler,
             components::building::unit_production_system,
             components::ui_manager::toggle_production,
         ).run_if(in_state(GameState::Singleplayer)));
@@ -2315,6 +2314,11 @@ impl Plugin for GameServerPlugin {
             settlements_stage_ui_activation,
         ));
         app.add_systems(Update, (
+            components::network::client_messages_handler,
+            components::network::mp_game_starter,
+            components::network::mp_settlements_placement_completion,
+        ).run_if(in_state(GameState::MultiplayerAsHost)));
+        app.add_systems(Update, (
             components::camera::camera_system,
             components::unit::artillery_designation_system,
             components::camera::handle_mouse_buttons,
@@ -2332,11 +2336,10 @@ impl Plugin for GameServerPlugin {
             components::ui_manager::setup_batallion,
             components::ui_manager::open_specializations_dropdown_list,
             components::ui_manager::choose_platoon_specialization,
-            components::building::unit_production_buttons_handler,
             components::building::unit_production_system,
+            components::ui_manager::toggle_production,
         ).run_if(in_state(GameState::MultiplayerAsHost)));
         app.add_systems(Update, (
-            components::ui_manager::toggle_production,
             components::building::production_manager,
             components::building::unit_replenishment_system,
             components::unit::platoon_leaders_monitoring_system,
@@ -2356,10 +2359,11 @@ impl Plugin for GameServerPlugin {
             components::building::settlements_placement_system,
             components::building::apartments_generation_system,
             components::building::roads_generation_system,
+            components::building::resource_zones_generation_system,
         ).run_if(in_state(GameState::MultiplayerAsHost)));
         app.add_systems(Update, (
-            //save_nav_mesh,
-            components::building::resource_zones_generation_system,
+            // save_nav_mesh,
+            // show_nav_mesh,
             components::building::temporary_objects_deletion_system,
             components::ui_manager::toggle_artillety_management_node,
             components::unit::toggle_artillery_designation,
@@ -2373,11 +2377,10 @@ impl Plugin for GameServerPlugin {
             components::unit::explosion_processing_system,
             components::logistics::material_producers_processing_system,
             components::logistics::human_resource_producers_processing_system,
-            components::network::client_messages_handler,
-            components::network::mp_game_starter,
-            components::network::mp_settlements_placement_completion,
             components::asset_manager::initialize_level_gltf_objects,
             components::asset_manager::ground_line_highlighter,
+            components::asset_manager::blueprint_placement_color_definer,
+            components::asset_manager::lod_system,
             delayed_load_naw_mesh,
         ).run_if(in_state(GameState::MultiplayerAsHost)));
         app.add_systems(Update, (
@@ -2391,7 +2394,35 @@ impl Plugin for GameServerPlugin {
             components::unit::brigade_selection_system,
             components::unit::update_fog_of_war,
             components::unit::visual_projectiles_processing_system,
-            components::asset_manager::blueprint_placement_color_definer,
+            components::asset_manager::trail_processing_system,
+            components::unit::supplies_consumption_system,
+            components::logistics::supplies_production_system,
+            components::building::resources_amount_displays_processing_system,
+            components::ui_manager::resources_amount_updating_system,
+            components::building::construction_progress_displays_processing_system,
+            components::building::buildings_deletion_activation_system,
+            components::building::blueprints_deletion_system,
+            components::building::buildings_deletion_system,
+            components::building::buildings_deletion_cancelation_system,
+        ).run_if(in_state(GameState::MultiplayerAsHost)));
+        app.add_systems(Update, (
+            components::ui_manager::switchable_buildings_ui_manager,
+            components::building::buildings_state_switcher,
+            components::ui_manager::rebuild_settlement_ui_manager,
+            components::building::rebuild_settlement_apartments_system,
+            components::building::apartments_rebuilding_system,
+            components::building::capturing_displays_processing_system,
+            components::ui_manager::hint_management_system,
+            components::asset_manager::apply_team_material_to_scenes,
+            components::asset_manager::running_animation_manager,
+            components::asset_manager::explosion_effects_handler,
+            components::unit::transport_assignation_system,
+            components::unit::transport_disturb_system,
+            components::unit::transport_embark_system,
+            components::unit::transport_disembark_system,
+            components::ui_manager::disembark_button_system,
+            components::unit::remains_processing_system,
+            components::ui_manager::ui_nodes_unlocker,//keep last
         ).run_if(in_state(GameState::MultiplayerAsHost)));
     }
 }
@@ -2405,6 +2436,12 @@ impl Plugin for GameClientPlugin {
             setup_ingame_ui,
             settlements_stage_ui_activation,
         ));
+        app.add_systems(Update, (
+            components::network::server_messages_handler,
+            components::network::client_settlements_placement_completion,
+            components::network::client_game_starting_system,
+            components::network::client_entity_movement_system,
+        ).run_if(in_state(GameState::MultiplayerAsClient)));
         app.add_systems(Update, (
             components::camera::camera_system,
             components::unit::artillery_designation_system,
@@ -2422,35 +2459,30 @@ impl Plugin for GameClientPlugin {
             components::ui_manager::setup_batallion,
             components::ui_manager::open_specializations_dropdown_list,
             components::ui_manager::choose_platoon_specialization,
+            components::ui_manager::toggle_production,
         ).run_if(in_state(GameState::MultiplayerAsClient)));
         app.add_systems(Update, (
-            components::ui_manager::toggle_production,
             components::unit::platoon_leaders_monitoring_system,
             components::ui_manager::platoon_nodes_positioning_system,
             components::unit::squad_selection_system,
-            //components::unit::cover_disturb_system,
-            //components::unit::cover_assignation_system,
-            //components::unit::unit_covering_system,
-            //components::building::unit_uncovering_system,
             components::ui_manager::toggle_buildings_list_system,
             components::ui_manager::building_placement_activation_system,
             components::ui_manager::building_placement_handling_system,
             components::building::settlements_placement_system,
         ).run_if(in_state(GameState::MultiplayerAsClient)));
         app.add_systems(Update, (
-            //save_nav_mesh,
+            // save_nav_mesh,
+            // show_nav_mesh,
             components::building::temporary_objects_deletion_system,
             components::ui_manager::toggle_artillety_management_node,
             components::unit::toggle_artillery_designation,
             components::unit::artillery_order_delayed,
             components::ui_manager::building_stage_ui_activation,
             components::ui_manager::army_setup_stage_ui_activation,
-            components::network::server_messages_handler,
-            components::network::client_settlements_placement_completion,
-            components::network::client_game_starting_system,
-            components::network::client_entity_movement_system,
             components::asset_manager::initialize_level_gltf_objects,
             components::asset_manager::ground_line_highlighter,
+            components::asset_manager::blueprint_placement_color_definer,
+            components::asset_manager::lod_system,
             delayed_load_naw_mesh,
         ).run_if(in_state(GameState::MultiplayerAsClient)));
         app.add_systems(Update, (
@@ -2463,7 +2495,15 @@ impl Plugin for GameClientPlugin {
             components::unit::brigade_selection_system,
             components::unit::update_fog_of_war,
             components::unit::visual_projectiles_processing_system,
-            components::asset_manager::blueprint_placement_color_definer,
+            components::asset_manager::trail_processing_system,
+        ).run_if(in_state(GameState::MultiplayerAsClient)));
+        app.add_systems(Update, (
+            components::ui_manager::hint_management_system,
+            components::asset_manager::apply_team_material_to_scenes,
+            components::asset_manager::running_animation_manager,
+            components::asset_manager::explosion_effects_handler,
+            components::unit::remains_processing_system,
+            components::ui_manager::ui_nodes_unlocker,//keep last
         ).run_if(in_state(GameState::MultiplayerAsClient)));
     }
 }

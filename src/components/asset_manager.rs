@@ -712,7 +712,7 @@ const LOD_SWITCH_HEIGHT: f32 = 300.;
 
 pub fn lod_system(
     camera_q: Query<&Transform, With<CameraComponent>>,
-    mut lods_q: Query<(Entity, &LOD, Option<&mut AnimatedMesh>, Option<&SkinnedMesh>), (With<LOD>, Without<AnimationComponent>)>,
+    mut lods_q: Query<(Entity, &LOD, Option<&mut AnimatedMesh>, Option<&SkinnedMesh>), (With<LOD>, Without<AnimationComponent>, Without<ChangeMaterial>)>,
     mut commands: Commands,
     mut less: Local<bool>,
     mut more: Local<bool>,
@@ -928,7 +928,7 @@ pub struct AnimatedMesh{
 }
 
 pub fn apply_team_material_to_scenes (
-    scenes_q: Query<(Entity, &CombatComponent, &LOD), With<ChangeMaterial>>,
+    scenes_q: Query<(Entity, &CombatComponent, &LOD), Added<ChangeMaterial>>,
     children_q: Query<&Children>,
     mesh_material_q: Query<(&Handle<Mesh>, &Handle<StandardMaterial>, Option<&LOD>)>,
     mut instanced_materials: ResMut<InstancedMaterials>,
@@ -993,6 +993,7 @@ pub fn apply_team_material_to_scenes (
                                 instanced_materials.team_materials.insert((mesh_material.0.id(), scene.1.team), material.clone());
                             }
 
+                            commands.entity(*child).remove::<Handle<StandardMaterial>>();
                             commands.entity(*child).insert(material.clone());
                             commands.entity(*child).remove::<ChangeMaterial>();
 
