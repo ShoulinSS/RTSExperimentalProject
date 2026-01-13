@@ -590,7 +590,7 @@ pub fn unit_production_system (
                                 let turret = commands.spawn((
                                     MaterialMeshBundle{
                                         mesh: b.model_turret.mesh.clone(),
-                                        material: b.model_turret.material.clone(),
+                                        material: material_turret.clone(),
                                         ..default()
                                     },
                                     LOD{
@@ -695,12 +695,12 @@ pub fn unit_production_system (
 
                                 let turret = commands.spawn((
                                     MaterialMeshBundle{
-                                        mesh: b.lod.1.mesh.clone(),
-                                        material: b.lod.1.material.clone(),
+                                        mesh: b.model_turret.mesh.clone(),
+                                        material: material_turret.clone(),
                                         ..default()
                                     },
                                     LOD{
-                                        detailed: (b.lod.1.mesh.clone(), Some(material_turret.clone()), None),
+                                        detailed: (b.model_turret.mesh.clone(), Some(material_turret.clone()), None),
                                         simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                     },
                                 )).id();
@@ -1105,12 +1105,12 @@ pub fn unit_production_system (
 
                                 let turret = commands.spawn((
                                     MaterialMeshBundle{
-                                        mesh: b.lod.1.mesh.clone(),
-                                        material: b.lod.1.material.clone(),
+                                        mesh: b.model_turret.mesh.clone(),
+                                        material: material_turret.clone(),
                                         ..default()
                                     },
                                     LOD{
-                                        detailed: (b.lod.1.mesh.clone(), Some(material_turret.clone()), None),
+                                        detailed: (b.model_turret.mesh.clone(), Some(material_turret.clone()), None),
                                         simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                     },
                                 )).id();
@@ -1211,12 +1211,12 @@ pub fn unit_production_system (
 
                                 let turret = commands.spawn((
                                     MaterialMeshBundle{
-                                        mesh: b.lod.1.mesh.clone(),
-                                        material: b.lod.1.material.clone(),
+                                        mesh: b.model_turret.mesh.clone(),
+                                        material: material_turret.clone(),
                                         ..default()
                                     },
                                     LOD{
-                                        detailed: (b.lod.1.mesh.clone(), Some(material_turret.clone()), None),
+                                        detailed: (b.model_turret.mesh.clone(), Some(material_turret.clone()), None),
                                         simplified: (b.lod.1.mesh.clone(), simplified_material.clone()),
                                     },
                                 )).id();

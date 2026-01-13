@@ -5368,7 +5368,7 @@ pub fn game_starting_system (
                                     let turret = commands.spawn((
                                         MaterialMeshBundle{
                                             mesh: b.model_turret.mesh.clone(),
-                                            material: b.model_turret.material.clone(),
+                                            material: material_turret.clone(),
                                             ..default()
                                         },
                                         LOD{
@@ -5475,7 +5475,7 @@ pub fn game_starting_system (
                                     let turret = commands.spawn((
                                         MaterialMeshBundle{
                                             mesh: b.model_turret.mesh.clone(),
-                                            material: b.model_turret.material.clone(),
+                                            material: material_turret.clone(),
                                             ..default()
                                         },
                                         LOD{
@@ -5741,7 +5741,7 @@ pub fn game_starting_system (
                                     let turret = commands.spawn((
                                         MaterialMeshBundle{
                                             mesh: b.model_turret.mesh.clone(),
-                                            material: b.model_turret.material.clone(),
+                                            material: material_turret.clone(),
                                             ..default()
                                         },
                                         LOD{
@@ -5848,7 +5848,7 @@ pub fn game_starting_system (
                                     let turret = commands.spawn((
                                         MaterialMeshBundle{
                                             mesh: b.model_turret.mesh.clone(),
-                                            material: b.model_turret.material.clone(),
+                                            material: material_turret.clone(),
                                             ..default()
                                         },
                                         LOD{
@@ -6114,7 +6114,7 @@ pub fn game_starting_system (
                                     let turret = commands.spawn((
                                         MaterialMeshBundle{
                                             mesh: b.model_turret.mesh.clone(),
-                                            material: b.model_turret.material.clone(),
+                                            material: material_turret.clone(),
                                             ..default()
                                         },
                                         LOD{
@@ -6221,7 +6221,7 @@ pub fn game_starting_system (
                                     let turret = commands.spawn((
                                         MaterialMeshBundle{
                                             mesh: b.model_turret.mesh.clone(),
-                                            material: b.model_turret.material.clone(),
+                                            material: material_turret.clone(),
                                             ..default()
                                         },
                                         LOD{
