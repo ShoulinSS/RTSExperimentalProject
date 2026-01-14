@@ -462,11 +462,7 @@ pub fn unit_production_system (
         
                         let mut new_unit= Entity::PLACEHOLDER;
 
-                        let new_unit_position = Vec3::new(
-                            infantry_producer.2.translation.x + 5.,
-                            0.5,
-                            infantry_producer.2.translation.z,
-                        );
+                        let new_unit_position = infantry_producer.2.transform_point(infantry_producer.1.spawn_point);
 
                         let tile = ((new_unit_position.x / TILE_SIZE) as i32, (new_unit_position.z / TILE_SIZE) as i32);
                         let unit_type;
@@ -978,11 +974,7 @@ pub fn unit_production_system (
         
                         let mut new_unit = Entity::PLACEHOLDER;
 
-                        let new_unit_position = Vec3::new(
-                            vehicles_producer.2.translation.x + 5.,
-                            0.5,
-                            vehicles_producer.2.translation.z,
-                        );
+                        let new_unit_position = vehicles_producer.2.transform_point(vehicles_producer.1.spawn_point);
 
                         let tile = ((new_unit_position.x / TILE_SIZE) as i32, (new_unit_position.z / TILE_SIZE) as i32);
                         let unit_type;

@@ -3949,7 +3949,7 @@ pub fn building_placement_handling_system(
             }
 
             if is_forbidden {
-                commands.entity(holder.0).insert(ForbiddenBlueprint);
+                commands.entity(holder.0).try_insert(ForbiddenBlueprint);
             } else {
                 commands.entity(holder.0).remove::<ForbiddenBlueprint>();
             }

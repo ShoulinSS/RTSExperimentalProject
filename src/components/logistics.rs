@@ -284,7 +284,7 @@ pub fn assign_supply_tasks (
                                     }).insert(UnitComponent {
                                         path: Vec::new(),
                                         speed: LOGISTIC_UNITS_SPEED,
-                                        waypoint_check_factor: 0.5,
+                                        waypoint_check_factor: 1.,
                                     }).insert(LogisticUnitComponent {
                                         storage_capacity: supplies_needed,
                                         storage: ResourceTypes::Supplies(supplies_needed),
@@ -433,7 +433,7 @@ pub fn assign_supply_tasks (
                                         }).insert(UnitComponent {
                                             path: Vec::new(),
                                             speed: LOGISTIC_UNITS_SPEED,
-                                            waypoint_check_factor: 0.5,
+                                            waypoint_check_factor: 1.,
                                         }).insert(LogisticUnitComponent {
                                             storage_capacity: supplies_needed,
                                             storage: ResourceTypes::Supplies(supplies_needed),
@@ -582,7 +582,7 @@ pub fn assign_supply_tasks (
                                             }).insert(UnitComponent {
                                                 path: Vec::new(),
                                                 speed: LOGISTIC_UNITS_SPEED,
-                                                waypoint_check_factor: 0.5,
+                                                waypoint_check_factor: 1.,
                                             }).insert(LogisticUnitComponent {
                                                 storage_capacity: supplies_needed,
                                                 storage: ResourceTypes::Supplies(supplies_needed),
@@ -733,7 +733,7 @@ pub fn assign_supply_tasks (
                                                     }).insert(UnitComponent {
                                                         path: Vec::new(),
                                                         speed: LOGISTIC_UNITS_SPEED,
-                                                        waypoint_check_factor: 0.5,
+                                                        waypoint_check_factor: 1.,
                                                     }).insert(LogisticUnitComponent {
                                                         storage_capacity: supplies_needed,
                                                         storage: ResourceTypes::Supplies(supplies_needed),
@@ -1246,7 +1246,7 @@ pub fn material_producers_processing_system(
                                 }).insert(UnitComponent {
                                     path: Vec::new(),
                                     speed: LOGISTIC_UNITS_SPEED,
-                                    waypoint_check_factor: 0.5,
+                                    waypoint_check_factor: 1.,
                                 }).insert(LogisticUnitComponent {
                                     storage_capacity: material_consumer.2.replenishment_amount,
                                     storage: ResourceTypes::Materials(material_consumer.2.replenishment_amount),
@@ -1440,7 +1440,7 @@ pub fn human_resource_producers_processing_system(
                                 }).insert(UnitComponent {
                                     path: Vec::new(),
                                     speed: LOGISTIC_UNITS_SPEED,
-                                    waypoint_check_factor: 0.5,
+                                    waypoint_check_factor: 1.,
                                 }).insert(LogisticUnitComponent {
                                     storage_capacity: human_resource_consumer.2.replenishment_amount,
                                     storage: ResourceTypes::HumanResources(human_resource_consumer.2.replenishment_amount),

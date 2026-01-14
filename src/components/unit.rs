@@ -1027,7 +1027,7 @@ pub fn process_agents_movement(
     //     EventWriter<UnsentServerMessage>,
     // ),
 ){
-    for(mut unit_component,mut unit_transform, unit_entity, mut controller_option) in units_q.iter_mut(){
+    for(mut unit_component,mut unit_transform, unit_entity, controller_option) in units_q.iter_mut(){
         if !unit_component.path.is_empty(){
             let next_point = unit_component.path[0];
             let mut direction = (next_point - unit_transform.translation).normalize();
@@ -1070,7 +1070,7 @@ pub fn process_agents_movement(
 
                 if unit_component.path.is_empty() {
                     commands.entity(unit_entity).remove::<NeedToMove>();
-                    commands.entity(unit_entity).insert(StoppedMoving);
+                    commands.entity(unit_entity).try_insert(StoppedMoving);
 
                     if matches!(network_status.0, NetworkStatuses::Host) {
                         let mut channel_id = 30;
@@ -1089,7 +1089,7 @@ pub fn process_agents_movement(
             }
         } else {
             commands.entity(unit_entity).remove::<NeedToMove>();
-            commands.entity(unit_entity).insert(StoppedMoving);
+            commands.entity(unit_entity).try_insert(StoppedMoving);
         }
     }
 }
@@ -7063,7 +7063,7 @@ pub fn update_fog_of_war(
     let half_map = WORLD_SIZE * 0.5;
 
     for unit in units_q.iter() {
-        if unit.2.team != player_data.team {
+        if unit.2.team != player_data.team || unit.2.detection_range == 0. {
             continue;
         }
         
@@ -7080,9 +7080,9 @@ pub fn update_fog_of_war(
         }
 
         if is_position_visible(unit.1.translation, &data, texture_size as u32, WORLD_SIZE) {
-            commands.entity(unit.0).insert(Visibility::Visible);
+            commands.entity(unit.0).try_insert(Visibility::Visible);
         } else {
-            commands.entity(unit.0).insert(Visibility::Hidden);
+            commands.entity(unit.0).try_insert(Visibility::Hidden);
         }
     }
 

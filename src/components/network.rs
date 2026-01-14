@@ -3803,7 +3803,7 @@ pub fn client_entity_movement_system(
                 unit_component.path.clear();
 
                 commands.entity(entity.0).remove::<NeedToMove>();
-                commands.entity(entity.0).insert(StoppedMoving);
+                commands.entity(entity.0).try_insert(StoppedMoving);
             }
         }
 

@@ -1,4 +1,4 @@
-use std::hash::Hash;
+use std::{fs::File, io::Write, hash::Hash, panic, time::{SystemTime, UNIX_EPOCH}};
 
 use bevy::{core_pipeline::tonemapping::Tonemapping, diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin}, ecs::batching::BatchingStrategy, math::VectorSpace, pbr::{CascadeShadowConfigBuilder, ExtendedMaterial, NotShadowCaster, OpaqueRendererMethod}, prelude::*, render::{camera::RenderTarget, render_asset::RenderAssetUsages, render_resource::{Extent3d, Face, TextureDimension, TextureFormat, TextureUsages}, renderer::RenderDevice, view::{RenderLayers, ViewDepthTexture}}, tasks::AsyncComputeTaskPool, utils::{hashbrown::{HashMap, HashSet}}, window::{self, PrimaryWindow}};
 use bevy_egui::{EguiPlugin, EguiSet};
@@ -16,11 +16,61 @@ use crate::components::{asset_manager::{AnimationComponent, BuildingsAssets, Ins
 
 mod components;
 
+fn setup_panic_hook() {
+    panic::set_hook(Box::new(|panic_info| {
+        let timestamp = match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(dur) => dur.as_secs(),
+            Err(_) => 0,
+        };
+        let filename = format!("crash_log_{}.txt", timestamp);
+
+        let mut file = match File::create(&filename) {
+            Ok(f) => f,
+            Err(_) => {
+                eprintln!("Log file creation failure: {}", filename);
+                match File::create("crash_log_fallback.txt") {
+                    Ok(f) => f,
+                    Err(_) => {
+                        eprintln!("Reserve log file creation failure!");
+                        return;
+                    }
+                }
+            }
+        };
+
+        writeln!(file, "=== Bevy Crash Log ===").ok();
+        writeln!(file, "Timestamp: {}", timestamp).ok();
+
+        let cause = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "Unknown panic payload".to_string()
+        };
+        writeln!(file, "Panic reason: {}", cause).ok();
+
+        if let Some(location) = panic_info.location() {
+            writeln!(file, "Location: {}:{}:{}", 
+                location.file(),
+                location.line(),
+                location.column()
+            ).ok();
+        } else {
+            writeln!(file, "Location: unknown").ok();
+        }
+
+        eprintln!("Crash log saved to: {}", filename);
+    }));
+}
+
 const WORLD_SIZE: f32 = 3000.;
 
 const FOG_TEXTURE_SIZE: f32 = WORLD_SIZE / 8.;
 
 fn main() {
+    setup_panic_hook();
+
     App::new()
     // .add_plugins(FrameTimeDiagnosticsPlugin::default())
     // .add_plugins(LogDiagnosticsPlugin::default())
