@@ -17,12 +17,12 @@ pub enum Actions {
     SetupBatallion((i32, (i32, i32, i32))),
     OpenPlatoonSpecializations((i32, (i32, i32, i32, i32, i32), CompanyTypes)),
     ChoosePlatoonSpecialization(((String, String), (i32, i32, i32, i32, i32), i32, CompanyTypes)),
-    SquadSelection((CompanyTypes, (i32, i32, i32 ,i32 ,i32))),
-    PlatoonSelection((CompanyTypes, Vec<(i32, i32, i32 ,i32 ,i32)>)),
-    CompanySelection((CompanyTypes, Vec<(i32, i32, i32 ,i32 ,i32)>)),
-    BattalionSelection(Vec<(CompanyTypes, (i32, i32, i32 ,i32 ,i32))>),
-    RegimentSelection(Vec<(CompanyTypes, (i32, i32, i32 ,i32 ,i32))>),
-    BrigadeSelection(Vec<(CompanyTypes, (i32, i32, i32 ,i32 ,i32))>),
+    SquadSelection((i32, (CompanyTypes, (i32, i32, i32 ,i32 ,i32)))),
+    PlatoonSelection((i32, (CompanyTypes, Vec<(i32, i32, i32 ,i32 ,i32)>))),
+    CompanySelection((i32, (CompanyTypes, Vec<(i32, i32, i32 ,i32 ,i32)>))),
+    BattalionSelection((i32, Vec<(CompanyTypes, (i32, i32, i32 ,i32 ,i32))>)),
+    RegimentSelection((i32, Vec<(CompanyTypes, (i32, i32, i32 ,i32 ,i32))>)),
+    BrigadeSelection((i32, Vec<(CompanyTypes, (i32, i32, i32 ,i32 ,i32))>)),
     ToggleProduction,
     OpenBuildingsList,
     BuildingToBuildSelected((BuildingsBundles, Collider, f32, i32, String, f32, i32)),
@@ -149,22 +149,22 @@ pub struct ArmySettingsNodes {
 }
 
 #[derive(Component)]
-pub struct SquadSelector(pub (CompanyTypes, (i32, i32, i32, i32, i32), bool));
+pub struct SquadSelector(pub (i32, (CompanyTypes, (i32, i32, i32, i32, i32), bool)));
 
 #[derive(Component)]
-pub struct PlatoonSelector(pub (CompanyTypes, Vec<(i32, i32, i32, i32, i32)>, bool));
+pub struct PlatoonSelector(pub (i32, (CompanyTypes, Vec<(i32, i32, i32, i32, i32)>, bool)));
 
 #[derive(Component)]
-pub struct CompanySelector(pub (CompanyTypes, Vec<(i32, i32, i32, i32, i32)>, bool));
+pub struct CompanySelector(pub (i32, (CompanyTypes, Vec<(i32, i32, i32, i32, i32)>, bool)));
 
 #[derive(Component)]
-pub struct BattalionSelector(pub (Vec<(CompanyTypes, (i32, i32, i32, i32, i32))>, bool));
+pub struct BattalionSelector(pub (i32, (Vec<(CompanyTypes, (i32, i32, i32, i32, i32))>, bool)));
 
 #[derive(Component)]
-pub struct RegimentSelector(pub (Vec<(CompanyTypes, (i32, i32, i32, i32, i32))>, bool));
+pub struct RegimentSelector(pub (i32, (Vec<(CompanyTypes, (i32, i32, i32, i32, i32))>, bool)));
 
 #[derive(Component)]
-pub struct BrigadeSelector(pub (Vec<(CompanyTypes, (i32, i32, i32, i32, i32))>, bool));
+pub struct BrigadeSelector(pub (i32, (Vec<(CompanyTypes, (i32, i32, i32, i32, i32))>, bool)));
 
 #[derive(Component)]
 pub struct ButtonAction {
@@ -1083,56 +1083,49 @@ pub fn setup_ingame_ui(
         });
     });
 
-    let mut squad_index: LimitedNumber<1, 3> = LimitedNumber::new();
-    let mut platoon_index: LimitedNumber<1, 3> = LimitedNumber::new();
-    let mut company_index: LimitedNumber<1, 3> = LimitedNumber::new();
-    let mut battalion_index: LimitedNumber<1, 3> = LimitedNumber::new();
-    let mut regiment_index: LimitedNumber<1, 2> = LimitedNumber::new();
-    squad_index.set_value(0);
+    let mut squad_index: LimitedNumber<1, 3>;
+    let mut platoon_index: LimitedNumber<1, 3>;
+    let mut company_index: LimitedNumber<1, 3>;
+    let mut battalion_index: LimitedNumber<1, 3>;
+    let mut regiment_index: LimitedNumber<1, 2>;
 
     let unit_button_size = ui_button_nodes.button_size * 0.75;
 
-    for _i in 0..START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT + START_ARMORED_SQUADS_AMOUNT {
-        if squad_index.next() {
-            if platoon_index.next() {
-                if company_index.next() {
-                    if battalion_index.next() {
-                        regiment_index.next();
+    for i in 1..=2 {
+        squad_index = LimitedNumber::new();
+        platoon_index = LimitedNumber::new();
+        company_index = LimitedNumber::new();
+        battalion_index = LimitedNumber::new();
+        regiment_index = LimitedNumber::new();
+        squad_index.set_value(0);
+
+        for _i in 0..START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT + START_ARMORED_SQUADS_AMOUNT {
+            if squad_index.next() {
+                if platoon_index.next() {
+                    if company_index.next() {
+                        if battalion_index.next() {
+                            regiment_index.next();
+                        }
                     }
                 }
             }
-        }
 
-        let mut bar_entity = Entity::PLACEHOLDER;
-        
-        let button_entity = commands.spawn(ButtonBundle {
-            style: Style {
-                position_type: PositionType::Relative,
-                width: Val::Px(unit_button_size),
-                height: Val::Px(unit_button_size),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
-            ..default()
-        })
-        .with_children(|parent| {
-                parent.spawn(NodeBundle{
-                    style: Style {
-                        position_type: PositionType::Relative,
-                        width: Val::Px(unit_button_size),
-                        height: Val::Px(unit_button_size / 4.),
-                        flex_direction: FlexDirection::Column,
-                        justify_content: JustifyContent::Start,
-                        align_items: AlignItems::Start,
-                        top: Val::Px(unit_button_size / 2. + unit_button_size / 4. / 2.),
-                        ..default()
-                    },
-                    background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+            let mut bar_entity = Entity::PLACEHOLDER;
+            
+            let button_entity = commands.spawn(ButtonBundle {
+                style: Style {
+                    position_type: PositionType::Relative,
+                    width: Val::Px(unit_button_size),
+                    height: Val::Px(unit_button_size),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
                     ..default()
-                }).with_children(|parent| {
-                    bar_entity = parent.spawn(NodeBundle {
+                },
+                background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
+                ..default()
+            })
+            .with_children(|parent| {
+                    parent.spawn(NodeBundle{
                         style: Style {
                             position_type: PositionType::Relative,
                             width: Val::Px(unit_button_size),
@@ -1140,329 +1133,390 @@ pub fn setup_ingame_ui(
                             flex_direction: FlexDirection::Column,
                             justify_content: JustifyContent::Start,
                             align_items: AlignItems::Start,
+                            top: Val::Px(unit_button_size / 2. + unit_button_size / 4. / 2.),
                             ..default()
                         },
-                        background_color: SUPPLIES_COLOR.into(),
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                         ..default()
-                    })
-                    .insert(SuppliesBar {
-                        original_width: unit_button_size,
-                    }).id();
-                });
-            }
-        )
-        .insert(SquadSelector((
-            CompanyTypes::None,
-            (
-                regiment_index.get_value(),
-                battalion_index.get_value(),
-                company_index.get_value(),
-                platoon_index.get_value(),
-                squad_index.get_value(),
-            ),
-            false,
-        )))
-        .insert(ButtonAction{action: Actions::SquadSelection((
-            CompanyTypes::None,
-            (
-                regiment_index.get_value(),
-                battalion_index.get_value(),
-                company_index.get_value(),
-                platoon_index.get_value(),
-                squad_index.get_value(),
-            ),
-        ))})
-        .insert(Visibility::Hidden)
-        .id();
+                    }).with_children(|parent| {
+                        bar_entity = parent.spawn(NodeBundle {
+                            style: Style {
+                                position_type: PositionType::Relative,
+                                width: Val::Px(unit_button_size),
+                                height: Val::Px(unit_button_size / 4.),
+                                flex_direction: FlexDirection::Column,
+                                justify_content: JustifyContent::Start,
+                                align_items: AlignItems::Start,
+                                ..default()
+                            },
+                            background_color: SUPPLIES_COLOR.into(),
+                            ..default()
+                        })
+                        .insert(SuppliesBar {
+                            original_width: unit_button_size,
+                        }).id();
+                    });
+                }
+            )
+            .insert(SquadSelector((
+                i,
+                (
+                    CompanyTypes::None,
+                    (
+                        regiment_index.get_value(),
+                        battalion_index.get_value(),
+                        company_index.get_value(),
+                        platoon_index.get_value(),
+                        squad_index.get_value(),
+                    ),
+                    false,
+                ),
+            )))
+            .insert(ButtonAction{action: Actions::SquadSelection((
+                i,
+                (
+                    CompanyTypes::None,
+                    (
+                        regiment_index.get_value(),
+                        battalion_index.get_value(),
+                        company_index.get_value(),
+                        platoon_index.get_value(),
+                        squad_index.get_value(),
+                    ),
+                ),
+            ))})
+            .insert(Visibility::Hidden)
+            .id();
 
-        commands.entity(button_entity).insert(SuppliesBarHolder{
-            entity: bar_entity,
-        });
+            commands.entity(button_entity).insert(SuppliesBarHolder{
+                entity: bar_entity,
+            });
+        }
     }
-
-    squad_index = LimitedNumber::new();
-    platoon_index = LimitedNumber::new();
-    company_index = LimitedNumber::new();
-    battalion_index = LimitedNumber::new();
-    regiment_index = LimitedNumber::new();
-    squad_index.set_value(0);
 
     let mut current_platoon: Vec<(i32, i32, i32, i32, i32)> = Vec::new();
 
-    for _i in 0..START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT + START_ARMORED_SQUADS_AMOUNT {
-        if squad_index.next() {
-            if platoon_index.next() {
-                if company_index.next() {
-                    if battalion_index.next() {
-                        regiment_index.next();
+    for i in 1..=2 {
+        squad_index = LimitedNumber::new();
+        platoon_index = LimitedNumber::new();
+        company_index = LimitedNumber::new();
+        battalion_index = LimitedNumber::new();
+        regiment_index = LimitedNumber::new();
+        squad_index.set_value(0);
+
+        for _i in 0..START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT + START_ARMORED_SQUADS_AMOUNT {
+            if squad_index.next() {
+                if platoon_index.next() {
+                    if company_index.next() {
+                        if battalion_index.next() {
+                            regiment_index.next();
+                        }
                     }
                 }
             }
-        }
 
-        current_platoon.push((
-            regiment_index.get_value(),
-            battalion_index.get_value(),
-            company_index.get_value(),
-            platoon_index.get_value(),
-            squad_index.get_value(),
-        ));
+            current_platoon.push((
+                regiment_index.get_value(),
+                battalion_index.get_value(),
+                company_index.get_value(),
+                platoon_index.get_value(),
+                squad_index.get_value(),
+            ));
 
-        if current_platoon.len() == PLATOON_SIZE {
-            commands.spawn(ButtonBundle {
-                style: Style {
-                    position_type: PositionType::Relative,
-                    width: Val::Px(ui_button_nodes.button_size / 2.),
-                    height: Val::Px(ui_button_nodes.button_size / 2.),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
+            if current_platoon.len() == PLATOON_SIZE {
+                commands.spawn(ButtonBundle {
+                    style: Style {
+                        position_type: PositionType::Relative,
+                        width: Val::Px(ui_button_nodes.button_size / 2.),
+                        height: Val::Px(ui_button_nodes.button_size / 2.),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
                     ..default()
-                },
-                background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
-                ..default()
-            })
-            .insert(PlatoonSelector((
-                CompanyTypes::None,
-                current_platoon.clone(),
-                false,
-            )))
-            .insert(ButtonAction{action: Actions::PlatoonSelection((
-                CompanyTypes::None,
-                current_platoon.clone(),
-            ))})
-            .insert(Visibility::Hidden);
+                })
+                .insert(PlatoonSelector((
+                    i,
+                    (
+                        CompanyTypes::None,
+                        current_platoon.clone(),
+                        false,
+                    ),
+                )))
+                .insert(ButtonAction{action: Actions::PlatoonSelection((
+                    i,
+                    (
+                        CompanyTypes::None,
+                        current_platoon.clone(),
+                    ),
+                ))})
+                .insert(Visibility::Hidden);
 
-            current_platoon.clear();
+                current_platoon.clear();
+            }
         }
     }
-
-    squad_index = LimitedNumber::new();
-    platoon_index = LimitedNumber::new();
-    company_index = LimitedNumber::new();
-    battalion_index = LimitedNumber::new();
-    regiment_index = LimitedNumber::new();
-    squad_index.set_value(0);
 
     let mut current_company: Vec<(i32, i32, i32, i32, i32)> = Vec::new();
 
-    for _i in 0..START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT + START_ARMORED_SQUADS_AMOUNT {
-        if squad_index.next() {
-            if platoon_index.next() {
-                if company_index.next() {
-                    if battalion_index.next() {
-                        regiment_index.next();
+    for i in 1..=2 { 
+        squad_index = LimitedNumber::new();
+        platoon_index = LimitedNumber::new();
+        company_index = LimitedNumber::new();
+        battalion_index = LimitedNumber::new();
+        regiment_index = LimitedNumber::new();
+        squad_index.set_value(0);
+
+        for _i in 0..START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT + START_ARMORED_SQUADS_AMOUNT {
+            if squad_index.next() {
+                if platoon_index.next() {
+                    if company_index.next() {
+                        if battalion_index.next() {
+                            regiment_index.next();
+                        }
                     }
                 }
             }
-        }
 
-        current_company.push((
-            regiment_index.get_value(),
-            battalion_index.get_value(),
-            company_index.get_value(),
-            platoon_index.get_value(),
-            squad_index.get_value(),
-        ));
+            current_company.push((
+                regiment_index.get_value(),
+                battalion_index.get_value(),
+                company_index.get_value(),
+                platoon_index.get_value(),
+                squad_index.get_value(),
+            ));
 
-        if current_company.len() == PLATOON_SIZE * COMPANY_SIZE {
-            commands.spawn(ButtonBundle {
-                style: Style {
-                    position_type: PositionType::Relative,
-                    width: Val::Px(ui_button_nodes.button_size / 2.),
-                    height: Val::Px(ui_button_nodes.button_size / 2.),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
+            if current_company.len() == PLATOON_SIZE * COMPANY_SIZE {
+                commands.spawn(ButtonBundle {
+                    style: Style {
+                        position_type: PositionType::Relative,
+                        width: Val::Px(ui_button_nodes.button_size / 2.),
+                        height: Val::Px(ui_button_nodes.button_size / 2.),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
                     ..default()
-                },
-                background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
-                ..default()
-            })
-            .insert(CompanySelector((
-                CompanyTypes::None,
-                current_company.clone(),
-                false,
-            )))
-            .insert(ButtonAction{action: Actions::CompanySelection((
-                CompanyTypes::None,
-                current_company.clone(),
-            ))})
-            .insert(Visibility::Hidden);
+                })
+                .insert(CompanySelector((
+                    i,
+                    (
+                    CompanyTypes::None,
+                    current_company.clone(),
+                    false,
+                    ),
+                )))
+                .insert(ButtonAction{action: Actions::CompanySelection((
+                    i,
+                    (
+                    CompanyTypes::None,
+                    current_company.clone(),
+                    ),
+                ))})
+                .insert(Visibility::Hidden);
 
-            current_company.clear();
+                current_company.clear();
+            }
         }
     }
-
-    squad_index = LimitedNumber::new();
-    platoon_index = LimitedNumber::new();
-    company_index = LimitedNumber::new();
-    battalion_index = LimitedNumber::new();
-    regiment_index = LimitedNumber::new();
-    squad_index.set_value(0);
 
     let mut current_battalion: Vec<(CompanyTypes, (i32, i32, i32, i32, i32))> = Vec::new();
 
-    for _i in 0..START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT + START_ARMORED_SQUADS_AMOUNT {
-        if squad_index.next() {
-            if platoon_index.next() {
-                if company_index.next() {
-                    if battalion_index.next() {
-                        regiment_index.next();
+    for i in 1..=2 {
+        squad_index = LimitedNumber::new();
+        platoon_index = LimitedNumber::new();
+        company_index = LimitedNumber::new();
+        battalion_index = LimitedNumber::new();
+        regiment_index = LimitedNumber::new();
+        squad_index.set_value(0);
+
+        for _i in 0..START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT + START_ARMORED_SQUADS_AMOUNT {
+            if squad_index.next() {
+                if platoon_index.next() {
+                    if company_index.next() {
+                        if battalion_index.next() {
+                            regiment_index.next();
+                        }
                     }
                 }
             }
-        }
 
-        current_battalion.push((
-            CompanyTypes::None,
-            (
-                regiment_index.get_value(),
-                battalion_index.get_value(),
-                company_index.get_value(),
-                platoon_index.get_value(),
-                squad_index.get_value(),
-            ),
-        ));
+            current_battalion.push((
+                CompanyTypes::None,
+                (
+                    regiment_index.get_value(),
+                    battalion_index.get_value(),
+                    company_index.get_value(),
+                    platoon_index.get_value(),
+                    squad_index.get_value(),
+                ),
+            ));
 
-        if current_battalion.len() == PLATOON_SIZE * COMPANY_SIZE * BATTALION_SIZE {
-            commands.spawn(ButtonBundle {
-                style: Style {
-                    position_type: PositionType::Relative,
-                    width: Val::Px(ui_button_nodes.button_size / 2.),
-                    height: Val::Px(ui_button_nodes.button_size / 2.),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
+            if current_battalion.len() == PLATOON_SIZE * COMPANY_SIZE * BATTALION_SIZE {
+                commands.spawn(ButtonBundle {
+                    style: Style {
+                        position_type: PositionType::Relative,
+                        width: Val::Px(ui_button_nodes.button_size / 2.),
+                        height: Val::Px(ui_button_nodes.button_size / 2.),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    image: UiImage::new(other_assets.battalion_symbol_blufor.clone()),
+                    background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
                     ..default()
-                },
-                image: UiImage::new(other_assets.battalion_symbol.clone()),
-                background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
-                ..default()
-            })
-            .insert(BattalionSelector((
-                current_battalion.clone(),
-                false,
-            )))
-            .insert(ButtonAction{action: Actions::BattalionSelection(
-                current_battalion.clone(),
-            )})
-            .insert(Visibility::Hidden);
+                })
+                .insert(BattalionSelector((
+                    i,
+                    (
+                        current_battalion.clone(),
+                        false,
+                    ),
+                )))
+                .insert(ButtonAction{action: Actions::BattalionSelection(
+                    (
+                        i,
+                        current_battalion.clone(),
+                    )
+                )})
+                .insert(Visibility::Hidden);
 
-            current_battalion.clear();
+                current_battalion.clear();
+            }
         }
     }
-
-    squad_index = LimitedNumber::new();
-    platoon_index = LimitedNumber::new();
-    company_index = LimitedNumber::new();
-    battalion_index = LimitedNumber::new();
-    regiment_index = LimitedNumber::new();
-    squad_index.set_value(0);
 
     let mut current_regiment: Vec<(CompanyTypes, (i32, i32, i32, i32, i32))> = Vec::new();
 
-    for _i in 0..START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT + START_ARMORED_SQUADS_AMOUNT {
-        if squad_index.next() {
-            if platoon_index.next() {
-                if company_index.next() {
-                    if battalion_index.next() {
-                        regiment_index.next();
+    for i in 1..=2 {
+        squad_index = LimitedNumber::new();
+        platoon_index = LimitedNumber::new();
+        company_index = LimitedNumber::new();
+        battalion_index = LimitedNumber::new();
+        regiment_index = LimitedNumber::new();
+        squad_index.set_value(0);
+
+        for _i in 0..START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT + START_ARMORED_SQUADS_AMOUNT {
+            if squad_index.next() {
+                if platoon_index.next() {
+                    if company_index.next() {
+                        if battalion_index.next() {
+                            regiment_index.next();
+                        }
                     }
                 }
             }
-        }
 
-        current_regiment.push((
-            CompanyTypes::None,
-            (
-                regiment_index.get_value(),
-                battalion_index.get_value(),
-                company_index.get_value(),
-                platoon_index.get_value(),
-                squad_index.get_value(),
-            ),
-        ));
+            current_regiment.push((
+                CompanyTypes::None,
+                (
+                    regiment_index.get_value(),
+                    battalion_index.get_value(),
+                    company_index.get_value(),
+                    platoon_index.get_value(),
+                    squad_index.get_value(),
+                ),
+            ));
 
-        if current_regiment.len() == PLATOON_SIZE * COMPANY_SIZE * BATTALION_SIZE * REGIMENT_SIZE {
-            commands.spawn(ButtonBundle {
-                style: Style {
-                    position_type: PositionType::Relative,
-                    width: Val::Px(ui_button_nodes.button_size / 2.),
-                    height: Val::Px(ui_button_nodes.button_size / 2.),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
+            if current_regiment.len() == PLATOON_SIZE * COMPANY_SIZE * BATTALION_SIZE * REGIMENT_SIZE {
+                commands.spawn(ButtonBundle {
+                    style: Style {
+                        position_type: PositionType::Relative,
+                        width: Val::Px(ui_button_nodes.button_size / 2.),
+                        height: Val::Px(ui_button_nodes.button_size / 2.),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    image: UiImage::new(other_assets.regiment_symbol_blufor.clone()),
+                    background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
                     ..default()
-                },
-                image: UiImage::new(other_assets.regiment_symbol.clone()),
-                background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
-                ..default()
-            })
-            .insert(RegimentSelector((
-                current_regiment.clone(),
-                false,
-            )))
-            .insert(ButtonAction{action: Actions::RegimentSelection(
-                current_regiment.clone(),
-            )})
-            .insert(Visibility::Hidden);
+                })
+                .insert(RegimentSelector((
+                    i,
+                    (
+                        current_regiment.clone(),
+                        false,
+                    )
+                )))
+                .insert(ButtonAction{action: Actions::RegimentSelection(
+                    (
+                        i,
+                        current_regiment.clone(),
+                    )
+                )})
+                .insert(Visibility::Hidden);
 
-            current_regiment.clear();
+                current_regiment.clear();
+            }
         }
     }
 
-    squad_index = LimitedNumber::new();
-    platoon_index = LimitedNumber::new();
-    company_index = LimitedNumber::new();
-    battalion_index = LimitedNumber::new();
-    regiment_index = LimitedNumber::new();
-    squad_index.set_value(0);
-
     let mut current_brigade: Vec<(CompanyTypes, (i32, i32, i32, i32, i32))> = Vec::new();
 
-    for _i in 0..START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT + START_ARMORED_SQUADS_AMOUNT {
-        if squad_index.next() {
-            if platoon_index.next() {
-                if company_index.next() {
-                    if battalion_index.next() {
-                        regiment_index.next();
+    for i in 1..=2 {
+        squad_index = LimitedNumber::new();
+        platoon_index = LimitedNumber::new();
+        company_index = LimitedNumber::new();
+        battalion_index = LimitedNumber::new();
+        regiment_index = LimitedNumber::new();
+        squad_index.set_value(0);
+
+        for _i in 0..START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT + START_ARMORED_SQUADS_AMOUNT {
+            if squad_index.next() {
+                if platoon_index.next() {
+                    if company_index.next() {
+                        if battalion_index.next() {
+                            regiment_index.next();
+                        }
                     }
                 }
             }
-        }
 
-        current_brigade.push((
-            CompanyTypes::None,
-            (
-                regiment_index.get_value(),
-                battalion_index.get_value(),
-                company_index.get_value(),
-                platoon_index.get_value(),
-                squad_index.get_value(),
-            ),
-        ));
+            current_brigade.push((
+                CompanyTypes::None,
+                (
+                    regiment_index.get_value(),
+                    battalion_index.get_value(),
+                    company_index.get_value(),
+                    platoon_index.get_value(),
+                    squad_index.get_value(),
+                ),
+            ));
 
-        if current_brigade.len() == PLATOON_SIZE * COMPANY_SIZE * BATTALION_SIZE * REGIMENT_SIZE * ARMY_SIZE {
-            commands.spawn(ButtonBundle {
-                style: Style {
-                    position_type: PositionType::Relative,
-                    width: Val::Px(ui_button_nodes.button_size / 2.),
-                    height: Val::Px(ui_button_nodes.button_size / 2.),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
+            if current_brigade.len() == PLATOON_SIZE * COMPANY_SIZE * BATTALION_SIZE * REGIMENT_SIZE * ARMY_SIZE {
+                commands.spawn(ButtonBundle {
+                    style: Style {
+                        position_type: PositionType::Relative,
+                        width: Val::Px(ui_button_nodes.button_size / 2.),
+                        height: Val::Px(ui_button_nodes.button_size / 2.),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    image: UiImage::new(other_assets.brigade_symbol_blufor.clone()),
+                    background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
                     ..default()
-                },
-                image: UiImage::new(other_assets.brigade_symbol.clone()),
-                background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
-                ..default()
-            })
-            .insert(BrigadeSelector((
-                current_brigade.clone(),
-                false,
-            )))
-            .insert(ButtonAction{action: Actions::BrigadeSelection(
-                current_brigade.clone(),
-            )})
-            .insert(Visibility::Hidden);
+                })
+                .insert(BrigadeSelector((
+                    i,
+                    (
+                        current_brigade.clone(),
+                        false,
+                    ),
+                )))
+                .insert(ButtonAction{action: Actions::BrigadeSelection(
+                    (
+                        i,
+                        current_brigade.clone(),
+                    )
+                )})
+                .insert(Visibility::Hidden);
 
-            current_brigade.clear();
+                current_brigade.clear();
+            }
         }
     }
 
@@ -1671,6 +1725,7 @@ pub fn handle_button_clicks(
         EventWriter<BuildingButtonHovered>,
     ),
     ui_button_nodes: Res<UiButtonNodes>,
+    player_data: Res<PlayerData>,
     mut commands: Commands,
 ){
     if button_interactions_q.is_empty() && other_interactions_q.is_empty() {
@@ -1705,7 +1760,10 @@ pub fn handle_button_clicks(
                         event_writer1.6.send(ToggleProductionEvent);
                     },
                     Actions::SquadSelection(d) => {
-                        event_writer1.7.send(SquadSelectionEvent(*d));
+                        if d.0 != player_data.team {
+                            continue;
+                        }
+                        event_writer1.7.send(SquadSelectionEvent(d.1));
                     },
                     Actions::OpenBuildingsList => {
                         event_writer1.8.send(OpenBuildingsListEvent);
@@ -1729,19 +1787,34 @@ pub fn handle_button_clicks(
                         event_writer1.14.send(ChangeTacticalSymbolsLevel(d.clone()));
                     },
                     Actions::PlatoonSelection(d) => {
-                        event_writer1.15.send(PlatoonSelectionEvent(d.clone()));
+                        if d.0 != player_data.team {
+                            continue;
+                        }
+                        event_writer1.15.send(PlatoonSelectionEvent(d.1.clone()));
                     },
                     Actions::CompanySelection(d) => {
-                        event_writer2.0.send(CompanySelectionEvent(d.clone()));
+                        if d.0 != player_data.team {
+                            continue;
+                        }
+                        event_writer2.0.send(CompanySelectionEvent(d.1.clone()));
                     },
                     Actions::BattalionSelection(d) => {
-                        event_writer2.1.send(BattalionSelectionEvent(d.clone()));
+                        if d.0 != player_data.team {
+                            continue;
+                        }
+                        event_writer2.1.send(BattalionSelectionEvent(d.1.clone()));
                     },
                     Actions::RegimentSelection(d) => {
-                        event_writer2.2.send(RegimentSelectionEvent(d.clone()));
+                        if d.0 != player_data.team {
+                            continue;
+                        }
+                        event_writer2.2.send(RegimentSelectionEvent(d.1.clone()));
                     },
                     Actions::BrigadeSelection(d) => {
-                        event_writer2.3.send(BrigadeSelectionEvent(d.clone()));
+                        if d.0 != player_data.team {
+                            continue;
+                        }
+                        event_writer2.3.send(BrigadeSelectionEvent(d.1.clone()));
                     },
                     Actions::ActivateBlueprintsDeletionMode => {
                         event_writer2.4.send(ActivateBlueprintsDeletionMode);
@@ -3210,78 +3283,134 @@ pub fn platoon_nodes_positioning_system(
     (Without<PlatoonSelector>, Without<SquadSelector>, Without<CompanySelector>, Without<RegimentSelector>, Without<BattalionSelector>, Without<SuppliesBar>)>,
     mut supply_bars_q: Query<(&mut Style, &SuppliesBar),
     (Without<PlatoonSelector>, Without<SquadSelector>, Without<CompanySelector>, Without<RegimentSelector>, Without<BattalionSelector>, Without<BrigadeSelector>)>,
-    squad_leaders_q: Query<(&Transform, &SquadLeader, Option<&SuppliesConsumerComponent>), (With<SquadLeader>, Without<DisabledUnit>)>,
+    squad_leaders_q: Query<(&Transform, &SquadLeader, &CombatComponent, Option<&SuppliesConsumerComponent>, &Visibility), (With<SquadLeader>, Without<DisabledUnit>)>,
     other_assets: Res<OtherAssets>,
     symbols_level: Res<DisplayedTacicalSymbolsLevel>,
+    player_data: Res<PlayerData>,
     mut commands: Commands,
 ){
     let camera = camera_q.iter().next().unwrap();
 
-    let mut platoon_leaders: HashMap<(i32, i32, i32, i32, i32), (CompanyTypes, Vec3, i32, i32)> = HashMap::new();
+    let mut platoon_leaders: HashMap<(i32, (i32, i32, i32, i32, i32)), (CompanyTypes, Vec3, i32, i32, Visibility)> = HashMap::new();
 
     for leader in squad_leaders_q.iter() {
         let mut supplies_capacity = 1;
         let mut supplies_storage = 1;
 
-        if let Some(consumer) = leader.2 {
+        if let Some(consumer) = leader.3 {
             supplies_capacity = consumer.supplies_capacity;
             supplies_storage = consumer.supplies;
         }
 
-        platoon_leaders.insert(leader.1.0.1, (leader.1.0.0, leader.0.translation, supplies_capacity, supplies_storage));
+        platoon_leaders.insert((leader.2.team, leader.1.0.1), (leader.1.0.0, leader.0.translation, supplies_capacity, supplies_storage, *leader.4));
     }
 
     for mut node in squad_nodes_q.iter_mut() {
         if camera.2.translation.y > 100. && symbols_level.0 == 1 {//level 1 = squads level
-            if let Some(leader) = platoon_leaders.get(&node.2.0.1.clone()){
+            if let Some(leader) = platoon_leaders.get(&(node.2.0.0, node.2.0.1.1.clone())) {
+                if leader.4 == Visibility::Hidden {
+                    if node.2.0.1.2 == true {
+                        node.2.0.1.2 = false;
+                        commands.entity(node.0).insert(Visibility::Hidden);
+                    }
+                    continue;
+                }
+
                 if let Some(viewport_point) = camera.0.world_to_viewport(camera.1, leader.1) {
                     node.1.left = Val::Px(viewport_point.x);
                     node.1.top = Val::Px(viewport_point.y);
 
-                    if node.2.0.2 == false {
-                        node.2.0.2 = true;
-                        node.2.0.0 = leader.0;
-                        node.3.action = Actions::SquadSelection((leader.0, node.2.0.1));
-                        commands.entity(node.0).insert(Visibility::Visible);
+                    if node.2.0.0 == 1 {
+                        if node.2.0.1.2 == false {
+                            node.2.0.1.2 = true;
+                            node.2.0.1.0 = leader.0;
+                            node.3.action = Actions::SquadSelection((node.2.0.0, (leader.0, node.2.0.1.1)));
+                            commands.entity(node.0).insert(Visibility::Visible);
 
-                        match leader.0 {
-                            CompanyTypes::Regular => {
-                                commands.entity(node.0).insert(UiImage::new(other_assets.regular_infantry_squad_symbol.clone()));
-                            },
-                            CompanyTypes::Shock => {
-                                commands.entity(node.0).insert(UiImage::new(other_assets.shock_infantry_squad_symbol.clone()));
-                            },
-                            CompanyTypes::Armored => {
-                                commands.entity(node.0).insert(UiImage::new(other_assets.armored_squad_symbol.clone()));
-                            },
-                            CompanyTypes::Artillery => {
-                                commands.entity(node.0).insert(UiImage::new(other_assets.artillery_unit_symbol.clone()));
-                            },
-                            CompanyTypes::Engineer => {
-                                commands.entity(node.0).insert(UiImage::new(other_assets.engineer_unit_symbol.clone()));
-                            },
-                            CompanyTypes::None => {},
+                            match leader.0 {
+                                CompanyTypes::Regular => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.regular_infantry_squad_symbol_blufor.clone()));
+                                },
+                                CompanyTypes::Shock => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.shock_infantry_squad_symbol_blufor.clone()));
+                                },
+                                CompanyTypes::Armored => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.armored_squad_symbol_blufor.clone()));
+                                },
+                                CompanyTypes::Artillery => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.artillery_unit_symbol_blufor.clone()));
+                                },
+                                CompanyTypes::Engineer => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.engineer_unit_symbol_blufor.clone()));
+                                },
+                                CompanyTypes::None => {},
+                            }
+                        }
+
+                        if node.2.0.0 == player_data.team {
+                            if let Ok(mut bar) = supply_bars_q.get_mut(node.4.entity) {
+                                let modifier: f32 = leader.3 as f32 / leader.2 as f32;
+                                let width = bar.1.original_width * modifier;
+                                
+                                bar.0.width = Val::Px(width);
+                            }
+                        } else {
+                            if let Ok(mut bar) = supply_bars_q.get_mut(node.4.entity) {
+                                bar.0.width = Val::Px(0.);
+                            }
+                        }
+                    } else {
+                        if node.2.0.1.2 == false {
+                            node.2.0.1.2 = true;
+                            node.2.0.1.0 = leader.0;
+                            node.3.action = Actions::SquadSelection((node.2.0.0, (leader.0, node.2.0.1.1)));
+                            commands.entity(node.0).insert(Visibility::Visible);
+
+                            match leader.0 {
+                                CompanyTypes::Regular => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.regular_infantry_squad_symbol_opfor.clone()));
+                                },
+                                CompanyTypes::Shock => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.shock_infantry_squad_symbol_opfor.clone()));
+                                },
+                                CompanyTypes::Armored => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.armored_squad_symbol_opfor.clone()));
+                                },
+                                CompanyTypes::Artillery => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.artillery_unit_symbol_opfor.clone()));
+                                },
+                                CompanyTypes::Engineer => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.engineer_unit_symbol_opfor.clone()));
+                                },
+                                CompanyTypes::None => {},
+                            }
+                        }
+
+                        if node.2.0.0 == player_data.team {
+                            if let Ok(mut bar) = supply_bars_q.get_mut(node.4.entity) {
+                                let modifier: f32 = leader.3 as f32 / leader.2 as f32;
+                                let width = bar.1.original_width * modifier;
+                                
+                                bar.0.width = Val::Px(width);
+                            }
+                        } else {
+                            if let Ok(mut bar) = supply_bars_q.get_mut(node.4.entity) {
+                                bar.0.width = Val::Px(0.);
+                            }
                         }
                     }
-
-                    if let Ok(mut bar) = supply_bars_q.get_mut(node.4.entity) {
-                        let modifier: f32 = leader.3 as f32 / leader.2 as f32;
-                        let width = bar.1.original_width * modifier;
-                        
-                        bar.0.width = Val::Px(width);
-                    }
                 }
-                else if node.2.0.2 == true {
-                    node.2.0.2 = false;
+                else if node.2.0.1.2 == true {
+                    node.2.0.1.2 = false;
                     commands.entity(node.0).insert(Visibility::Hidden);
                 }
             }
-            else if node.2.0.2 == true {
-                node.2.0.2 = false;
+            else if node.2.0.1.2 == true {
+                node.2.0.1.2 = false;
                 commands.entity(node.0).insert(Visibility::Hidden);
             }
-        } else if node.2.0.2 == true {
-            node.2.0.2 = false;
+        } else if node.2.0.1.2 == true {
+            node.2.0.1.2 = false;
             commands.entity(node.0).insert(Visibility::Hidden);
         }
     }
@@ -3292,14 +3421,28 @@ pub fn platoon_nodes_positioning_system(
             let mut center: Vec3 = Vec3::ZERO;
             let mut counter = 0;
 
-            for squad in node.2.0.1.iter() {
-                if let Some(leader) = platoon_leaders.get(squad){
+            let mut is_all_visible = true;
+            for squad in node.2.0.1.1.iter() {
+                if let Some(leader) = platoon_leaders.get(&(node.2.0.0, *squad)){
                     counter += 1;
 
                     company_type = leader.0;
 
                     center += leader.1;
+
+                    if leader.4 == Visibility::Hidden {
+                        is_all_visible = false;
+                        break;
+                    }
                 }
+            }
+
+            if !is_all_visible {
+                if node.2.0.1.2 == true {
+                    node.2.0.1.2 = false;
+                    commands.entity(node.0).insert(Visibility::Hidden);
+                }
+                continue;
             }
 
             center = center / counter as f32;
@@ -3309,43 +3452,71 @@ pub fn platoon_nodes_positioning_system(
                     node.1.left = Val::Px(viewport_point.x);
                     node.1.top = Val::Px(viewport_point.y);
 
-                    if node.2.0.2 == false {
-                        node.2.0.2 = true;
-                        node.2.0.0 = company_type;
-                        node.3.action = Actions::PlatoonSelection((company_type, node.2.0.1.clone()));
-                        commands.entity(node.0).insert(Visibility::Visible);
+                    if node.2.0.0 == 1 {
+                        if node.2.0.1.2 == false {
+                            node.2.0.1.2 = true;
+                            node.2.0.1.0 = company_type;
+                            node.3.action = Actions::PlatoonSelection((node.2.0.0, (company_type, node.2.0.1.1.clone())));
+                            commands.entity(node.0).insert(Visibility::Visible);
 
-                        match company_type {
-                            CompanyTypes::Regular => {
-                                commands.entity(node.0).insert(UiImage::new(other_assets.regular_infantry_platoon_symbol.clone()));
-                            },
-                            CompanyTypes::Shock => {
-                                commands.entity(node.0).insert(UiImage::new(other_assets.shock_infantry_platoon_symbol.clone()));
-                            },
-                            CompanyTypes::Armored => {
-                                commands.entity(node.0).insert(UiImage::new(other_assets.armored_platoon_symbol.clone()));
-                            },
-                            CompanyTypes::Artillery => {
-                                commands.entity(node.0).insert(UiImage::new(other_assets.artillery_unit_symbol.clone()));
-                            },
-                            CompanyTypes::Engineer => {
-                                commands.entity(node.0).insert(UiImage::new(other_assets.engineer_unit_symbol.clone()));
-                            },
-                            CompanyTypes::None => {},
+                            match company_type {
+                                CompanyTypes::Regular => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.regular_infantry_platoon_symbol_blufor.clone()));
+                                },
+                                CompanyTypes::Shock => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.shock_infantry_platoon_symbol_blufor.clone()));
+                                },
+                                CompanyTypes::Armored => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.armored_platoon_symbol_blufor.clone()));
+                                },
+                                CompanyTypes::Artillery => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.artillery_unit_symbol_blufor.clone()));
+                                },
+                                CompanyTypes::Engineer => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.engineer_unit_symbol_blufor.clone()));
+                                },
+                                CompanyTypes::None => {},
+                            }
+                        }
+                    } else {
+                        if node.2.0.1.2 == false {
+                            node.2.0.1.2 = true;
+                            node.2.0.1.0 = company_type;
+                            node.3.action = Actions::PlatoonSelection((node.2.0.0, (company_type, node.2.0.1.1.clone())));
+                            commands.entity(node.0).insert(Visibility::Visible);
+
+                            match company_type {
+                                CompanyTypes::Regular => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.regular_infantry_platoon_symbol_opfor.clone()));
+                                },
+                                CompanyTypes::Shock => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.shock_infantry_platoon_symbol_opfor.clone()));
+                                },
+                                CompanyTypes::Armored => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.armored_platoon_symbol_opfor.clone()));
+                                },
+                                CompanyTypes::Artillery => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.artillery_unit_symbol_opfor.clone()));
+                                },
+                                CompanyTypes::Engineer => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.engineer_unit_symbol_opfor.clone()));
+                                },
+                                CompanyTypes::None => {},
+                            }
                         }
                     }
                 }
-                else if node.2.0.2 == true {
-                    node.2.0.2 = false;
+                else if node.2.0.1.2 == true {
+                    node.2.0.1.2 = false;
                     commands.entity(node.0).insert(Visibility::Hidden);
                 }
             }
-            else if node.2.0.2 == true {
-                node.2.0.2 = false;
+            else if node.2.0.1.2 == true {
+                node.2.0.1.2 = false;
                 commands.entity(node.0).insert(Visibility::Hidden);
             }
-        } else if node.2.0.2 == true {
-            node.2.0.2 = false;
+        } else if node.2.0.1.2 == true {
+            node.2.0.1.2 = false;
             commands.entity(node.0).insert(Visibility::Hidden);
         }
     }
@@ -3356,14 +3527,29 @@ pub fn platoon_nodes_positioning_system(
             let mut center: Vec3 = Vec3::ZERO;
             let mut counter = 0;
 
-            for squad in node.2.0.1.iter() {
-                if let Some(leader) = platoon_leaders.get(squad){
+            let mut is_all_visible = true;
+
+            for squad in node.2.0.1.1.iter() {
+                if let Some(leader) = platoon_leaders.get(&(node.2.0.0, *squad)){
                     counter += 1;
 
                     company_type = leader.0;
 
                     center += leader.1;
+
+                    if leader.4 == Visibility::Hidden {
+                        is_all_visible = false;
+                        break;
+                    }
                 }
+            }
+
+            if !is_all_visible {
+                if node.2.0.1.2 == true {
+                    node.2.0.1.2 = false;
+                    commands.entity(node.0).insert(Visibility::Hidden);
+                }
+                continue;
             }
 
             center = center / counter as f32;
@@ -3373,43 +3559,71 @@ pub fn platoon_nodes_positioning_system(
                     node.1.left = Val::Px(viewport_point.x);
                     node.1.top = Val::Px(viewport_point.y);
 
-                    if node.2.0.2 == false {
-                        node.2.0.2 = true;
-                        node.2.0.0 = company_type;
-                        node.3.action = Actions::CompanySelection((company_type, node.2.0.1.clone()));
-                        commands.entity(node.0).insert(Visibility::Visible);
+                    if node.2.0.0 == 1 {
+                        if node.2.0.1.2 == false {
+                            node.2.0.1.2 = true;
+                            node.2.0.1.0 = company_type;
+                            node.3.action = Actions::CompanySelection((node.2.0.0, (company_type, node.2.0.1.1.clone())));
+                            commands.entity(node.0).insert(Visibility::Visible);
 
-                        match company_type {
-                            CompanyTypes::Regular => {
-                                commands.entity(node.0).insert(UiImage::new(other_assets.regular_infantry_company_symbol.clone()));
-                            },
-                            CompanyTypes::Shock => {
-                                commands.entity(node.0).insert(UiImage::new(other_assets.shock_infantry_company_symbol.clone()));
-                            },
-                            CompanyTypes::Armored => {
-                                commands.entity(node.0).insert(UiImage::new(other_assets.armored_company_symbol.clone()));
-                            },
-                            CompanyTypes::Artillery => {
-                                commands.entity(node.0).insert(UiImage::new(other_assets.artillery_unit_symbol.clone()));
-                            },
-                            CompanyTypes::Engineer => {
-                                commands.entity(node.0).insert(UiImage::new(other_assets.engineer_unit_symbol.clone()));
-                            },
-                            CompanyTypes::None => {},
+                            match company_type {
+                                CompanyTypes::Regular => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.regular_infantry_company_symbol_blufor.clone()));
+                                },
+                                CompanyTypes::Shock => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.shock_infantry_company_symbol_blufor.clone()));
+                                },
+                                CompanyTypes::Armored => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.armored_company_symbol_blufor.clone()));
+                                },
+                                CompanyTypes::Artillery => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.artillery_unit_symbol_blufor.clone()));
+                                },
+                                CompanyTypes::Engineer => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.engineer_unit_symbol_blufor.clone()));
+                                },
+                                CompanyTypes::None => {},
+                            }
+                        }
+                    } else {
+                        if node.2.0.1.2 == false {
+                            node.2.0.1.2 = true;
+                            node.2.0.1.0 = company_type;
+                            node.3.action = Actions::CompanySelection((node.2.0.0, (company_type, node.2.0.1.1.clone())));
+                            commands.entity(node.0).insert(Visibility::Visible);
+
+                            match company_type {
+                                CompanyTypes::Regular => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.regular_infantry_company_symbol_opfor.clone()));
+                                },
+                                CompanyTypes::Shock => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.shock_infantry_company_symbol_opfor.clone()));
+                                },
+                                CompanyTypes::Armored => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.armored_company_symbol_opfor.clone()));
+                                },
+                                CompanyTypes::Artillery => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.artillery_unit_symbol_opfor.clone()));
+                                },
+                                CompanyTypes::Engineer => {
+                                    commands.entity(node.0).insert(UiImage::new(other_assets.engineer_unit_symbol_opfor.clone()));
+                                },
+                                CompanyTypes::None => {},
+                            }
                         }
                     }
                 }
-                else if node.2.0.2 == true {
-                    node.2.0.2 = false;
+                else if node.2.0.1.2 == true {
+                    node.2.0.1.2 = false;
                     commands.entity(node.0).insert(Visibility::Hidden);
                 }
             }
-            else if node.2.0.2 == true {
-                node.2.0.2 = false;
+            else if node.2.0.1.2 == true {
+                node.2.0.1.2 = false;
                 commands.entity(node.0).insert(Visibility::Hidden);
             }
-        } else if node.2.0.2 == true {
-            node.2.0.2 = false;
+        } else if node.2.0.1.2 == true {
+            node.2.0.1.2 = false;
             commands.entity(node.0).insert(Visibility::Hidden);
         }
     }
@@ -3420,14 +3634,30 @@ pub fn platoon_nodes_positioning_system(
             let mut counter = 0;
 
             let mut battalion: Vec<(CompanyTypes, (i32, i32, i32, i32, i32))> = Vec::new();
-            for squad in node.2.0.0.iter() {
-                if let Some(leader) = platoon_leaders.get(&squad.1){
+
+            let mut is_all_visible = true;
+
+            for squad in node.2.0.1.0.iter() {
+                if let Some(leader) = platoon_leaders.get(&(node.2.0.0, squad.1)){
                     counter += 1;
 
                     center += leader.1;
 
                     battalion.push((leader.0, squad.1));
+
+                    if leader.4 == Visibility::Hidden {
+                        is_all_visible = false;
+                        break;
+                    }
                 }
+            }
+
+            if !is_all_visible {
+                if node.2.0.1.1 == true {
+                    node.2.0.1.1 = false;
+                    commands.entity(node.0).insert(Visibility::Hidden);
+                }
+                continue;
             }
 
             center = center / counter as f32;
@@ -3437,23 +3667,33 @@ pub fn platoon_nodes_positioning_system(
                     node.1.left = Val::Px(viewport_point.x);
                     node.1.top = Val::Px(viewport_point.y);
 
-                    if node.2.0.1 == false {
-                        node.2.0.1 = true;
-                        node.3.action = Actions::BattalionSelection(battalion);
-                        commands.entity(node.0).insert(Visibility::Visible);
+                    if node.2.0.0 == 1 {
+                        if node.2.0.1.1 == false {
+                            node.2.0.1.1 = true;
+                            node.3.action = Actions::BattalionSelection((node.2.0.0, battalion));
+                            commands.entity(node.0).insert(UiImage::new(other_assets.battalion_symbol_blufor.clone()));
+                            commands.entity(node.0).insert(Visibility::Visible);
+                        }
+                    } else {
+                        if node.2.0.1.1 == false {
+                            node.2.0.1.1 = true;
+                            node.3.action = Actions::BattalionSelection((node.2.0.0, battalion));
+                            commands.entity(node.0).insert(UiImage::new(other_assets.battalion_symbol_opfor.clone()));
+                            commands.entity(node.0).insert(Visibility::Visible);
+                        }
                     }
                 }
-                else if node.2.0.1 == true {
-                    node.2.0.1 = false;
+                else if node.2.0.1.1 == true {
+                    node.2.0.1.1 = false;
                     commands.entity(node.0).insert(Visibility::Hidden);
                 }
             }
-            else if node.2.0.1 == true {
-                node.2.0.1 = false;
+            else if node.2.0.1.1 == true {
+                node.2.0.1.1 = false;
                 commands.entity(node.0).insert(Visibility::Hidden);
             }
-        } else if node.2.0.1 == true {
-            node.2.0.1 = false;
+        } else if node.2.0.1.1 == true {
+            node.2.0.1.1 = false;
             commands.entity(node.0).insert(Visibility::Hidden);
         }
     }
@@ -3464,14 +3704,30 @@ pub fn platoon_nodes_positioning_system(
             let mut counter = 0;
 
             let mut regiment: Vec<(CompanyTypes, (i32, i32, i32, i32, i32))> = Vec::new();
-            for squad in node.2.0.0.iter() {
-                if let Some(leader) = platoon_leaders.get(&squad.1){
+
+            let mut is_all_visible = true;
+            
+            for squad in node.2.0.1.0.iter() {
+                if let Some(leader) = platoon_leaders.get(&(node.2.0.0 ,squad.1)){
                     counter += 1;
 
                     center += leader.1;
 
                     regiment.push((leader.0, squad.1));
+
+                    if leader.4 == Visibility::Hidden {
+                        is_all_visible = false;
+                        break;
+                    }
                 }
+            }
+
+            if !is_all_visible {
+                if node.2.0.1.1 == true {
+                    node.2.0.1.1 = false;
+                    commands.entity(node.0).insert(Visibility::Hidden);
+                }
+                continue;
             }
 
             center = center / counter as f32;
@@ -3481,41 +3737,67 @@ pub fn platoon_nodes_positioning_system(
                     node.1.left = Val::Px(viewport_point.x);
                     node.1.top = Val::Px(viewport_point.y);
 
-                    if node.2.0.1 == false {
-                        node.2.0.1 = true;
-                        node.3.action = Actions::RegimentSelection(regiment);
-                        commands.entity(node.0).insert(Visibility::Visible);
+                    if node.2.0.0 == 1 {
+                        if node.2.0.1.1 == false {
+                            node.2.0.1.1 = true;
+                            node.3.action = Actions::RegimentSelection((node.2.0.0, regiment));
+                            commands.entity(node.0).insert(UiImage::new(other_assets.regiment_symbol_blufor.clone()));
+                            commands.entity(node.0).insert(Visibility::Visible);
+                        }
+                    } else {
+                        if node.2.0.1.1 == false {
+                            node.2.0.1.1 = true;
+                            node.3.action = Actions::RegimentSelection((node.2.0.0, regiment));
+                            commands.entity(node.0).insert(UiImage::new(other_assets.regiment_symbol_opfor.clone()));
+                            commands.entity(node.0).insert(Visibility::Visible);
+                        }
                     }
                 }
-                else if node.2.0.1 == true {
-                    node.2.0.1 = false;
+                else if node.2.0.1.1 == true {
+                    node.2.0.1.1 = false;
                     commands.entity(node.0).insert(Visibility::Hidden);
                 }
             }
-            else if node.2.0.1 == true {
-                node.2.0.1 = false;
+            else if node.2.0.1.1 == true {
+                node.2.0.1.1 = false;
                 commands.entity(node.0).insert(Visibility::Hidden);
             }
-        } else if node.2.0.1 == true {
-            node.2.0.1 = false;
+        } else if node.2.0.1.1 == true {
+            node.2.0.1.1 = false;
             commands.entity(node.0).insert(Visibility::Hidden);
         }
     }
 
     for mut node in brigade_nodes_q.iter_mut() {
-        if camera.2.translation.y > 100. && symbols_level.0 == 6 {//level 6 = regiment level
+        if camera.2.translation.y > 100. && symbols_level.0 == 6 {//level 6 = brigade level
             let mut center: Vec3 = Vec3::ZERO;
             let mut counter = 0;
 
             let mut brigade: Vec<(CompanyTypes, (i32, i32, i32, i32, i32))> = Vec::new();
-            for squad in node.2.0.0.iter() {
-                if let Some(leader) = platoon_leaders.get(&squad.1){
+
+            let mut is_all_visible = true;
+
+            for squad in node.2.0.1.0.iter() {
+                if let Some(leader) = platoon_leaders.get(&(node.2.0.0, squad.1)){
                     counter += 1;
 
                     center += leader.1;
 
                     brigade.push((leader.0, squad.1));
+
+                    if leader.4 == Visibility::Hidden {
+                        is_all_visible = false;
+                        break;
+                    }
                 }
+            }
+
+            if !is_all_visible {
+                if node.2.0.1.1 == true {
+                    node.2.0.1.1 = false;
+                    commands.entity(node.0).insert(Visibility::Hidden);
+                }
+                continue;
             }
 
             center = center / counter as f32;
@@ -3525,23 +3807,33 @@ pub fn platoon_nodes_positioning_system(
                     node.1.left = Val::Px(viewport_point.x);
                     node.1.top = Val::Px(viewport_point.y);
 
-                    if node.2.0.1 == false {
-                        node.2.0.1 = true;
-                        node.3.action = Actions::RegimentSelection(brigade);
-                        commands.entity(node.0).insert(Visibility::Visible);
+                    if node.2.0.0 == 1 {
+                        if node.2.0.1.1 == false {
+                            node.2.0.1.1 = true;
+                            node.3.action = Actions::BrigadeSelection((node.2.0.0, brigade));
+                            commands.entity(node.0).insert(UiImage::new(other_assets.brigade_symbol_blufor.clone()));
+                            commands.entity(node.0).insert(Visibility::Visible);
+                        }
+                    } else {
+                        if node.2.0.1.1 == false {
+                            node.2.0.1.1 = true;
+                            node.3.action = Actions::BrigadeSelection((node.2.0.0, brigade));
+                            commands.entity(node.0).insert(UiImage::new(other_assets.brigade_symbol_opfor.clone()));
+                            commands.entity(node.0).insert(Visibility::Visible);
+                        }
                     }
                 }
-                else if node.2.0.1 == true {
-                    node.2.0.1 = false;
+                else if node.2.0.1.1 == true {
+                    node.2.0.1.1 = false;
                     commands.entity(node.0).insert(Visibility::Hidden);
                 }
             }
-            else if node.2.0.1 == true {
-                node.2.0.1 = false;
+            else if node.2.0.1.1 == true {
+                node.2.0.1.1 = false;
                 commands.entity(node.0).insert(Visibility::Hidden);
             }
-        } else if node.2.0.1 == true {
-            node.2.0.1 = false;
+        } else if node.2.0.1.1 == true {
+            node.2.0.1.1 = false;
             commands.entity(node.0).insert(Visibility::Hidden);
         }
     }

@@ -50,25 +50,49 @@ pub struct UnitAssets {
 
 #[derive(Resource)]
 pub struct OtherAssets {
-    pub regular_infantry_squad_symbol: Handle<Image>,
-    pub shock_infantry_squad_symbol: Handle<Image>,
-    pub armored_squad_symbol: Handle<Image>,
-    pub artillery_unit_symbol: Handle<Image>,
-    pub engineer_unit_symbol: Handle<Image>,
+    pub regular_infantry_squad_symbol_blufor: Handle<Image>,
+    pub shock_infantry_squad_symbol_blufor: Handle<Image>,
+    pub armored_squad_symbol_blufor: Handle<Image>,
+    pub artillery_unit_symbol_blufor: Handle<Image>,
+    pub engineer_unit_symbol_blufor: Handle<Image>,
 
-    pub regular_infantry_platoon_symbol: Handle<Image>,
-    pub shock_infantry_platoon_symbol: Handle<Image>,
-    pub armored_platoon_symbol: Handle<Image>,
+    pub regular_infantry_platoon_symbol_blufor: Handle<Image>,
+    pub shock_infantry_platoon_symbol_blufor: Handle<Image>,
+    pub armored_platoon_symbol_blufor: Handle<Image>,
 
-    pub regular_infantry_company_symbol: Handle<Image>,
-    pub shock_infantry_company_symbol: Handle<Image>,
-    pub armored_company_symbol: Handle<Image>,
+    pub regular_infantry_company_symbol_blufor: Handle<Image>,
+    pub shock_infantry_company_symbol_blufor: Handle<Image>,
+    pub armored_company_symbol_blufor: Handle<Image>,
 
-    pub battalion_symbol: Handle<Image>,
+    pub battalion_symbol_blufor: Handle<Image>,
 
-    pub regiment_symbol: Handle<Image>,
+    pub regiment_symbol_blufor: Handle<Image>,
 
-    pub brigade_symbol: Handle<Image>,
+    pub brigade_symbol_blufor: Handle<Image>,
+
+
+
+    pub regular_infantry_squad_symbol_opfor: Handle<Image>,
+    pub shock_infantry_squad_symbol_opfor: Handle<Image>,
+    pub armored_squad_symbol_opfor: Handle<Image>,
+    pub artillery_unit_symbol_opfor: Handle<Image>,
+    pub engineer_unit_symbol_opfor: Handle<Image>,
+
+    pub regular_infantry_platoon_symbol_opfor: Handle<Image>,
+    pub shock_infantry_platoon_symbol_opfor: Handle<Image>,
+    pub armored_platoon_symbol_opfor: Handle<Image>,
+
+    pub regular_infantry_company_symbol_opfor: Handle<Image>,
+    pub shock_infantry_company_symbol_opfor: Handle<Image>,
+    pub armored_company_symbol_opfor: Handle<Image>,
+
+    pub battalion_symbol_opfor: Handle<Image>,
+
+    pub regiment_symbol_opfor: Handle<Image>,
+
+    pub brigade_symbol_opfor: Handle<Image>,
+
+
 
     pub materials_icon: Handle<Image>,
 
@@ -367,50 +391,98 @@ pub fn load_assets (
     //Units^
 
     //Other
-    let regular_infantry_symbol: Handle<Image> = asset_server.load("icons/tactical/regular_infantry_squad.png");
-    let shock_infantry_symbol: Handle<Image> = asset_server.load("icons/tactical/shock_infantry_squad.png");
-    let armored_symbol: Handle<Image> = asset_server.load("icons/tactical/armored_squad.png");
-    let artillery_symbol: Handle<Image> = asset_server.load("icons/tactical/artillery_unit.png");
-    let engineer_symbol: Handle<Image> = asset_server.load("icons/tactical/engineer_unit.png");
+    let regular_infantry_symbol_blufor: Handle<Image> = asset_server.load("icons/tactical/blufor/regular_infantry_squad.png");
+    let shock_infantry_symbol_blufor: Handle<Image> = asset_server.load("icons/tactical/blufor/shock_infantry_squad.png");
+    let armored_symbol_blufor: Handle<Image> = asset_server.load("icons/tactical/blufor/armored_squad.png");
+    let artillery_symbol_blufor: Handle<Image> = asset_server.load("icons/tactical/blufor/artillery_unit.png");
+    let engineer_symbol_blufor: Handle<Image> = asset_server.load("icons/tactical/blufor/engineer_unit.png");
 
-    let regular_infantry_platoon_symbol: Handle<Image> = asset_server.load("icons/tactical/regular_infantry_platoon.png");
-    let shock_infantry_platoon_symbol: Handle<Image> = asset_server.load("icons/tactical/shock_infantry_platoon.png");
-    let armored_platoon_symbol: Handle<Image> = asset_server.load("icons/tactical/armored_platoon.png");
+    let regular_infantry_platoon_symbol_blufor: Handle<Image> = asset_server.load("icons/tactical/blufor/regular_infantry_platoon.png");
+    let shock_infantry_platoon_symbol_blufor: Handle<Image> = asset_server.load("icons/tactical/blufor/shock_infantry_platoon.png");
+    let armored_platoon_symbol_blufor: Handle<Image> = asset_server.load("icons/tactical/blufor/armored_platoon.png");
 
-    let regular_infantry_company_symbol: Handle<Image> = asset_server.load("icons/tactical/regular_infantry_company.png");
-    let shock_infantry_company_symbol: Handle<Image> = asset_server.load("icons/tactical/shock_infantry_company.png");
-    let armored_company_symbol: Handle<Image> = asset_server.load("icons/tactical/armored_company.png");
+    let regular_infantry_company_symbol_blufor: Handle<Image> = asset_server.load("icons/tactical/blufor/regular_infantry_company.png");
+    let shock_infantry_company_symbol_blufor: Handle<Image> = asset_server.load("icons/tactical/blufor/shock_infantry_company.png");
+    let armored_company_symbol_blufor: Handle<Image> = asset_server.load("icons/tactical/blufor/armored_company.png");
 
-    let battalion_symbol: Handle<Image> = asset_server.load("icons/tactical/battalion.png");
+    let battalion_symbol_blufor: Handle<Image> = asset_server.load("icons/tactical/blufor/battalion.png");
 
-    let regiment_symbol: Handle<Image> = asset_server.load("icons/tactical/regiment.png");
+    let regiment_symbol_blufor: Handle<Image> = asset_server.load("icons/tactical/blufor/regiment.png");
 
-    let brigade_symbol: Handle<Image> = asset_server.load("icons/tactical/brigade.png");
+    let brigade_symbol_blufor: Handle<Image> = asset_server.load("icons/tactical/blufor/brigade.png");
+
+
+
+    let regular_infantry_symbol_opfor: Handle<Image> = asset_server.load("icons/tactical/opfor/regular_infantry_squad.png");
+    let shock_infantry_symbol_opfor: Handle<Image> = asset_server.load("icons/tactical/opfor/shock_infantry_squad.png");
+    let armored_symbol_opfor: Handle<Image> = asset_server.load("icons/tactical/opfor/armored_squad.png");
+    let artillery_symbol_opfor: Handle<Image> = asset_server.load("icons/tactical/opfor/artillery_unit.png");
+    let engineer_symbol_opfor: Handle<Image> = asset_server.load("icons/tactical/opfor/engineer_unit.png");
+
+    let regular_infantry_platoon_symbol_opfor: Handle<Image> = asset_server.load("icons/tactical/opfor/regular_infantry_platoon.png");
+    let shock_infantry_platoon_symbol_opfor: Handle<Image> = asset_server.load("icons/tactical/opfor/shock_infantry_platoon.png");
+    let armored_platoon_symbol_opfor: Handle<Image> = asset_server.load("icons/tactical/opfor/armored_platoon.png");
+
+    let regular_infantry_company_symbol_opfor: Handle<Image> = asset_server.load("icons/tactical/opfor/regular_infantry_company.png");
+    let shock_infantry_company_symbol_opfor: Handle<Image> = asset_server.load("icons/tactical/opfor/shock_infantry_company.png");
+    let armored_company_symbol_opfor: Handle<Image> = asset_server.load("icons/tactical/opfor/armored_company.png");
+
+    let battalion_symbol_opfor: Handle<Image> = asset_server.load("icons/tactical/opfor/battalion.png");
+
+    let regiment_symbol_opfor: Handle<Image> = asset_server.load("icons/tactical/opfor/regiment.png");
+
+    let brigade_symbol_opfor: Handle<Image> = asset_server.load("icons/tactical/opfor/brigade.png");
+
+
 
     let materials_icon: Handle<Image> = asset_server.load("icons/resources/materials.png");
 
     let human_resource_icon: Handle<Image> = asset_server.load("icons/resources/human.png");
 
     commands.insert_resource(OtherAssets{
-        regular_infantry_squad_symbol: regular_infantry_symbol,
-        shock_infantry_squad_symbol: shock_infantry_symbol,
-        armored_squad_symbol: armored_symbol,
-        artillery_unit_symbol: artillery_symbol,
-        engineer_unit_symbol: engineer_symbol,
+        regular_infantry_squad_symbol_blufor: regular_infantry_symbol_blufor,
+        shock_infantry_squad_symbol_blufor: shock_infantry_symbol_blufor,
+        armored_squad_symbol_blufor: armored_symbol_blufor,
+        artillery_unit_symbol_blufor: artillery_symbol_blufor,
+        engineer_unit_symbol_blufor: engineer_symbol_blufor,
 
-        regular_infantry_platoon_symbol: regular_infantry_platoon_symbol,
-        shock_infantry_platoon_symbol: shock_infantry_platoon_symbol,
-        armored_platoon_symbol: armored_platoon_symbol,
+        regular_infantry_platoon_symbol_blufor: regular_infantry_platoon_symbol_blufor,
+        shock_infantry_platoon_symbol_blufor: shock_infantry_platoon_symbol_blufor,
+        armored_platoon_symbol_blufor: armored_platoon_symbol_blufor,
 
-        regular_infantry_company_symbol: regular_infantry_company_symbol,
-        shock_infantry_company_symbol: shock_infantry_company_symbol,
-        armored_company_symbol: armored_company_symbol,
+        regular_infantry_company_symbol_blufor: regular_infantry_company_symbol_blufor,
+        shock_infantry_company_symbol_blufor: shock_infantry_company_symbol_blufor,
+        armored_company_symbol_blufor: armored_company_symbol_blufor,
 
-        battalion_symbol: battalion_symbol,
+        battalion_symbol_blufor: battalion_symbol_blufor,
 
-        regiment_symbol: regiment_symbol,
+        regiment_symbol_blufor: regiment_symbol_blufor,
 
-        brigade_symbol: brigade_symbol,
+        brigade_symbol_blufor: brigade_symbol_blufor,
+
+
+
+        regular_infantry_squad_symbol_opfor: regular_infantry_symbol_opfor,
+        shock_infantry_squad_symbol_opfor: shock_infantry_symbol_opfor,
+        armored_squad_symbol_opfor: armored_symbol_opfor,
+        artillery_unit_symbol_opfor: artillery_symbol_opfor,
+        engineer_unit_symbol_opfor: engineer_symbol_opfor,
+
+        regular_infantry_platoon_symbol_opfor: regular_infantry_platoon_symbol_opfor,
+        shock_infantry_platoon_symbol_opfor: shock_infantry_platoon_symbol_opfor,
+        armored_platoon_symbol_opfor: armored_platoon_symbol_opfor,
+
+        regular_infantry_company_symbol_opfor: regular_infantry_company_symbol_opfor,
+        shock_infantry_company_symbol_opfor: shock_infantry_company_symbol_opfor,
+        armored_company_symbol_opfor: armored_company_symbol_opfor,
+
+        battalion_symbol_opfor: battalion_symbol_opfor,
+
+        regiment_symbol_opfor: regiment_symbol_opfor,
+
+        brigade_symbol_opfor: brigade_symbol_opfor,
+
+
 
         materials_icon: materials_icon,
         
@@ -738,19 +810,19 @@ pub fn lod_system(
 
                 if let Some(animated_mesh) = model.2 {
                     if !animated_mesh.joints.is_empty() {
-                        commands.entity(model.0).insert(SkinnedMesh{
+                        commands.entity(model.0).try_insert(SkinnedMesh{
                             inverse_bindposes: animated_mesh.inverse_bindposes.clone(),
                             joints: animated_mesh.joints.clone(),
                         });
                     }
                 }
 
-                commands.entity(model.0).insert(model.1.detailed.0.clone());
+                commands.entity(model.0).try_insert(model.1.detailed.0.clone());
 
                 if let Some(team_material) = &model.1.detailed.1 {
-                    commands.entity(model.0).insert(team_material.clone());
+                    commands.entity(model.0).try_insert(team_material.clone());
                 } else if let Some(simple_material) = &model.1.detailed.2 {
-                    commands.entity(model.0).insert(simple_material.clone());
+                    commands.entity(model.0).try_insert(simple_material.clone());
                 }
             }
         }
@@ -770,8 +842,8 @@ pub fn lod_system(
                 }
             }
 
-            commands.entity(model.0).insert(model.1.simplified.0.clone());
-            commands.entity(model.0).insert(model.1.simplified.1.clone());
+            commands.entity(model.0).try_insert(model.1.simplified.0.clone());
+            commands.entity(model.0).try_insert(model.1.simplified.1.clone());
         }
     }
 }
@@ -1068,8 +1140,8 @@ pub fn running_animation_manager(
 
                                 commands
                                 .entity(animation_player.0)
-                                .insert(animation.1.clone())
-                                .insert(transitions);
+                                .try_insert(animation.1.clone())
+                                .try_insert(transitions);
 
                                 animation_player.1.stop(animation.0[0]);
                                 animation_player.1.play(animation.0[1]).repeat().set_speed(2.);
@@ -1082,7 +1154,7 @@ pub fn running_animation_manager(
 
                                 let graph_handle = graphs.add(graph);
 
-                                instanced_animations.running_animations.insert(runner.0.unit_data.1.2.clone(), (animation_indices.clone(), graph_handle.clone()));
+                                instanced_animations.running_animations.try_insert(runner.0.unit_data.1.2.clone(), (animation_indices.clone(), graph_handle.clone()));
 
                                 let mut transitions = AnimationTransitions::new();
 
@@ -1092,8 +1164,8 @@ pub fn running_animation_manager(
 
                                 commands
                                 .entity(animation_player.0)
-                                .insert(graph_handle)
-                                .insert(transitions);
+                                .try_insert(graph_handle)
+                                .try_insert(transitions);
 
                                 animation_player.1.stop(animation_indices[0]);
                                 animation_player.1.play(animation_indices[1]).repeat().set_speed(2.);
@@ -1143,8 +1215,8 @@ pub fn running_animation_manager(
 
                                 commands
                                 .entity(animation_player.0)
-                                .insert(animation.1.clone())
-                                .insert(transitions);
+                                .try_insert(animation.1.clone())
+                                .try_insert(transitions);
 
                                 animation_player.1.stop(animation.0[1]);
                                 animation_player.1.play(animation.0[0]);
@@ -1157,7 +1229,7 @@ pub fn running_animation_manager(
 
                                 let graph_handle = graphs.add(graph);
 
-                                instanced_animations.running_animations.insert(runner.0.unit_data.1.2.clone(), (animation_indices.clone(), graph_handle.clone()));
+                                instanced_animations.running_animations.try_insert(runner.0.unit_data.1.2.clone(), (animation_indices.clone(), graph_handle.clone()));
 
                                 let mut transitions = AnimationTransitions::new();
 
@@ -1167,8 +1239,8 @@ pub fn running_animation_manager(
 
                                 commands
                                 .entity(animation_player.0)
-                                .insert(graph_handle)
-                                .insert(transitions);
+                                .try_insert(graph_handle)
+                                .try_insert(transitions);
 
                                 animation_player.1.stop(animation_indices[1]);
                                 animation_player.1.play(animation_indices[0]);

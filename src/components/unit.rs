@@ -1819,128 +1819,129 @@ pub fn process_combat (
 pub fn platoon_leaders_monitoring_system (
     mut army: ResMut<Armies>,
     mut commands: Commands,
-    player_data: Res<PlayerData>,
     timer: ResMut<camera::TimerResource>,
 ){
     if timer.0.finished() {
-        for platoon in army.0.get_mut(&player_data.team).unwrap().regular_platoons.iter_mut() {
-            if platoon.1.2 == Entity::PLACEHOLDER || commands.get_entity(platoon.1.2).is_none() {
-                let mut soldiers_iter = platoon.1.0.0.0.set.iter();
-                let mut specialists_iter = platoon.1.0.0.1.set.iter();
+        for team_army in army.0.iter_mut() {
+            for platoon in team_army.1.regular_platoons.iter_mut() {
+                if platoon.1.2 == Entity::PLACEHOLDER || commands.get_entity(platoon.1.2).is_none() {
+                    let mut soldiers_iter = platoon.1.0.0.0.set.iter();
+                    let mut specialists_iter = platoon.1.0.0.1.set.iter();
 
-                loop {
-                    if let Some(single_unit) = soldiers_iter.next() {
-                        if commands.get_entity(*single_unit).is_some() {
-                            platoon.1.2 = *single_unit;
-                            commands.entity(platoon.1.2).insert(SquadLeader((
-                                CompanyTypes::Regular,
-                                *platoon.0
-                            )));
+                    loop {
+                        if let Some(single_unit) = soldiers_iter.next() {
+                            if commands.get_entity(*single_unit).is_some() {
+                                platoon.1.2 = *single_unit;
+                                commands.entity(platoon.1.2).insert(SquadLeader((
+                                    CompanyTypes::Regular,
+                                    *platoon.0
+                                )));
+
+                                break;
+                            }
+                        } else if let Some(single_unit) = specialists_iter.next() {
+                            if commands.get_entity(*single_unit).is_some() {
+                                platoon.1.2 = *single_unit;
+                                commands.entity(platoon.1.2).insert(SquadLeader((
+                                    CompanyTypes::Regular,
+                                    *platoon.0
+                                )));
+
+                                break;
+                            }
+                        } else if platoon.1.2 != Entity::PLACEHOLDER {
+                            platoon.1.2 = Entity::PLACEHOLDER;
 
                             break;
-                        }
-                    } else if let Some(single_unit) = specialists_iter.next() {
-                        if commands.get_entity(*single_unit).is_some() {
-                            platoon.1.2 = *single_unit;
-                            commands.entity(platoon.1.2).insert(SquadLeader((
-                                CompanyTypes::Regular,
-                                *platoon.0
-                            )));
-
+                        } else {
                             break;
                         }
-                    } else if platoon.1.2 != Entity::PLACEHOLDER {
-                        platoon.1.2 = Entity::PLACEHOLDER;
-
-                        break;
-                    } else {
-                        break;
                     }
                 }
             }
-        }
 
-        for platoon in army.0.get_mut(&player_data.team).unwrap().shock_platoons.iter_mut() {
-            if platoon.1.2 == Entity::PLACEHOLDER || commands.get_entity(platoon.1.2).is_none() {
-                let mut soldiers_iter = platoon.1.0.0.0.set.iter();
-                let mut specialists_iter = platoon.1.0.0.0.set.iter();
+            for platoon in team_army.1.shock_platoons.iter_mut() {
+                if platoon.1.2 == Entity::PLACEHOLDER || commands.get_entity(platoon.1.2).is_none() {
+                    let mut soldiers_iter = platoon.1.0.0.0.set.iter();
+                    let mut specialists_iter = platoon.1.0.0.0.set.iter();
 
-                loop {
-                    if let Some(single_unit) = soldiers_iter.next() {
-                        if commands.get_entity(*single_unit).is_some() {
-                            platoon.1.2 = *single_unit;
-                            commands.entity(platoon.1.2).insert(SquadLeader((
-                                CompanyTypes::Shock,
-                                *platoon.0
-                            )));
+                    loop {
+                        if let Some(single_unit) = soldiers_iter.next() {
+                            if commands.get_entity(*single_unit).is_some() {
+                                platoon.1.2 = *single_unit;
+                                commands.entity(platoon.1.2).insert(SquadLeader((
+                                    CompanyTypes::Shock,
+                                    *platoon.0
+                                )));
+
+                                break;
+                            }
+                        } else if let Some(single_unit) = specialists_iter.next() {
+                            if commands.get_entity(*single_unit).is_some() {
+                                platoon.1.2 = *single_unit;
+                                commands.entity(platoon.1.2).insert(SquadLeader((
+                                    CompanyTypes::Shock,
+                                    *platoon.0
+                                )));
+
+                                break;
+                            }
+                        } else if platoon.1.2 != Entity::PLACEHOLDER {
+                            platoon.1.2 = Entity::PLACEHOLDER;
 
                             break;
-                        }
-                    } else if let Some(single_unit) = specialists_iter.next() {
-                        if commands.get_entity(*single_unit).is_some() {
-                            platoon.1.2 = *single_unit;
-                            commands.entity(platoon.1.2).insert(SquadLeader((
-                                CompanyTypes::Shock,
-                                *platoon.0
-                            )));
-
+                        } else {
                             break;
                         }
-                    } else if platoon.1.2 != Entity::PLACEHOLDER {
-                        platoon.1.2 = Entity::PLACEHOLDER;
-
-                        break;
-                    } else {
-                        break;
                     }
                 }
             }
-        }
 
-        for platoon in army.0.get_mut(&player_data.team).unwrap().armored_platoons.iter_mut() {
-            if platoon.1.2 == Entity::PLACEHOLDER || commands.get_entity(platoon.1.2).is_none() {
-                let mut vehicles_iter = platoon.1.0.0.set.iter();
+            for platoon in team_army.1.armored_platoons.iter_mut() {
+                if platoon.1.2 == Entity::PLACEHOLDER || commands.get_entity(platoon.1.2).is_none() {
+                    let mut vehicles_iter = platoon.1.0.0.set.iter();
 
-                loop {
-                    if let Some(single_unit) = vehicles_iter.next() {
-                        if commands.get_entity(*single_unit).is_some() {
-                            platoon.1.2 = *single_unit;
-                            commands.entity(platoon.1.2).insert(SquadLeader((
-                                CompanyTypes::Armored,
-                                *platoon.0
-                            )));
+                    loop {
+                        if let Some(single_unit) = vehicles_iter.next() {
+                            if commands.get_entity(*single_unit).is_some() {
+                                platoon.1.2 = *single_unit;
+                                commands.entity(platoon.1.2).insert(SquadLeader((
+                                    CompanyTypes::Armored,
+                                    *platoon.0
+                                )));
+
+                                break;
+                            }
+                        } else if platoon.1.2 != Entity::PLACEHOLDER {
+                            platoon.1.2 = Entity::PLACEHOLDER;
 
                             break;
+                        } else {
+                            break;
                         }
-                    } else if platoon.1.2 != Entity::PLACEHOLDER {
-                        platoon.1.2 = Entity::PLACEHOLDER;
-
-                        break;
-                    } else {
-                        break;
                     }
                 }
             }
+            
+            // let mut artillery_battalion_leader = army.0.get_mut(&player_data.team).unwrap().artillery_units.1;
+            // if artillery_battalion_leader == Entity::PLACEHOLDER ||
+            // commands.get_entity(artillery_battalion_leader).is_none() {
+            //     for artillery_unit in army.0.get_mut(&player_data.team).unwrap().artillery_units.0.iter_mut() {
+            //         if let Some(artillery_entity) = artillery_unit.1.0.0 {
+            //             if commands.get_entity(artillery_entity).is_some() {
+            //                 artillery_battalion_leader = artillery_entity;
+
+            //                 commands.entity(artillery_battalion_leader).insert(PlatoonLeader((
+            //                     BattalionTypes::Artillery,
+            //                     (0, 0, 0, 0, 0),
+            //                 )));
+
+            //                 break;
+            //             }
+            //         }
+            //     }
+            // }
         }
-        
-        // let mut artillery_battalion_leader = army.0.get_mut(&player_data.team).unwrap().artillery_units.1;
-        // if artillery_battalion_leader == Entity::PLACEHOLDER ||
-        // commands.get_entity(artillery_battalion_leader).is_none() {
-        //     for artillery_unit in army.0.get_mut(&player_data.team).unwrap().artillery_units.0.iter_mut() {
-        //         if let Some(artillery_entity) = artillery_unit.1.0.0 {
-        //             if commands.get_entity(artillery_entity).is_some() {
-        //                 artillery_battalion_leader = artillery_entity;
-
-        //                 commands.entity(artillery_battalion_leader).insert(PlatoonLeader((
-        //                     BattalionTypes::Artillery,
-        //                     (0, 0, 0, 0, 0),
-        //                 )));
-
-        //                 break;
-        //             }
-        //         }
-        //     }
-        // }
     }
 }
 
