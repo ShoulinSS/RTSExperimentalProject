@@ -1105,87 +1105,14 @@ pub fn apply_team_material_to_scenes (
 pub struct AnimationComponent(pub Vec<Handle<AnimationClip>>);
 
 pub fn running_animation_manager(
-    running_q: Query<(&CombatComponent, &AnimationComponent, Entity), Added<NeedToMove>>,
     stopped_q: Query<(&CombatComponent, &AnimationComponent, Entity), Added<StoppedMoving>>,
+    running_q: Query<(&CombatComponent, &AnimationComponent, Entity), Added<NeedToMove>>,
     mut animation_players_q: Query<(Entity, &mut AnimationPlayer)>,
     children_q: Query<&Children>,
     mut instanced_animations: ResMut<InstancedAnimations>,
     mut graphs: ResMut<Assets<AnimationGraph>>,
     mut commands: Commands,
 ) {
-    for runner in running_q.iter() {
-        let mut parents = vec![runner.2];
-        let mut is_animation_found = false;
-
-        loop {
-            let mut new_parents = Vec::new();
-
-            for parent in parents.iter() {
-                if is_animation_found {
-                    new_parents.clear();
-                    break;
-                }
-
-                if let Ok(children) = children_q.get(*parent) {
-                    for child in children.iter() {
-                        new_parents.push(*child);
-
-                        if let Ok(mut animation_player) = animation_players_q.get_mut(*child) {
-                            if let Some(animation) = instanced_animations.running_animations.get_mut(&runner.0.unit_data.1.2) {
-                                let mut transitions = AnimationTransitions::new();
-
-                                transitions
-                                .play(&mut animation_player.1, animation.0[1], std::time::Duration::ZERO)
-                                .repeat();
-
-                                commands
-                                .entity(animation_player.0)
-                                .try_insert(animation.1.clone())
-                                .try_insert(transitions);
-
-                                animation_player.1.stop(animation.0[0]);
-                                animation_player.1.play(animation.0[1]).repeat().set_speed(2.);
-                            } else {
-                                let mut graph = AnimationGraph::new();
-
-                                let animation_indices: Vec<AnimationNodeIndex> = graph
-                                    .add_clips(runner.1.0.clone(), 1.0, graph.root)
-                                    .collect();
-
-                                let graph_handle = graphs.add(graph);
-
-                                instanced_animations.running_animations.try_insert(runner.0.unit_data.1.2.clone(), (animation_indices.clone(), graph_handle.clone()));
-
-                                let mut transitions = AnimationTransitions::new();
-
-                                transitions
-                                .play(&mut animation_player.1, animation_indices[1], std::time::Duration::ZERO)
-                                .repeat();
-
-                                commands
-                                .entity(animation_player.0)
-                                .try_insert(graph_handle)
-                                .try_insert(transitions);
-
-                                animation_player.1.stop(animation_indices[0]);
-                                animation_player.1.play(animation_indices[1]).repeat().set_speed(2.);
-                            }
-
-                            is_animation_found = true;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if new_parents.is_empty() {
-                break;
-            }
-
-            parents = new_parents;
-        }
-    }
-
     for runner in stopped_q.iter() {
         let mut parents = vec![runner.2];
         let mut is_animation_found = false;
@@ -1244,6 +1171,79 @@ pub fn running_animation_manager(
 
                                 animation_player.1.stop(animation_indices[1]);
                                 animation_player.1.play(animation_indices[0]);
+                            }
+
+                            is_animation_found = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if new_parents.is_empty() {
+                break;
+            }
+
+            parents = new_parents;
+        }
+    }
+
+    for runner in running_q.iter() {
+        let mut parents = vec![runner.2];
+        let mut is_animation_found = false;
+
+        loop {
+            let mut new_parents = Vec::new();
+
+            for parent in parents.iter() {
+                if is_animation_found {
+                    new_parents.clear();
+                    break;
+                }
+
+                if let Ok(children) = children_q.get(*parent) {
+                    for child in children.iter() {
+                        new_parents.push(*child);
+
+                        if let Ok(mut animation_player) = animation_players_q.get_mut(*child) {
+                            if let Some(animation) = instanced_animations.running_animations.get_mut(&runner.0.unit_data.1.2) {
+                                let mut transitions = AnimationTransitions::new();
+
+                                transitions
+                                .play(&mut animation_player.1, animation.0[1], std::time::Duration::ZERO)
+                                .repeat();
+
+                                commands
+                                .entity(animation_player.0)
+                                .try_insert(animation.1.clone())
+                                .try_insert(transitions);
+
+                                animation_player.1.stop(animation.0[0]);
+                                animation_player.1.play(animation.0[1]).repeat().set_speed(2.);
+                            } else {
+                                let mut graph = AnimationGraph::new();
+
+                                let animation_indices: Vec<AnimationNodeIndex> = graph
+                                    .add_clips(runner.1.0.clone(), 1.0, graph.root)
+                                    .collect();
+
+                                let graph_handle = graphs.add(graph);
+
+                                instanced_animations.running_animations.try_insert(runner.0.unit_data.1.2.clone(), (animation_indices.clone(), graph_handle.clone()));
+
+                                let mut transitions = AnimationTransitions::new();
+
+                                transitions
+                                .play(&mut animation_player.1, animation_indices[1], std::time::Duration::ZERO)
+                                .repeat();
+
+                                commands
+                                .entity(animation_player.0)
+                                .try_insert(graph_handle)
+                                .try_insert(transitions);
+
+                                animation_player.1.stop(animation_indices[0]);
+                                animation_player.1.play(animation_indices[1]).repeat().set_speed(2.);
                             }
 
                             is_animation_found = true;

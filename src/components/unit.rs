@@ -326,8 +326,11 @@ pub fn clear_selected_units(
 #[derive(Component, Clone)]
 pub struct UnitComponent{
     pub path: Vec<Vec3>,
+    pub start_position: Vec3,
     pub speed: f32,
-    pub waypoint_check_factor: f32,
+    pub waypoint_radius: f32,
+    pub elapsed: f32,
+    pub inv_duration: f32,
 }
 
 #[derive(Component, Clone)]
@@ -941,6 +944,7 @@ pub fn poll_pathfinding_tasks_system(
                     match network_status.0 {
                         NetworkStatuses::SinglePlayer => {
                             unit_component.path = path;
+                            unit_component.elapsed = 0.;
                             commands.entity(unit_entity).try_insert(NeedToMove);
                         },
                         NetworkStatuses::Host => {
@@ -1023,66 +1027,90 @@ pub fn process_agents_movement(
     network_status: Res<NetworkStatus>,
     mut server: ResMut<QuinnetServer>,
     clients: Res<ClientList>,
-    // mut event_writer: (
-    //     EventWriter<UnsentServerMessage>,
-    // ),
 ){
     for(mut unit_component,mut unit_transform, unit_entity, controller_option) in units_q.iter_mut(){
         if !unit_component.path.is_empty(){
-            let next_point = unit_component.path[0];
-            let mut direction = (next_point - unit_transform.translation).normalize();
-            direction.y = 0.;
-
             let unit_position = unit_transform.translation;
+            let target_position = unit_component.path[0];
 
-            unit_transform.look_at(
-                Vec3::new(
-                    next_point.x,
-                    unit_position.y,
-                    next_point.z,
-                ),
-                Vec3::Y,
-            );
+            if unit_component.elapsed == 0. {
+                unit_transform.look_at(
+                    Vec3::new(
+                        target_position.x,
+                        unit_position.y,
+                        target_position.z,
+                    ),
+                    Vec3::Y,
+                );
+                
+                unit_component.start_position = unit_position;
+                let distance = unit_component.start_position.xz().distance(target_position.xz());
 
-            if let Some(mut controller) = controller_option {
-                controller.translation = Some(direction * unit_component.speed * time.delta_seconds());
+                if distance <= unit_component.waypoint_radius {
+                    unit_component.path.remove(0);
+                } else {
+                    let duration = distance / unit_component.speed;
+                    unit_component.inv_duration = 1. / duration;
+
+                    unit_component.elapsed += time.delta_seconds();
+                    let t = unit_component.elapsed * unit_component.inv_duration;
+
+                    let new_pos = if t >= 1. {
+                        target_position
+                    } else {
+                        unit_component.start_position.lerp(target_position, t)
+                    };
+
+                    let mut delta = new_pos - unit_position;
+                    delta.y = 0.;
+
+                    if let Some(mut controller) = controller_option {
+                        controller.translation = Some(delta);
+                    } else {
+                        unit_transform.translation = new_pos;
+                    }
+                }
             } else {
-                unit_transform.translation += direction * unit_component.speed * time.delta_seconds();
+                if unit_position.xz().distance(target_position.xz()) <= unit_component.waypoint_radius {
+                    unit_component.path.remove(0);
+                    unit_component.elapsed = 0.;
+                } else {
+                    unit_component.elapsed += time.delta_seconds();
+                    let t = unit_component.elapsed * unit_component.inv_duration;
+
+                    let new_pos = if t >= 1.0 {
+                        target_position
+                    } else {
+                        unit_component.start_position.lerp(target_position, t)
+                    };
+
+                    let mut delta = new_pos - unit_position;
+                    delta.y = 0.;
+
+                    if let Some(mut controller) = controller_option {
+                        controller.translation = Some(delta);
+                    } else {
+                        unit_transform.translation = new_pos;
+                    }
+                }
             }
 
-            // if matches!(network_status.0, NetworkStatuses::Host) {
-            //     let mut channel_id = 30;
-            //     while channel_id <= 59 {
-            //         if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnspecifiedEntityMoved{
-            //             server_entity: unit_entity,
-            //             new_position: unit_transform.translation,
-            //         }){
-            //             channel_id += 1;
-            //         } else {
-            //             break;
-            //         }
-            //     }
-            // }
+            if unit_component.path.is_empty() {
+                commands.entity(unit_entity).remove::<NeedToMove>();
+                commands.entity(unit_entity).try_insert(StoppedMoving);
 
-            if unit_transform.translation.xz().distance(next_point.xz()) < unit_component.waypoint_check_factor {
+                unit_component.elapsed = 0.;
 
-                unit_component.path.remove(0);
-
-                if unit_component.path.is_empty() {
-                    commands.entity(unit_entity).remove::<NeedToMove>();
-                    commands.entity(unit_entity).try_insert(StoppedMoving);
-
-                    if matches!(network_status.0, NetworkStatuses::Host) {
-                        let mut channel_id = 30;
-                        while channel_id <= 59 {
-                            if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnspecifiedEntityMoved{
-                                server_entity: unit_entity,
-                                new_position: unit_transform.translation,
-                            }){
-                                channel_id += 1;
-                            } else {
-                                break;
-                            }
+                if matches!(network_status.0, NetworkStatuses::Host) {
+                    let mut channel_id = 30;
+                    while channel_id <= 59 {
+                        if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnspecifiedEntityMoved{
+                            server_entity: unit_entity,
+                            new_position: unit_transform.translation,
+                        }){
+                            channel_id += 1;
+                        } else {
+                            break;
                         }
                     }
                 }
@@ -1090,8 +1118,76 @@ pub fn process_agents_movement(
         } else {
             commands.entity(unit_entity).remove::<NeedToMove>();
             commands.entity(unit_entity).try_insert(StoppedMoving);
+
+            unit_component.elapsed = 0.;
+
+            if matches!(network_status.0, NetworkStatuses::Host) {
+                let mut channel_id = 30;
+                while channel_id <= 59 {
+                    if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnspecifiedEntityMoved{
+                        server_entity: unit_entity,
+                        new_position: unit_transform.translation,
+                    }){
+                        channel_id += 1;
+                    } else {
+                        break;
+                    }
+                }
+            }
         }
     }
+
+    // for(mut unit_component,mut unit_transform, unit_entity, controller_option) in units_q.iter_mut(){
+    //     if !unit_component.path.is_empty(){
+    //         let next_point = unit_component.path[0];
+    //         let mut direction = (next_point - unit_transform.translation).normalize();
+    //         direction.y = 0.;
+
+    //         let unit_position = unit_transform.translation;
+
+    //         unit_transform.look_at(
+    //             Vec3::new(
+    //                 next_point.x,
+    //                 unit_position.y,
+    //                 next_point.z,
+    //             ),
+    //             Vec3::Y,
+    //         );
+
+    //         if let Some(mut controller) = controller_option {
+    //             controller.translation = Some(direction * unit_component.speed * time.delta_seconds());
+    //         } else {
+    //             unit_transform.translation += direction * unit_component.speed * time.delta_seconds();
+    //         }
+
+    //         if unit_transform.translation.xz().distance(next_point.xz()) < unit_component.waypoint_radius {
+
+    //             unit_component.path.remove(0);
+
+    //             if unit_component.path.is_empty() {
+    //                 commands.entity(unit_entity).remove::<NeedToMove>();
+    //                 commands.entity(unit_entity).try_insert(StoppedMoving);
+
+    //                 if matches!(network_status.0, NetworkStatuses::Host) {
+    //                     let mut channel_id = 30;
+    //                     while channel_id <= 59 {
+    //                         if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnspecifiedEntityMoved{
+    //                             server_entity: unit_entity,
+    //                             new_position: unit_transform.translation,
+    //                         }){
+    //                             channel_id += 1;
+    //                         } else {
+    //                             break;
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     } else {
+    //         commands.entity(unit_entity).remove::<NeedToMove>();
+    //         commands.entity(unit_entity).try_insert(StoppedMoving);
+    //     }
+    // }
 }
 
 pub fn check_tiles(

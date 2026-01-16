@@ -7,7 +7,7 @@ use bevy_rapier3d::{na::ComplexField, plugin::RapierContext, prelude::{Character
 use oxidized_navigation_serializable::{colliders, query::{find_polygon_path, perform_string_pulling_on_path}, Area, NavMesh, NavMeshAffector, NavMeshAreaType, NavMeshSettings};
 use rand::Rng;
 use serde::{de, Deserialize, Serialize};
-use crate::{GameStage, GameStages, PlayerData, WORLD_SIZE, components::{asset_manager::{AnimationComponent, BuildingsAssets, ChangeMaterial, CircleData, CircleHolder, ForbiddenBlueprint, InstancedMaterials, LOD, TeamMaterialExtension, Terrain, UnitAssets}, camera::{self, CameraComponent, SelectionBounds, SelectionBox}, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, DisplayedModelHolder, OpenBuildingsListEvent, RebuildApartments, SwitchBuildingState}, unit::{self, AttackAnimationTypes, BusyEngineer, DeleteAfterStart, EngineerActions, InfantryTransport, IsUnitSelectionAllowed, RemainsCount, UnitRemains}}};
+use crate::{GameStage, GameStages, PlayerData, WORLD_SIZE, components::{asset_manager::{AnimationComponent, BuildingsAssets, ChangeMaterial, CircleData, CircleHolder, ForbiddenBlueprint, InstancedMaterials, LOD, TeamMaterialExtension, Terrain, UnitAssets}, camera::{self, CameraComponent, SelectionBounds, SelectionBox}, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, DisplayedModelHolder, OpenBuildingsListEvent, RebuildApartments, SwitchBuildingState}, unit::{self, AttackAnimationTypes, BusyEngineer, DeleteAfterStart, EngineerActions, InfantryTransport, IsUnitSelectionAllowed, NeedToMove, RemainsCount, StoppedMoving, UnitRemains}}};
 
 use super::{asset_manager::{generate_circle_segments, LineData, LineHolder}, logistics::{create_curved_mesh, create_plane_between_points, ResourceZone, RESOURCE_ZONES_COUNT /*RoadComponent, RoadObject*/}, network::{ClientList, ClientMessage, NetworkStatus, NetworkStatuses, ServerMessage}, ui_manager::{Actions, ButtonAction, GameStartedEvent, ProductionStateChanged, UiButtonNodes}, unit::{Armies, ArtilleryUnit, AttackTypes, CompanyTypes, CombatComponent, EngineerComponent, SelectableUnit, SuppliesConsumerComponent, UnitComponent, UnitDeathEvent, UnitNeedsToBeUncovered, UnitTypes, UnitsTileMap, TILE_SIZE}};
 
@@ -4368,7 +4368,7 @@ pub struct BuildingStageCache{
 
 #[derive(Component)]
 pub struct RoadBuilderComponent{
-    pub road_path: Vec<Vec3>,
+    pub last_position: Vec3,
     pub last_direction: Vec3,
     pub result_road_points: Vec<Vec3>,
 }
@@ -4376,7 +4376,7 @@ pub struct RoadBuilderComponent{
 pub fn roads_generation_system(
     mut event_reader: EventReader<AllApartmentsPlaced>,
     mut settlements_q: Query<(Entity, &Transform, &mut SettlementComponent), With<SettlementComponent>>,
-    mut road_builders_q: Query<(Entity, &mut Transform, &mut RoadBuilderComponent, &mut KinematicCharacterController), Without<SettlementComponent>>,
+    mut road_builders_q: Query<(Entity, &Transform, &mut RoadBuilderComponent, Option<&StoppedMoving>), Without<SettlementComponent>>,
     nav_mesh: Res<NavMesh>,
     nav_mesh_settings: Res<NavMeshSettings>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -4544,11 +4544,12 @@ pub fn roads_generation_system(
             }
 
             if road_path.len() > 1 {
+                let spawn_pos = road.0 + Vec3::new(0., 0.5, 0.);
                 commands.spawn((
                     MaterialMeshBundle{
                         mesh: meshes.add(Mesh::from(Cuboid{ half_size: Vec3::new(1., 500., 1.) }.mesh())),
                         material: materials.add(Color::srgba(1., 0., 1., 1.)),
-                        transform: Transform::from_translation(road.0 + Vec3::new(0., 0.5, 0.)),
+                        transform: Transform::from_translation(spawn_pos),
                         ..default()
                     },
                     KinematicCharacterController{
@@ -4563,10 +4564,19 @@ pub fn roads_generation_system(
                         ..default()
                     },
                     RoadBuilderComponent{
-                        road_path: road_path.clone(),
-                        last_direction: (road_path[0] - road.0).normalize(),
-                        result_road_points: vec![road.0],
+                        last_position: spawn_pos,
+                        last_direction: (road_path[0] - spawn_pos).normalize(),
+                        result_road_points: vec![spawn_pos],
                     },
+                    UnitComponent{
+                        path: road_path,
+                        start_position: Vec3::ZERO,
+                        speed: 30.,
+                        waypoint_radius: 0.5,
+                        elapsed: 0.,
+                        inv_duration: 0.,
+                    },
+                    NeedToMove,
                 ))
                 .insert(Visibility::Hidden)
                 .insert(NotShadowCaster);
@@ -4577,78 +4587,64 @@ pub fn roads_generation_system(
     }
 
     for mut road_builder in road_builders_q.iter_mut() {
-        let next_point = road_builder.2.road_path[0];
-        let direction = (next_point - road_builder.1.translation).normalize();
+        let current_direction = (road_builder.1.translation - road_builder.2.last_position).normalize();
 
-        if road_builder.2.last_direction != direction {
-            road_builder.2.last_direction = direction;
+        if road_builder.2.last_direction != current_direction {
+            road_builder.2.last_direction = current_direction;
 
-            road_builder.2.result_road_points.push(road_builder.1.translation);
+            let last_pos = road_builder.2.last_position;
+
+            if road_builder.2.result_road_points[road_builder.2.result_road_points.len() - 1] != last_pos {
+                road_builder.2.result_road_points.push(last_pos);
+            }
         }
 
-        let unit_position = road_builder.1.translation;
+        road_builder.2.last_position = road_builder.1.translation;
 
-        road_builder.1.look_at(
-            Vec3::new(
-                next_point.x,
-                unit_position.y,
-                next_point.z,
-            ),
-            Vec3::Y,
-        );
-
-        let move_direction = Vec3::new(direction.x, 0., direction.z);
-        road_builder.3.translation = Some(move_direction * 30. * time.delta_seconds());
-
-        let distance_to_waypoint = road_builder.1.translation.xz().distance(next_point.xz());
-
-        if distance_to_waypoint < 1. {
-
-            road_builder.2.road_path.remove(0);
-
-            if road_builder.2.road_path.is_empty() {
+        if let Some(_stopped) = road_builder.3 {
+            if road_builder.2.result_road_points[road_builder.2.result_road_points.len() - 1] != road_builder.1.translation {
                 road_builder.2.result_road_points.push(road_builder.1.translation);
+            }
 
-                let road_center = (road_builder.2.result_road_points[0] + road_builder.2.result_road_points[road_builder.2.result_road_points.len() - 1]) / 2.;
+            let road_center = (road_builder.2.result_road_points[0] + road_builder.2.result_road_points[road_builder.2.result_road_points.len() - 1]) / 2.;
 
-                let raod_mesh = create_curved_mesh(
-                    5.,
-                    5.,
-                    road_builder.2.result_road_points.clone(),
-                    -2.9,
-                    &Transform::from_translation(road_center),
-                );
+            let raod_mesh = create_curved_mesh(
+                5.,
+                5.,
+                road_builder.2.result_road_points.clone(),
+                -2.9,
+                &Transform::from_translation(road_center),
+            );
 
-                let road_entity = commands.spawn(MaterialMeshBundle{
-                    mesh: meshes.add(raod_mesh.clone()),
-                    material: materials.add(Color::srgb(0.5, 0.5, 0.5)).into(),
-                    transform: Transform::from_translation(road_center),
-                    ..default()
-                })
-                .insert(Collider::from_bevy_mesh(&raod_mesh, &ComputedColliderShape::TriMesh).unwrap())
-                .insert(NavMeshAffector)
-                .insert(NavMeshAreaType(Some(Area(1))))
-                .insert(NotShadowCaster)
-                .insert(CollisionGroups::new(Group::GROUP_2, Group::all()))
-                .id();
+            let road_entity = commands.spawn(MaterialMeshBundle{
+                mesh: meshes.add(raod_mesh.clone()),
+                material: materials.add(Color::srgb(0.5, 0.5, 0.5)).into(),
+                transform: Transform::from_translation(road_center),
+                ..default()
+            })
+            .insert(Collider::from_bevy_mesh(&raod_mesh, &ComputedColliderShape::TriMesh).unwrap())
+            .insert(NavMeshAffector)
+            .insert(NavMeshAreaType(Some(Area(1))))
+            .insert(NotShadowCaster)
+            .insert(CollisionGroups::new(Group::GROUP_2, Group::all()))
+            .id();
 
-                if matches!(network_status.0, NetworkStatuses::Host) {
-                    let mut channel_id = 60;
-                    while channel_id <= 89 {
-                        if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::RoadGenerated {
-                            road_points: road_builder.2.result_road_points.clone(),
-                            road_center: road_center,
-                            server_entity: road_entity,
-                        }){
-                            channel_id += 1;
-                        } else {
-                            break;
-                        }
+            if matches!(network_status.0, NetworkStatuses::Host) {
+                let mut channel_id = 60;
+                while channel_id <= 89 {
+                    if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::RoadGenerated {
+                        road_points: road_builder.2.result_road_points.clone(),
+                        road_center: road_center,
+                        server_entity: road_entity,
+                    }){
+                        channel_id += 1;
+                    } else {
+                        break;
                     }
                 }
-
-                commands.entity(road_builder.0).despawn();
             }
+
+            commands.entity(road_builder.0).despawn();
         }
     }
 }

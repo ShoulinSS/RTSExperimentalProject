@@ -182,7 +182,7 @@ pub fn create_curved_mesh(
     mesh
 }
 
-const LOGISTIC_UNITS_SPEED: f32 = 30.;
+pub const LOGISTIC_UNITS_SPEED: f32 = 30.;
 
 pub fn assign_supply_tasks (
     mut supply_participants: (
@@ -283,8 +283,11 @@ pub fn assign_supply_tasks (
                                         ..default()
                                     }).insert(UnitComponent {
                                         path: Vec::new(),
+                                        start_position: Vec3::ZERO,
                                         speed: LOGISTIC_UNITS_SPEED,
-                                        waypoint_check_factor: 1.,
+                                        waypoint_radius: 1.,
+                                        elapsed: 0.,
+                                        inv_duration: 0.,
                                     }).insert(LogisticUnitComponent {
                                         storage_capacity: supplies_needed,
                                         storage: ResourceTypes::Supplies(supplies_needed),
@@ -432,8 +435,11 @@ pub fn assign_supply_tasks (
                                             ..default()
                                         }).insert(UnitComponent {
                                             path: Vec::new(),
+                                            start_position: Vec3::ZERO,
                                             speed: LOGISTIC_UNITS_SPEED,
-                                            waypoint_check_factor: 1.,
+                                            waypoint_radius: 1.,
+                                            elapsed: 0.,
+                                            inv_duration: 0.,
                                         }).insert(LogisticUnitComponent {
                                             storage_capacity: supplies_needed,
                                             storage: ResourceTypes::Supplies(supplies_needed),
@@ -581,8 +587,11 @@ pub fn assign_supply_tasks (
                                                 ..default()
                                             }).insert(UnitComponent {
                                                 path: Vec::new(),
+                                                start_position: Vec3::ZERO,
                                                 speed: LOGISTIC_UNITS_SPEED,
-                                                waypoint_check_factor: 1.,
+                                                waypoint_radius: 1.,
+                                                elapsed: 0.,
+                                                inv_duration: 0.,
                                             }).insert(LogisticUnitComponent {
                                                 storage_capacity: supplies_needed,
                                                 storage: ResourceTypes::Supplies(supplies_needed),
@@ -732,8 +741,11 @@ pub fn assign_supply_tasks (
                                                         ..default()
                                                     }).insert(UnitComponent {
                                                         path: Vec::new(),
+                                                        start_position: Vec3::ZERO,
                                                         speed: LOGISTIC_UNITS_SPEED,
-                                                        waypoint_check_factor: 1.,
+                                                        waypoint_radius: 1.,
+                                                        elapsed: 0.,
+                                                        inv_duration: 0.,
                                                     }).insert(LogisticUnitComponent {
                                                         storage_capacity: supplies_needed,
                                                         storage: ResourceTypes::Supplies(supplies_needed),
@@ -1245,8 +1257,11 @@ pub fn material_producers_processing_system(
                                     ..default()
                                 }).insert(UnitComponent {
                                     path: Vec::new(),
+                                    start_position: Vec3::ZERO,
                                     speed: LOGISTIC_UNITS_SPEED,
-                                    waypoint_check_factor: 1.,
+                                    waypoint_radius: 1.,
+                                    elapsed: 0.,
+                                    inv_duration: 0.,
                                 }).insert(LogisticUnitComponent {
                                     storage_capacity: material_consumer.2.replenishment_amount,
                                     storage: ResourceTypes::Materials(material_consumer.2.replenishment_amount),
@@ -1439,8 +1454,11 @@ pub fn human_resource_producers_processing_system(
                                     ..default()
                                 }).insert(UnitComponent {
                                     path: Vec::new(),
+                                    start_position: Vec3::ZERO,
                                     speed: LOGISTIC_UNITS_SPEED,
-                                    waypoint_check_factor: 1.,
+                                    waypoint_radius: 1.,
+                                    elapsed: 0.,
+                                    inv_duration: 0.,
                                 }).insert(LogisticUnitComponent {
                                     storage_capacity: human_resource_consumer.2.replenishment_amount,
                                     storage: ResourceTypes::HumanResources(human_resource_consumer.2.replenishment_amount),

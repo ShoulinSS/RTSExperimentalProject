@@ -737,8 +737,11 @@ fn setup(
             lod: soldier_lod.clone(),
             unit_component: UnitComponent {
                 path: Vec::new(),
+                start_position: Vec3::ZERO,
                 speed: 10.,
-                waypoint_check_factor: 0.5,
+                waypoint_radius: 0.5,
+                elapsed: 0.,
+                inv_duration: 0.,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -797,8 +800,11 @@ fn setup(
             lod: soldier_lod.clone(),
             unit_component: UnitComponent {
                 path: Vec::new(),
+                start_position: Vec3::ZERO,
                 speed: 10.,
-                waypoint_check_factor: 0.5,
+                waypoint_radius: 0.5,
+                elapsed: 0.,
+                inv_duration: 0.,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -857,8 +863,11 @@ fn setup(
             lod: soldier_lod.clone(),
             unit_component: UnitComponent {
                 path: Vec::new(),
+                start_position: Vec3::ZERO,
                 speed: 10.,
-                waypoint_check_factor: 0.5,
+                waypoint_radius: 0.5,
+                elapsed: 0.,
+                inv_duration: 0.,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -917,8 +926,11 @@ fn setup(
             lod: soldier_lod.clone(),
             unit_component: UnitComponent {
                 path: Vec::new(),
+                start_position: Vec3::ZERO,
                 speed: 10.,
-                waypoint_check_factor: 0.5,
+                waypoint_radius: 0.5,
+                elapsed: 0.,
+                inv_duration: 0.,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -978,8 +990,11 @@ fn setup(
             lod: soldier_lod.clone(),
             unit_component: UnitComponent {
                 path: Vec::new(),
+                start_position: Vec3::ZERO,
                 speed: 10.,
-                waypoint_check_factor: 0.5,
+                waypoint_radius: 0.5,
+                elapsed: 0.,
+                inv_duration: 0.,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -1039,8 +1054,11 @@ fn setup(
             lod: soldier_lod.clone(),
             unit_component: UnitComponent {
                 path: Vec::new(),
+                start_position: Vec3::ZERO,
                 speed: 10.,
-                waypoint_check_factor: 0.5,
+                waypoint_radius: 0.5,
+                elapsed: 0.,
+                inv_duration: 0.,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -1176,8 +1194,11 @@ fn setup(
             lod: (tank_lod.clone(), tank_turret_lod.clone()),
             unit_component: UnitComponent {
                 path: Vec::new(),
+                start_position: Vec3::ZERO,
                 speed: 15.,
-                waypoint_check_factor: 0.5,
+                waypoint_radius: 0.5,
+                elapsed: 0.,
+                inv_duration: 0.,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -1244,8 +1265,11 @@ fn setup(
             lod: (tank_lod.clone(), tank_turret_lod.clone()),
             unit_component: UnitComponent {
                 path: Vec::new(),
+                start_position: Vec3::ZERO,
                 speed: 15.,
-                waypoint_check_factor: 0.5,
+                waypoint_radius: 0.5,
+                elapsed: 0.,
+                inv_duration: 0.,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -1311,8 +1335,11 @@ fn setup(
             lod: tank_lod.clone(),
             unit_component: UnitComponent {
                 path: Vec::new(),
+                start_position: Vec3::ZERO,
                 speed: 15.,
-                waypoint_check_factor: 0.5,
+                waypoint_radius: 0.5,
+                elapsed: 0.,
+                inv_duration: 0.,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -1386,8 +1413,11 @@ fn setup(
             lod: tank_lod.clone(),
             unit_component: UnitComponent {
                 path: Vec::new(),
+                start_position: Vec3::ZERO,
                 speed: 15.,
-                waypoint_check_factor: 0.5,
+                waypoint_radius: 0.5,
+                elapsed: 0.,
+                inv_duration: 0.,
             },
             combat_component: CombatComponent {
                 team: 1,

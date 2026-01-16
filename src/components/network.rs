@@ -6,7 +6,7 @@ use bevy_rapier3d::{prelude::{Collider, CollisionGroups, ComputedColliderShape, 
 use oxidized_navigation_serializable::{Area, NavMeshAffector, NavMeshAreaType};
 use serde::{Deserialize, Serialize};
 
-use crate::{GameStage, GameStages, GameState, PlayerData, components::{asset_manager::{BuildingsAssets, ChangeMaterial, CircleData, CircleHolder, InstancedMaterials, LOD, TeamMaterialExtension}, unit::{AttackAnimationTypes, StoppedMoving}}};
+use crate::{GameStage, GameStages, GameState, PlayerData, components::{asset_manager::{BuildingsAssets, ChangeMaterial, CircleData, CircleHolder, InstancedMaterials, LOD, TeamMaterialExtension}, logistics::LOGISTIC_UNITS_SPEED, unit::{AttackAnimationTypes, StoppedMoving}}};
 
 use super::{asset_manager::{generate_circle_segments, LineData, LineHolder}, building::{create_ring, AllSettlementsPlaced, ApartmentHouse, ArtilleryBundle, BuildingBlueprint, BuildingConstructionSite, BuildingsBundles, BuildingsList, CoverComponent, DeleteTemporaryObjects, EngineerBundle, IFVBundle, InfantryBarracksBundle, LogisticHubBundle, ProducableUnits, ProductionQueue, ProductionState, ResourceMinerBundle, SettlementComponent, SettlementObject, SoldierBundle, SuppliesProductionComponent, TankBundle, TemporaryObject, UnactivatedBlueprints, UnitBundles, VehicleFactoryBundle}, logistics::{create_curved_mesh, ResourceZone}, ui_manager::{Actions, ButtonAction, GameStartedEvent, ProductionStateChanged, UiButtonNodes}, unit::{self, Armies, ArmoredPlatoon, ArmyObject, ArtilleryNeedsToFire, ArtilleryUnit, AttackTypes, CompanyTypes, CombatComponent, DamageTypes, DeleteAfterStart, LimitedHashSet, NeedToMove, RegularPlatoon, SelectableUnit, SerializableArmyObject, ShockPlatoon, UnitComponent, UnitDeathEvent, UnitTypes, UnitsTileMap, ARMORED_PLATOON_SIZE, REGULAR_PLATOON_SIZE, SHOCK_PLATOON_SIZE, SPECIALISTS_PER_REGULAR_PLATOON, SPECIALISTS_PER_SHOCK_PLATOON, TILE_SIZE}};
 
@@ -3626,7 +3626,7 @@ pub fn server_messages_handler(
                         tile_map.tiles.entry(unit_data.0).or_insert_with(HashMap::new).entry(unit_data.1)
                         .or_insert_with(HashMap::new).remove(client_entity);
 
-                        commands.entity(*client_entity).despawn();
+                        commands.entity(*client_entity).despawn_recursive();
 
                         entity_maps.client_to_server.remove(client_entity);
                         entity_maps.server_to_client.remove(&server_entity);
@@ -3664,8 +3664,11 @@ pub fn server_messages_handler(
                 })
                 .insert(UnitComponent{
                     path: Vec::new(),
-                    speed: 15.,
-                    waypoint_check_factor: 0.5,
+                    start_position: Vec3::ZERO,
+                    speed: LOGISTIC_UNITS_SPEED,
+                    waypoint_radius: 1.,
+                    elapsed: 0.,
+                    inv_duration: 0.,
                 })
                 .id();
 
@@ -3814,6 +3817,7 @@ pub fn client_entity_movement_system(
         for unit in units_to_insert_path.0.iter() {
             if let Ok(mut unit_component) = units_q.get_mut(unit.0) {
                 unit_component.path = unit.1.clone();
+                unit_component.elapsed = 0.;
 
                 commands.entity(unit.0).insert(NeedToMove);
             }
