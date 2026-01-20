@@ -355,32 +355,32 @@ fn setup(
     // })
     // .insert(components::asset_manager::ExplosionComponent((0, 0)));
 
-    commands.spawn(PbrBundle{
-        mesh: meshes.add(Mesh::from(Cuboid{ half_size: Vec3::new(1., 10., 1.) }.mesh())),
-        transform: Transform::from_translation(Vec3::new(0., 1., 0.)),
-        ..default()
-    }).insert(CombatComponent{
-        team: 2,
-        current_health: 9999999,
-        max_health: 99999999,
-        unit_type: UnitTypes::Infantry,
-        attack_type: AttackTypes::None,
-        attack_animation_type: AttackAnimationTypes::None(Vec3::ZERO),
-        attack_frequency: 0,
-        attack_elapsed_time: 0,
-        detection_range: 0.,
-        attack_range: 0.,
-        enemies: vec![],
-        is_static: false,
-        unit_data: (
-            (0, 0),
-            (
-                CompanyTypes::None,
-                (0, 0, 0, 0, 0, 0, 0),
-                "".to_string(),
-            )
-        ),
-    }).insert(components::unit::NeedToMove);
+    // commands.spawn(PbrBundle{
+    //     mesh: meshes.add(Mesh::from(Cuboid{ half_size: Vec3::new(1., 10., 1.) }.mesh())),
+    //     transform: Transform::from_translation(Vec3::new(0., 1., 0.)),
+    //     ..default()
+    // }).insert(CombatComponent{
+    //     team: 2,
+    //     current_health: 9999999,
+    //     max_health: 99999999,
+    //     unit_type: UnitTypes::Infantry,
+    //     attack_type: AttackTypes::None,
+    //     attack_animation_type: AttackAnimationTypes::None(Vec3::ZERO),
+    //     attack_frequency: 0,
+    //     attack_elapsed_time: 0,
+    //     detection_range: 0.,
+    //     attack_range: 0.,
+    //     enemies: vec![],
+    //     is_static: false,
+    //     unit_data: (
+    //         (0, 0),
+    //         (
+    //             CompanyTypes::None,
+    //             (0, 0, 0, 0, 0, 0, 0),
+    //             "".to_string(),
+    //         )
+    //     ),
+    // }).insert(components::unit::NeedToMove);
 
     let size = Extent3d {
         width: FOG_TEXTURE_SIZE as u32,
@@ -742,6 +742,8 @@ fn setup(
                 waypoint_radius: 0.5,
                 elapsed: 0.,
                 inv_duration: 0.,
+                last_position: Vec3::ZERO,
+                stuck_count: 0,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -805,6 +807,8 @@ fn setup(
                 waypoint_radius: 0.5,
                 elapsed: 0.,
                 inv_duration: 0.,
+                last_position: Vec3::ZERO,
+                stuck_count: 0,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -868,6 +872,8 @@ fn setup(
                 waypoint_radius: 0.5,
                 elapsed: 0.,
                 inv_duration: 0.,
+                last_position: Vec3::ZERO,
+                stuck_count: 0,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -931,6 +937,8 @@ fn setup(
                 waypoint_radius: 0.5,
                 elapsed: 0.,
                 inv_duration: 0.,
+                last_position: Vec3::ZERO,
+                stuck_count: 0,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -995,6 +1003,8 @@ fn setup(
                 waypoint_radius: 0.5,
                 elapsed: 0.,
                 inv_duration: 0.,
+                last_position: Vec3::ZERO,
+                stuck_count: 0,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -1059,6 +1069,8 @@ fn setup(
                 waypoint_radius: 0.5,
                 elapsed: 0.,
                 inv_duration: 0.,
+                last_position: Vec3::ZERO,
+                stuck_count: 0,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -1199,6 +1211,8 @@ fn setup(
                 waypoint_radius: 0.5,
                 elapsed: 0.,
                 inv_duration: 0.,
+                last_position: Vec3::ZERO,
+                stuck_count: 0,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -1270,6 +1284,8 @@ fn setup(
                 waypoint_radius: 0.5,
                 elapsed: 0.,
                 inv_duration: 0.,
+                last_position: Vec3::ZERO,
+                stuck_count: 0,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -1340,6 +1356,8 @@ fn setup(
                 waypoint_radius: 0.5,
                 elapsed: 0.,
                 inv_duration: 0.,
+                last_position: Vec3::ZERO,
+                stuck_count: 0,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -1418,6 +1436,8 @@ fn setup(
                 waypoint_radius: 0.5,
                 elapsed: 0.,
                 inv_duration: 0.,
+                last_position: Vec3::ZERO,
+                stuck_count: 0,
             },
             combat_component: CombatComponent {
                 team: 1,
@@ -1518,7 +1538,7 @@ fn setup(
                 replenishment_amount: 10,
                 replenishment_cooldown: 10000,
                 replenishment_time_elapsed: 0,
-                replenishment_local_point: Vec3::new(0., 0., 0.),
+                replenishment_local_point: Vec3::new(20., 0., 0.),
                 replenishment_range: 50.,
             },
             materials_storage: MaterialsStorageComponent{
@@ -1527,7 +1547,7 @@ fn setup(
                 replenishment_amount: 4000,
                 replenishment_cooldown: 100000,
                 replenishment_time_elapsed: 0,
-                replenishment_local_point: Vec3::new(0., 0., 0.),
+                replenishment_local_point: Vec3::new(20., 0., 0.),
                 replenishment_range: 50.,
             },
         }),
@@ -1583,7 +1603,7 @@ fn setup(
                 replenishment_amount: 10,
                 replenishment_cooldown: 10000,
                 replenishment_time_elapsed: 0,
-                replenishment_local_point: Vec3::new(0., 0., 0.),
+                replenishment_local_point: Vec3::new(20., 0., 0.),
                 replenishment_range: 50.,
             },
             materials_storage: MaterialsStorageComponent{
@@ -1592,7 +1612,7 @@ fn setup(
                 replenishment_amount: 4000,
                 replenishment_cooldown: 100000,
                 replenishment_time_elapsed: 0,
-                replenishment_local_point: Vec3::new(0., 0., 0.),
+                replenishment_local_point: Vec3::new(20., 0., 0.),
                 replenishment_range: 50.,
             },
         }),
@@ -1620,7 +1640,7 @@ fn setup(
                     resource_cost: 1200,
                     human_resource_cost: 0,
                 }),
-                production_local_point: Vec3::new(0., 0., 0.),
+                production_local_point: Vec3::new(20., 0., 0.),
                 elapsed_production_time: 0,
                 supply_cooldown: 6000,
                 elapsed_cooldown_time: 0,
@@ -1631,7 +1651,7 @@ fn setup(
                 replenishment_amount: 4000,
                 replenishment_cooldown: 10000,
                 replenishment_time_elapsed: 0,
-                replenishment_local_point: Vec3::new(0., 0., 0.),
+                replenishment_local_point: Vec3::new(20., 0., 0.),
                 replenishment_range: 50.,
             },
             combat_component: CombatComponent {
@@ -1678,7 +1698,7 @@ fn setup(
                 available_materials: 0,
                 materials_production_rate: 4000,
                 materials_production_speed: 10000,
-                production_local_point: Vec3::new(0., 0., 0.),
+                production_local_point: Vec3::new(30., 0., 0.),
                 elapsed_time: 0,
             },
             combat_component: CombatComponent {
@@ -1704,7 +1724,7 @@ fn setup(
                 ),
             },
         }),
-        Collider::cuboid(10., 5., 20.),
+        Collider::cuboid(20., 5., 20.),
         0.,
         200,
         20.,
@@ -1769,7 +1789,7 @@ fn setup(
                 ),
             },
         }),
-        Collider::cuboid(10., 5., 20.),
+        Collider::cuboid(20., 5., 20.),
         0.,
         200,
         30.,
@@ -2005,7 +2025,7 @@ fn setup(
                 available_human_resources: 60,
                 human_resource_production_rate: 6,
                 human_resource_production_speed: 30000,
-                production_local_point: Vec3::new(0., 0., 0.),
+                production_local_point: Vec3::new(30., 0., 0.),
                 elapsed_time: 0,
                 time_to_capture: 20000,
                 elapsed_capture_time: 0,
@@ -2033,7 +2053,7 @@ fn setup(
                 available_human_resources: 30,
                 human_resource_production_rate: 3,
                 human_resource_production_speed: 30000,
-                production_local_point: Vec3::new(0., 0., 0.),
+                production_local_point: Vec3::new(30., 0., 0.),
                 elapsed_time: 0,
                 time_to_capture: 10000,
                 elapsed_capture_time: 0,
@@ -2349,6 +2369,7 @@ impl Plugin for SingleplayerPlugin {
             components::unit::transport_disembark_system,
             components::ui_manager::disembark_button_system,
             components::unit::remains_processing_system,
+            components::logistics::logistic_units_unstuck_system,
             components::ui_manager::ui_nodes_unlocker,//keep last
         ).run_if(in_state(GameState::Singleplayer)));
     }
@@ -2502,6 +2523,7 @@ impl Plugin for GameServerPlugin {
             components::unit::transport_disembark_system,
             components::ui_manager::disembark_button_system,
             components::unit::remains_processing_system,
+            components::logistics::logistic_units_unstuck_system,
             components::ui_manager::ui_nodes_unlocker,//keep last
         ).run_if(in_state(GameState::MultiplayerAsHost)));
     }

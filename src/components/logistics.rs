@@ -238,7 +238,7 @@ pub fn assign_supply_tasks (
                                     
                                     supply_producer.0.available_supplies -= supplies_needed;
 
-                                    let start_point = supply_producer.1.translation + supply_producer.0.production_local_point;
+                                    let start_point = supply_producer.1.translation + supply_producer.0.production_local_point + Vec3::new(0., 0.5, 0.);
 
                                     let color;
                                     let simplified_material;
@@ -288,6 +288,8 @@ pub fn assign_supply_tasks (
                                         waypoint_radius: 1.,
                                         elapsed: 0.,
                                         inv_duration: 0.,
+                                        last_position: Vec3::ZERO,
+                                        stuck_count: 0,
                                     }).insert(LogisticUnitComponent {
                                         storage_capacity: supplies_needed,
                                         storage: ResourceTypes::Supplies(supplies_needed),
@@ -390,7 +392,7 @@ pub fn assign_supply_tasks (
 
                                         supply_producer.0.available_supplies -= supplies_needed;
 
-                                        let start_point = supply_producer.1.translation + supply_producer.0.production_local_point;
+                                        let start_point = supply_producer.1.translation + supply_producer.0.production_local_point + Vec3::new(0., 0.5, 0.);
 
                                         let color;
                                         let simplified_material;
@@ -440,6 +442,8 @@ pub fn assign_supply_tasks (
                                             waypoint_radius: 1.,
                                             elapsed: 0.,
                                             inv_duration: 0.,
+                                        last_position: Vec3::ZERO,
+                                        stuck_count: 0,
                                         }).insert(LogisticUnitComponent {
                                             storage_capacity: supplies_needed,
                                             storage: ResourceTypes::Supplies(supplies_needed),
@@ -542,7 +546,7 @@ pub fn assign_supply_tasks (
 
                                             supply_producer.0.available_supplies -= supplies_needed;
 
-                                            let start_point = supply_producer.1.translation + supply_producer.0.production_local_point;
+                                            let start_point = supply_producer.1.translation + supply_producer.0.production_local_point + Vec3::new(0., 0.5, 0.);
 
                                             let color;
                                             let simplified_material;
@@ -592,6 +596,8 @@ pub fn assign_supply_tasks (
                                                 waypoint_radius: 1.,
                                                 elapsed: 0.,
                                                 inv_duration: 0.,
+                                        last_position: Vec3::ZERO,
+                                        stuck_count: 0,
                                             }).insert(LogisticUnitComponent {
                                                 storage_capacity: supplies_needed,
                                                 storage: ResourceTypes::Supplies(supplies_needed),
@@ -696,7 +702,7 @@ pub fn assign_supply_tasks (
 
                                                     supply_producer.0.available_supplies -= supplies_needed;
 
-                                                    let start_point = supply_producer.1.translation + supply_producer.0.production_local_point;
+                                                    let start_point = supply_producer.1.translation + supply_producer.0.production_local_point + Vec3::new(0., 0.5, 0.);
 
                                                     let color;
                                                     let simplified_material;
@@ -746,6 +752,8 @@ pub fn assign_supply_tasks (
                                                         waypoint_radius: 1.,
                                                         elapsed: 0.,
                                                         inv_duration: 0.,
+                                        last_position: Vec3::ZERO,
+                                        stuck_count: 0,
                                                     }).insert(LogisticUnitComponent {
                                                         storage_capacity: supplies_needed,
                                                         storage: ResourceTypes::Supplies(supplies_needed),
@@ -1170,9 +1178,6 @@ pub fn material_producers_processing_system(
     network_status: Res<NetworkStatus>,
     mut server: ResMut<QuinnetServer>,
     clients: Res<ClientList>,
-    // mut event_writer: (
-    //     EventWriter<UnsentServerMessage>,
-    // ),
 ){
     if matches!(game_stage.0, GameStages::GameStarted) {
         for mut material_consumer in material_consumers_q.iter_mut() {
@@ -1211,7 +1216,7 @@ pub fn material_producers_processing_system(
                             material_consumer.2.available_resources < material_consumer.2.materials_storage_capacity {
                                 material_producer.1.available_materials -= material_consumer.2.replenishment_amount;
 
-                                let start_point = material_producer.0.translation + material_producer.1.production_local_point;
+                                let start_point = material_producer.0.translation + material_producer.1.production_local_point + Vec3::new(0., 0.5, 0.);
                                 let destination_point = material_consumer.1.translation + material_consumer.2.replenishment_local_point;
 
                                 let color;
@@ -1262,6 +1267,8 @@ pub fn material_producers_processing_system(
                                     waypoint_radius: 1.,
                                     elapsed: 0.,
                                     inv_duration: 0.,
+                                    last_position: Vec3::ZERO,
+                                    stuck_count: 0,
                                 }).insert(LogisticUnitComponent {
                                     storage_capacity: material_consumer.2.replenishment_amount,
                                     storage: ResourceTypes::Materials(material_consumer.2.replenishment_amount),
@@ -1408,7 +1415,7 @@ pub fn human_resource_producers_processing_system(
                             human_resource_consumer.2.available_human_resources < human_resource_consumer.2.human_resource_storage_capacity {
                                 human_resource_producer.1.0.available_human_resources -= human_resource_consumer.2.replenishment_amount;
 
-                                let start_point = human_resource_producer.0.translation + human_resource_producer.1.0.production_local_point;
+                                let start_point = human_resource_producer.0.translation + human_resource_producer.1.0.production_local_point + Vec3::new(0., 0.5, 0.);
                                 let destination_point = human_resource_consumer.1.translation + human_resource_consumer.2.replenishment_local_point;
 
                                 let color;
@@ -1459,6 +1466,8 @@ pub fn human_resource_producers_processing_system(
                                     waypoint_radius: 1.,
                                     elapsed: 0.,
                                     inv_duration: 0.,
+                                    last_position: Vec3::ZERO,
+                                    stuck_count: 0,
                                 }).insert(LogisticUnitComponent {
                                     storage_capacity: human_resource_consumer.2.replenishment_amount,
                                     storage: ResourceTypes::HumanResources(human_resource_consumer.2.replenishment_amount),
@@ -1584,6 +1593,36 @@ pub fn supplies_production_system (
                 }
             }
         }
+    }
+}
+
+pub fn logistic_units_unstuck_system(
+    mut static_logistic_units_q: Query<(Entity, &Transform, &LogisticUnitComponent, &mut UnitComponent), (With<LogisticUnitComponent>, Without<NeedToMove>)>,
+    nav_mesh: Res<NavMesh>,
+    nav_mesh_settings: Res<NavMeshSettings>,
+    mut pathfinding_task: ResMut<AsyncPathfindingTasks>,
+    async_task_pools: Res<AsyncTaskPools>,
+){
+    for mut unit in static_logistic_units_q.iter_mut() {
+        if !unit.3.path.is_empty() {
+            continue;
+        }
+
+        unit.3.path = vec![unit.1.translation];
+
+        let nav_mesh_lock = nav_mesh.get();
+
+        let task = async_task_pools.logistic_pathfinding_pool.spawn(async_path_find(
+            nav_mesh_lock.clone(),
+            nav_mesh_settings.clone(),
+            unit.1.translation,
+            unit.2.last_destination_point,
+            Some(100.),
+            Some(&[10.0, 0.1]),
+            unit.0,
+        ));
+
+        pathfinding_task.tasks.push(task);
     }
 }
 

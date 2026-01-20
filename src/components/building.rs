@@ -1681,132 +1681,134 @@ pub fn unit_replenishment_system(
             if deleted_entities.get(&event.dead_unit_data.3).is_none() && commands.get_entity(event.dead_unit_data.3).is_some() {
                 deleted_entities.insert(event.dead_unit_data.3);
 
-                let mut mesh: Handle<Mesh> = Handle::default();
-                let mut material: Handle<StandardMaterial> = Handle::default();
-                let mut remains_type = "unspecified";
+                if event.dead_unit_data.5 {
+                    let mut mesh: Handle<Mesh> = Handle::default();
+                    let mut material: Handle<StandardMaterial> = Handle::default();
+                    let mut remains_type = "unspecified";
 
-                match event.dead_unit_data.1.1.2.as_str() {
-                    "regular_soldier" => {
-                        mesh = unit_assets.corpse.0.clone();
-                        material = unit_assets.corpse.1.clone();
-                        remains_type = "infantry";
-                    }
-                    "atgm" => {
-                        mesh = unit_assets.corpse.0.clone();
-                        material = unit_assets.corpse.1.clone();
-                        remains_type = "infantry";
-                    }
-                    "shock_soldier" => {
-                        mesh = unit_assets.corpse.0.clone();
-                        material = unit_assets.corpse.1.clone();
-                        remains_type = "infantry";
-                    }
-                    "lat" => {
-                        mesh = unit_assets.corpse.0.clone();
-                        material = unit_assets.corpse.1.clone();
-                        remains_type = "infantry";
-                    }
-                    "sniperr" => {
-                        mesh = unit_assets.corpse.0.clone();
-                        material = unit_assets.corpse.1.clone();
-                        remains_type = "infantry";
-                    }
-                    "snipers" => {
-                        mesh = unit_assets.corpse.0.clone();
-                        material = unit_assets.corpse.1.clone();
-                        remains_type = "infantry";
-                    }
-                    "tank" => {
-                        mesh = unit_assets.tank.0.clone();
-                        material = instanced_materials.wreck_material.clone();
-                        remains_type = "vehicle";
-                    }
-                    "ifv" => {
-                        mesh = unit_assets.ifv.0.clone();
-                        material = instanced_materials.wreck_material.clone();
-                        remains_type = "vehicle";
-                    }
-                    "artillery" => {
-                        mesh = unit_assets.artillery.0.clone();
-                        material = instanced_materials.wreck_material.clone();
-                        remains_type = "vehicle";
-                    }
-                    "engineer" => {
-                        mesh = unit_assets.engineer.0.clone();
-                        material = instanced_materials.wreck_material.clone();
-                        remains_type = "vehicle";
-                    }
-                    _ => {}
-                }
-
-                remains_count.0 += 1;
-
-                match remains_type {
-                    "infantry" => {
-                        let color;
-                        let simplified_material;
-                        if event.dead_unit_data.0 == 1 {
-                            color = Vec4::new(0., 0., 1., 1.);
-                            simplified_material = instanced_materials.blue_solid.clone();
-                        } else {
-                            color = Vec4::new(1., 0., 0., 1.);
-                            simplified_material = instanced_materials.red_solid.clone();
+                    match event.dead_unit_data.1.1.2.as_str() {
+                        "regular_soldier" => {
+                            mesh = unit_assets.corpse.0.clone();
+                            material = unit_assets.corpse.1.clone();
+                            remains_type = "infantry";
                         }
+                        "atgm" => {
+                            mesh = unit_assets.corpse.0.clone();
+                            material = unit_assets.corpse.1.clone();
+                            remains_type = "infantry";
+                        }
+                        "shock_soldier" => {
+                            mesh = unit_assets.corpse.0.clone();
+                            material = unit_assets.corpse.1.clone();
+                            remains_type = "infantry";
+                        }
+                        "lat" => {
+                            mesh = unit_assets.corpse.0.clone();
+                            material = unit_assets.corpse.1.clone();
+                            remains_type = "infantry";
+                        }
+                        "sniperr" => {
+                            mesh = unit_assets.corpse.0.clone();
+                            material = unit_assets.corpse.1.clone();
+                            remains_type = "infantry";
+                        }
+                        "snipers" => {
+                            mesh = unit_assets.corpse.0.clone();
+                            material = unit_assets.corpse.1.clone();
+                            remains_type = "infantry";
+                        }
+                        "tank" => {
+                            mesh = unit_assets.tank.0.clone();
+                            material = instanced_materials.wreck_material.clone();
+                            remains_type = "vehicle";
+                        }
+                        "ifv" => {
+                            mesh = unit_assets.ifv.0.clone();
+                            material = instanced_materials.wreck_material.clone();
+                            remains_type = "vehicle";
+                        }
+                        "artillery" => {
+                            mesh = unit_assets.artillery.0.clone();
+                            material = instanced_materials.wreck_material.clone();
+                            remains_type = "vehicle";
+                        }
+                        "engineer" => {
+                            mesh = unit_assets.engineer.0.clone();
+                            material = instanced_materials.wreck_material.clone();
+                            remains_type = "vehicle";
+                        }
+                        _ => {}
+                    }
 
-                        let team_material;
+                    remains_count.0 += 1;
 
-                        if let Some(mat) = instanced_materials.team_materials.get(&(mesh.id(), event.dead_unit_data.0)) {
-                            team_material = mat.clone();
-                        } else {
-                            if let Some(original) = materials.get(material.id()) {
-                                team_material = extended_materials.add(ExtendedMaterial {
-                                    base: original.clone(),
-                                    extension: TeamMaterialExtension {
-                                        team_color: color,
-                                    },
-                                });
+                    match remains_type {
+                        "infantry" => {
+                            let color;
+                            let simplified_material;
+                            if event.dead_unit_data.0 == 1 {
+                                color = Vec4::new(0., 0., 1., 1.);
+                                simplified_material = instanced_materials.blue_solid.clone();
                             } else {
-                                team_material = extended_materials.add(ExtendedMaterial {
-                                    base: StandardMaterial{
-                                        ..default()
-                                    },
-                                    extension: TeamMaterialExtension {
-                                        team_color: color,
-                                    },
-                                });
+                                color = Vec4::new(1., 0., 0., 1.);
+                                simplified_material = instanced_materials.red_solid.clone();
                             }
 
-                            instanced_materials.team_materials.insert((mesh.id(), event.dead_unit_data.0), team_material.clone());
-                        }
+                            let team_material;
 
-                        commands.spawn(MaterialMeshBundle{
-                            mesh: mesh.clone(),
-                            material: team_material.clone(),
-                            transform: event.dead_unit_data.4,
-                            ..default()
-                        })
-                        .insert(UnitRemains{
-                            number: remains_count.0,
-                        }).insert(LOD{
-                            detailed: (mesh, Some(team_material), None),
-                            simplified: (unit_assets.corpse_simplified_mesh.clone(), simplified_material),
-                        });
+                            if let Some(mat) = instanced_materials.team_materials.get(&(mesh.id(), event.dead_unit_data.0)) {
+                                team_material = mat.clone();
+                            } else {
+                                if let Some(original) = materials.get(material.id()) {
+                                    team_material = extended_materials.add(ExtendedMaterial {
+                                        base: original.clone(),
+                                        extension: TeamMaterialExtension {
+                                            team_color: color,
+                                        },
+                                    });
+                                } else {
+                                    team_material = extended_materials.add(ExtendedMaterial {
+                                        base: StandardMaterial{
+                                            ..default()
+                                        },
+                                        extension: TeamMaterialExtension {
+                                            team_color: color,
+                                        },
+                                    });
+                                }
+
+                                instanced_materials.team_materials.insert((mesh.id(), event.dead_unit_data.0), team_material.clone());
+                            }
+
+                            commands.spawn(MaterialMeshBundle{
+                                mesh: mesh.clone(),
+                                material: team_material.clone(),
+                                transform: event.dead_unit_data.4,
+                                ..default()
+                            })
+                            .insert(UnitRemains{
+                                number: remains_count.0,
+                            }).insert(LOD{
+                                detailed: (mesh, Some(team_material), None),
+                                simplified: (unit_assets.corpse_simplified_mesh.clone(), simplified_material),
+                            });
+                        }
+                        "vehicle" => {
+                            commands.spawn(MaterialMeshBundle{
+                                mesh: mesh.clone(),
+                                material: material.clone(),
+                                transform: event.dead_unit_data.4,
+                                ..default()
+                            })
+                            .insert(UnitRemains{
+                                number: remains_count.0,
+                            }).insert(LOD{
+                                detailed: (mesh, None, Some(material.clone())),
+                                simplified: (unit_assets.vehicle_simplified_mesh.clone(), material),
+                            });
+                        }
+                        _ => {}
                     }
-                    "vehicle" => {
-                        commands.spawn(MaterialMeshBundle{
-                            mesh: mesh.clone(),
-                            material: material.clone(),
-                            transform: event.dead_unit_data.4,
-                            ..default()
-                        })
-                        .insert(UnitRemains{
-                            number: remains_count.0,
-                        }).insert(LOD{
-                            detailed: (mesh, None, Some(material.clone())),
-                            simplified: (unit_assets.vehicle_simplified_mesh.clone(), material),
-                        });
-                    }
-                    _ => {}
                 }
 
                 tile_map.tiles.entry(event.dead_unit_data.0).or_insert_with(HashMap::new).entry(event.dead_unit_data.1.0)
@@ -4575,6 +4577,8 @@ pub fn roads_generation_system(
                         waypoint_radius: 0.5,
                         elapsed: 0.,
                         inv_duration: 0.,
+                        last_position: Vec3::ZERO,
+                        stuck_count: 0,
                     },
                     NeedToMove,
                 ))
@@ -4587,7 +4591,7 @@ pub fn roads_generation_system(
     }
 
     for mut road_builder in road_builders_q.iter_mut() {
-        let current_direction = (road_builder.1.translation - road_builder.2.last_position).normalize();
+        let current_direction = ((road_builder.1.translation - road_builder.2.last_position).normalize() * 10.).round() / 10.;
 
         if road_builder.2.last_direction != current_direction {
             road_builder.2.last_direction = current_direction;

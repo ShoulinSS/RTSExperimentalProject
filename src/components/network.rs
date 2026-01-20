@@ -3669,6 +3669,8 @@ pub fn server_messages_handler(
                     waypoint_radius: 1.,
                     elapsed: 0.,
                     inv_duration: 0.,
+                    last_position: Vec3::ZERO,
+                    stuck_count: 0,
                 })
                 .id();
 

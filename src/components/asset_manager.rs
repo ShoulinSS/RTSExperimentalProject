@@ -4,7 +4,7 @@ use bevy::{color::palettes::css::GRAY, gltf::GltfMesh, pbr::{ExtendedMaterial, M
 use bevy_rapier3d::{na::TGeneral, prelude::{Collider, CollisionGroups, ComputedColliderShape, Group}};
 use oxidized_navigation_serializable::NavMeshAffector;
 
-use crate::{WORLD_SIZE, components::{building::{BuildingBlueprint, UnactivatedBlueprints}, camera::CameraComponent, ui_manager::DisplayedModelHolder, unit::{AttackTypes, CombatComponent, CompanyTypes, FogOfWarTexture, NeedToMove, StoppedMoving, UnitComponent, UnitTypes}}};
+use crate::{WORLD_SIZE, components::{building::{BuildingBlueprint, UnactivatedBlueprints}, camera::CameraComponent, logistics::LogisticUnitComponent, ui_manager::DisplayedModelHolder, unit::{AttackTypes, CombatComponent, CompanyTypes, FogOfWarTexture, NeedToMove, StoppedMoving, UnitComponent, UnitTypes}}};
 
 #[derive(Resource)]
 pub struct LevelAssets {
@@ -603,60 +603,10 @@ pub fn initialize_level_gltf_objects (
         let mesh_handle = gltf_mesh.primitives[0].mesh.clone();
         if let Some(mesh) = meshes.get(&mesh_handle) {
             if let Some(collider) = Collider::from_bevy_mesh(mesh, &ComputedColliderShape::TriMesh) {
-                commands.spawn(MaterialMeshBundle{
-                    mesh: mesh_handle,
-                    material: extended_materials.add(ExtendedMaterial {
-                        base: StandardMaterial {
-                            ..default()
-                        },
-                        extension: TerrainMaterialExtension {
-                            lines: vec![],
-                            line_count: 0,
-                            circles: vec![],
-                            circle_count: 0,
-                            grass_texture: level_assets.grass_texture.clone(),
-                            stone_texture: level_assets.stone_texture.clone(),
-                            snow_texture: level_assets.snow_texture.clone(),
-                            height_factors: Vec2::new(5., 55.),
-                            repeat_factor: 30.,
-                            world_size: WORLD_SIZE,
-                            fog_of_war_texture: fog_of_war_texture.handle.clone(),
-                        },
-                    }),
-                    transform: Transform::from_translation(Vec3::new(0., 0., 0.)),
-                    ..default()
-                })
-                .insert(collider)
-                .insert(NavMeshAffector)
-                .insert(Terrain)
-                .insert(CollisionGroups::new(Group::GROUP_10, Group::all()));
-
-                commands.spawn(SceneBundle{
-                    scene: level_assets.trees_2d.clone(),
-                    ..default()
-                })
-                .insert(Name::new("trees_2d"));
-
                 // commands.spawn(MaterialMeshBundle{
                 //     mesh: mesh_handle,
-                //     material: terrain_material.add(TerrainMaterial{
-                //         grass_texture: level_assets.grass_texture.clone(),
-                //         stone_texture: level_assets.stone_texture.clone(),
-                //         snow_texture: level_assets.snow_texture.clone(),
-                //         height_factors: Vec2::new(10., 30.),
-                //         repeat_factor: 100.,
-                //         alpha_mode: AlphaMode::Blend,
-                //     }),
-                //     transform: Transform::from_translation(Vec3::new(0., 0., 0.)),
-                //     ..default()
-                // });
-
-                // commands.spawn(MaterialMeshBundle{
-                //     mesh: meshes.add(Mesh::from(Plane3d::default().mesh().size(WORLD_SIZE, WORLD_SIZE))),
                 //     material: extended_materials.add(ExtendedMaterial {
                 //         base: StandardMaterial {
-                //             base_color: Color::srgba(1., 1., 1., 1.),
-                //             alpha_mode: AlphaMode::Blend,
                 //             ..default()
                 //         },
                 //         extension: TerrainMaterialExtension {
@@ -676,9 +626,70 @@ pub fn initialize_level_gltf_objects (
                 //     transform: Transform::from_translation(Vec3::new(0., 0., 0.)),
                 //     ..default()
                 // })
-                // .insert(Collider::cuboid(WORLD_SIZE / 2., 0.1, WORLD_SIZE / 2.))
+                // .insert(collider)
                 // .insert(NavMeshAffector)
-                // .insert(Terrain);
+                // .insert(Terrain)
+                // .insert(CollisionGroups::new(Group::GROUP_10, Group::all()));
+
+                // commands.spawn(SceneBundle{
+                //     scene: level_assets.trees_2d.clone(),
+                //     ..default()
+                // })
+                // .insert(Name::new("trees_2d"));
+
+                // commands.spawn(MaterialMeshBundle{
+                //     mesh: mesh_handle,
+                //     material: extended_materials.add(ExtendedMaterial {
+                //         base: StandardMaterial {
+                //             ..default()
+                //         },
+                //         extension: TerrainMaterialExtension {
+                //             lines: vec![],
+                //             line_count: 0,
+                //             circles: vec![],
+                //             circle_count: 0,
+                //             grass_texture: level_assets.grass_texture.clone(),
+                //             stone_texture: level_assets.stone_texture.clone(),
+                //             snow_texture: level_assets.snow_texture.clone(),
+                //             height_factors: Vec2::new(5., 55.),
+                //             repeat_factor: 30.,
+                //             world_size: WORLD_SIZE,
+                //             fog_of_war_texture: fog_of_war_texture.handle.clone(),
+                //         },
+                //     }),
+                //     transform: Transform::from_translation(Vec3::new(0., 0., 0.)),
+                //     ..default()
+                // });
+
+                commands.spawn(MaterialMeshBundle{
+                    mesh: meshes.add(Mesh::from(Plane3d::default().mesh().size(WORLD_SIZE, WORLD_SIZE))),
+                    material: extended_materials.add(ExtendedMaterial {
+                        base: StandardMaterial {
+                            base_color: Color::srgba(1., 1., 1., 1.),
+                            alpha_mode: AlphaMode::Blend,
+                            ..default()
+                        },
+                        extension: TerrainMaterialExtension {
+                            lines: vec![],
+                            line_count: 0,
+                            circles: vec![],
+                            circle_count: 0,
+                            grass_texture: level_assets.grass_texture.clone(),
+                            stone_texture: level_assets.stone_texture.clone(),
+                            snow_texture: level_assets.snow_texture.clone(),
+                            height_factors: Vec2::new(5., 55.),
+                            repeat_factor: 30.,
+                            world_size: WORLD_SIZE,
+                            fog_of_war_texture: fog_of_war_texture.handle.clone(),
+                        },
+                    }),
+                    transform: Transform::from_translation(Vec3::new(0., 0., 0.)),
+                    ..default()
+                })
+                .insert(Collider::cuboid(WORLD_SIZE / 2., 0.1, WORLD_SIZE / 2.))
+                .insert(NavMeshAffector)
+                .insert(Terrain)
+                .insert(CollisionGroups::new(Group::GROUP_10, Group::all()));
             }
         }
     }
@@ -978,6 +989,7 @@ pub fn testing_system(
     meshes: Res<Assets<Mesh>>,
     materials: Res<Assets<StandardMaterial>>,
     team_materials: Res<Assets<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>>,
+    logistic_units_q: Query<(&Transform, &LogisticUnitComponent, &UnitComponent), Without<NeedToMove>>,
     time: Res<Time>,
     mut elapsed_time: Local<u128>,
 ) {
@@ -985,6 +997,15 @@ pub fn testing_system(
 
     if *elapsed_time >= 1000 {
         *elapsed_time = 0;
+
+        // if logistic_units_q.is_empty() {
+        //     println!("empty");
+        // }
+
+        // for unit in logistic_units_q.iter() {
+        //     print!("{} | ", unit.0.translation);
+        //     println!("{}", unit.2.path.len());
+        // }
 
         // println!("meshes: {}", meshes.iter().count());
         // println!("materials: {}", materials.iter().count());

@@ -247,6 +247,7 @@ pub struct UnitDeathEvent {
         Option<Entity>,                                                                 //cover entity
         Entity,                                                                         //unit entity
         Transform,                                                                      //unit transform
+        bool,                                                                           //should leave a corpse
     ),
 }
 
@@ -331,6 +332,8 @@ pub struct UnitComponent{
     pub waypoint_radius: f32,
     pub elapsed: f32,
     pub inv_duration: f32,
+    pub last_position: Vec3,
+    pub stuck_count: i32,
 }
 
 #[derive(Component, Clone)]
@@ -1021,14 +1024,15 @@ pub async fn async_path_find(
 }
 
 pub fn process_agents_movement(
-    mut units_q: Query<(&mut UnitComponent, &mut Transform, Entity, Option<&mut KinematicCharacterController>), (With<NeedToMove>, Without<Covered>)>,
+    mut units_q: Query<(&mut UnitComponent, &mut Transform, Entity, Option<&mut KinematicCharacterController>, Option<&CombatComponent>), (With<NeedToMove>, Without<Covered>)>,
+    mut event_writer: EventWriter<UnitDeathEvent>,
     mut commands: Commands,
     time: Res<Time>,
     network_status: Res<NetworkStatus>,
     mut server: ResMut<QuinnetServer>,
     clients: Res<ClientList>,
 ){
-    for(mut unit_component,mut unit_transform, unit_entity, controller_option) in units_q.iter_mut(){
+    for(mut unit_component,mut unit_transform, unit_entity, controller_option, combat_component_option) in units_q.iter_mut(){
         if !unit_component.path.is_empty(){
             let unit_position = unit_transform.translation;
             let target_position = unit_component.path[0];
@@ -1114,6 +1118,46 @@ pub fn process_agents_movement(
                         }
                     }
                 }
+            }
+
+            if unit_component.last_position == unit_transform.translation {
+                unit_component.stuck_count += 1;
+
+                if unit_component.stuck_count >= 10 {
+                    if let Some(combat_component) = combat_component_option {
+                        event_writer.send(UnitDeathEvent{
+                            dead_unit_data: (
+                                combat_component.team,
+                                combat_component.unit_data.clone(),
+                                None,
+                                unit_entity,
+                                *unit_transform,
+                                false,
+                            ),
+                        });
+                    } else {
+                        event_writer.send(UnitDeathEvent{
+                            dead_unit_data: (
+                                1,
+                                (
+                                    (0, 0),
+                                    (
+                                        CompanyTypes::None,
+                                        (-1, -1, -1, -1, -1, -1, -1),
+                                        "".to_string(),
+                                    ),
+                                ),
+                                None,
+                                unit_entity,
+                                *unit_transform,
+                                false,
+                            ),
+                        });
+                    }
+                }
+            } else {
+                unit_component.stuck_count = 0;
+                unit_component.last_position = unit_transform.translation;
             }
         } else {
             commands.entity(unit_entity).remove::<NeedToMove>();
@@ -1570,6 +1614,7 @@ pub fn process_combat (
                                             cover_entity,
                                             enemy.3,
                                             *enemy.1,
+                                            true,
                                         )
                                     });
 
@@ -1906,6 +1951,7 @@ pub fn process_combat (
                     cover_entity,
                     unit.3,
                     *unit.1,
+                    true,
                 )
             });
         }
@@ -6964,6 +7010,7 @@ pub fn explosion_processing_system (
                                             cover_entity,
                                             *unit_entity,
                                             *unit.1,
+                                            true,
                                         )
                                     });
 
@@ -7086,6 +7133,7 @@ pub fn explosion_processing_system (
                             cover_entity,
                             nearest_entity.0,
                             *unit.1,
+                            true,
                         )
                     });
 
@@ -7119,6 +7167,7 @@ pub fn explosion_processing_system (
                         cover_entity,
                         unit.5,
                         *unit.1,
+                        true,
                     )
                 });
             }
@@ -7570,7 +7619,7 @@ pub struct UnitRemains{
 #[derive(Resource)]
 pub struct RemainsCount(pub i32);
 
-const MAX_UNIT_REMAINS_COUNT: i32 = 100;
+const MAX_UNIT_REMAINS_COUNT: i32 = 500;
 
 pub fn remains_processing_system (
     remains_q: Query<(Entity, &UnitRemains), With<UnitRemains>>,
