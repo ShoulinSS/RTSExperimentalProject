@@ -4,7 +4,7 @@ use bevy::{color::palettes::css::GRAY, gltf::GltfMesh, pbr::{ExtendedMaterial, M
 use bevy_rapier3d::{na::TGeneral, prelude::{Collider, CollisionGroups, ComputedColliderShape, Group}};
 use oxidized_navigation_serializable::NavMeshAffector;
 
-use crate::{WORLD_SIZE, components::{building::{BuildingBlueprint, UnactivatedBlueprints}, camera::CameraComponent, logistics::LogisticUnitComponent, ui_manager::DisplayedModelHolder, unit::{AttackTypes, CombatComponent, CompanyTypes, FogOfWarTexture, NeedToMove, StoppedMoving, UnitComponent, UnitTypes}}};
+use crate::{PlayerData, WORLD_SIZE, components::{building::{BuildingBlueprint, UnactivatedBlueprints}, camera::CameraComponent, logistics::LogisticUnitComponent, ui_manager::DisplayedModelHolder, unit::{Armies, AttackTypes, CombatComponent, CompanyTypes, FogOfWarTexture, NeedToMove, SquadLeader, StoppedMoving, SuppliesConsumerComponent, UnitComponent, UnitTypes}}};
 
 #[derive(Resource)]
 pub struct LevelAssets {
@@ -538,8 +538,8 @@ pub fn load_assets (
                 1500,
                 250,
                 250,
-                50.,
-                50.,
+                25.,
+                25.,
             ))
         );
     }
@@ -603,39 +603,39 @@ pub fn initialize_level_gltf_objects (
         let mesh_handle = gltf_mesh.primitives[0].mesh.clone();
         if let Some(mesh) = meshes.get(&mesh_handle) {
             if let Some(collider) = Collider::from_bevy_mesh(mesh, &ComputedColliderShape::TriMesh) {
-                // commands.spawn(MaterialMeshBundle{
-                //     mesh: mesh_handle,
-                //     material: extended_materials.add(ExtendedMaterial {
-                //         base: StandardMaterial {
-                //             ..default()
-                //         },
-                //         extension: TerrainMaterialExtension {
-                //             lines: vec![],
-                //             line_count: 0,
-                //             circles: vec![],
-                //             circle_count: 0,
-                //             grass_texture: level_assets.grass_texture.clone(),
-                //             stone_texture: level_assets.stone_texture.clone(),
-                //             snow_texture: level_assets.snow_texture.clone(),
-                //             height_factors: Vec2::new(5., 55.),
-                //             repeat_factor: 30.,
-                //             world_size: WORLD_SIZE,
-                //             fog_of_war_texture: fog_of_war_texture.handle.clone(),
-                //         },
-                //     }),
-                //     transform: Transform::from_translation(Vec3::new(0., 0., 0.)),
-                //     ..default()
-                // })
-                // .insert(collider)
-                // .insert(NavMeshAffector)
-                // .insert(Terrain)
-                // .insert(CollisionGroups::new(Group::GROUP_10, Group::all()));
+                commands.spawn(MaterialMeshBundle{
+                    mesh: mesh_handle,
+                    material: extended_materials.add(ExtendedMaterial {
+                        base: StandardMaterial {
+                            ..default()
+                        },
+                        extension: TerrainMaterialExtension {
+                            lines: vec![],
+                            line_count: 0,
+                            circles: vec![],
+                            circle_count: 0,
+                            grass_texture: level_assets.grass_texture.clone(),
+                            stone_texture: level_assets.stone_texture.clone(),
+                            snow_texture: level_assets.snow_texture.clone(),
+                            height_factors: Vec2::new(5., 55.),
+                            repeat_factor: 30.,
+                            world_size: WORLD_SIZE,
+                            fog_of_war_texture: fog_of_war_texture.handle.clone(),
+                        },
+                    }),
+                    transform: Transform::from_translation(Vec3::new(0., 0., 0.)),
+                    ..default()
+                })
+                .insert(collider)
+                .insert(NavMeshAffector)
+                .insert(Terrain)
+                .insert(CollisionGroups::new(Group::GROUP_10, Group::all()));
 
-                // commands.spawn(SceneBundle{
-                //     scene: level_assets.trees_2d.clone(),
-                //     ..default()
-                // })
-                // .insert(Name::new("trees_2d"));
+                commands.spawn(SceneBundle{
+                    scene: level_assets.trees_2d.clone(),
+                    ..default()
+                })
+                .insert(Name::new("trees_2d"));
 
                 // commands.spawn(MaterialMeshBundle{
                 //     mesh: mesh_handle,
@@ -661,35 +661,35 @@ pub fn initialize_level_gltf_objects (
                 //     ..default()
                 // });
 
-                commands.spawn(MaterialMeshBundle{
-                    mesh: meshes.add(Mesh::from(Plane3d::default().mesh().size(WORLD_SIZE, WORLD_SIZE))),
-                    material: extended_materials.add(ExtendedMaterial {
-                        base: StandardMaterial {
-                            base_color: Color::srgba(1., 1., 1., 1.),
-                            alpha_mode: AlphaMode::Blend,
-                            ..default()
-                        },
-                        extension: TerrainMaterialExtension {
-                            lines: vec![],
-                            line_count: 0,
-                            circles: vec![],
-                            circle_count: 0,
-                            grass_texture: level_assets.grass_texture.clone(),
-                            stone_texture: level_assets.stone_texture.clone(),
-                            snow_texture: level_assets.snow_texture.clone(),
-                            height_factors: Vec2::new(5., 55.),
-                            repeat_factor: 30.,
-                            world_size: WORLD_SIZE,
-                            fog_of_war_texture: fog_of_war_texture.handle.clone(),
-                        },
-                    }),
-                    transform: Transform::from_translation(Vec3::new(0., 0., 0.)),
-                    ..default()
-                })
-                .insert(Collider::cuboid(WORLD_SIZE / 2., 0.1, WORLD_SIZE / 2.))
-                .insert(NavMeshAffector)
-                .insert(Terrain)
-                .insert(CollisionGroups::new(Group::GROUP_10, Group::all()));
+                // commands.spawn(MaterialMeshBundle{
+                //     mesh: meshes.add(Mesh::from(Plane3d::default().mesh().size(WORLD_SIZE, WORLD_SIZE))),
+                //     material: extended_materials.add(ExtendedMaterial {
+                //         base: StandardMaterial {
+                //             base_color: Color::srgba(1., 1., 1., 1.),
+                //             alpha_mode: AlphaMode::Blend,
+                //             ..default()
+                //         },
+                //         extension: TerrainMaterialExtension {
+                //             lines: vec![],
+                //             line_count: 0,
+                //             circles: vec![],
+                //             circle_count: 0,
+                //             grass_texture: level_assets.grass_texture.clone(),
+                //             stone_texture: level_assets.stone_texture.clone(),
+                //             snow_texture: level_assets.snow_texture.clone(),
+                //             height_factors: Vec2::new(5., 55.),
+                //             repeat_factor: 30.,
+                //             world_size: WORLD_SIZE,
+                //             fog_of_war_texture: fog_of_war_texture.handle.clone(),
+                //         },
+                //     }),
+                //     transform: Transform::from_translation(Vec3::new(0., 0., 0.)),
+                //     ..default()
+                // })
+                // .insert(Collider::cuboid(WORLD_SIZE / 2., 0.1, WORLD_SIZE / 2.))
+                // .insert(NavMeshAffector)
+                // .insert(Terrain)
+                // .insert(CollisionGroups::new(Group::GROUP_10, Group::all()));
             }
         }
     }
@@ -859,6 +859,65 @@ pub fn lod_system(
     }
 }
 
+pub fn new_lods_initializing_system(
+    camera_q: Query<&Transform, With<CameraComponent>>,
+    mut new_lods_q: Query<(Entity, &LOD, Option<&mut AnimatedMesh>, Option<&SkinnedMesh>), (Added<LOD>, Without<AnimationComponent>, Without<ChangeMaterial>)>,
+    mut commands: Commands,
+    mut less: Local<bool>,
+    mut more: Local<bool>,
+){
+    if new_lods_q.is_empty() {return;}
+    
+    let camera = camera_q.single();
+
+    if camera.translation.y < LOD_SWITCH_HEIGHT {
+        if !*less {
+            *less = true;
+            *more = false;
+
+            for model in new_lods_q.iter_mut() {
+                commands.entity(model.0).remove::<(Handle<Mesh>, Handle<StandardMaterial>, Handle<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>)>();
+
+                if let Some(animated_mesh) = model.2 {
+                    if !animated_mesh.joints.is_empty() {
+                        commands.entity(model.0).try_insert(SkinnedMesh{
+                            inverse_bindposes: animated_mesh.inverse_bindposes.clone(),
+                            joints: animated_mesh.joints.clone(),
+                        });
+                    }
+                }
+
+                commands.entity(model.0).try_insert(model.1.detailed.0.clone());
+
+                if let Some(team_material) = &model.1.detailed.1 {
+                    commands.entity(model.0).try_insert(team_material.clone());
+                } else if let Some(simple_material) = &model.1.detailed.2 {
+                    commands.entity(model.0).try_insert(simple_material.clone());
+                }
+            }
+        }
+    } else if !*more {
+        *less = false;
+        *more = true;
+
+        for model in new_lods_q.iter_mut() {
+            commands.entity(model.0).remove::<(Handle<Mesh>, Handle<StandardMaterial>, Handle<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>)>();
+
+            if let Some(skinned_mesh) = model.3 {
+                if let Some(mut animated_mesh) = model.2 {
+                    animated_mesh.inverse_bindposes = skinned_mesh.inverse_bindposes.clone();
+                    animated_mesh.joints = skinned_mesh.joints.clone();
+
+                    commands.entity(model.0).remove::<SkinnedMesh>();
+                }
+            }
+
+            commands.entity(model.0).try_insert(model.1.simplified.0.clone());
+            commands.entity(model.0).try_insert(model.1.simplified.1.clone());
+        }
+    }
+}
+
 #[derive(Component)]
 pub struct TrailEmmiterComponent;
 
@@ -989,7 +1048,10 @@ pub fn testing_system(
     meshes: Res<Assets<Mesh>>,
     materials: Res<Assets<StandardMaterial>>,
     team_materials: Res<Assets<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>>,
-    logistic_units_q: Query<(&Transform, &LogisticUnitComponent, &UnitComponent), Without<NeedToMove>>,
+    army: Res<Armies>,
+    //supplies_consumers_q: Query<(&SuppliesConsumerComponent, Option<&SquadLeader>)>,
+    squad_leaders_q: Query<(&SquadLeader, &Transform)>,
+    player_data: Res<PlayerData>,
     time: Res<Time>,
     mut elapsed_time: Local<u128>,
 ) {
@@ -998,19 +1060,104 @@ pub fn testing_system(
     if *elapsed_time >= 1000 {
         *elapsed_time = 0;
 
-        // if logistic_units_q.is_empty() {
-        //     println!("empty");
-        // }
-
-        // for unit in logistic_units_q.iter() {
-        //     print!("{} | ", unit.0.translation);
-        //     println!("{}", unit.2.path.len());
-        // }
-
         // println!("meshes: {}", meshes.iter().count());
         // println!("materials: {}", materials.iter().count());
         // println!("team_materials: {}", team_materials.iter().count());
         // println!("=================================================");
+
+        // if player_data.team != 2 {return;}
+
+        // if let Some(host_army) = army.0.get(&1) {
+        //     if host_army.regular_platoons.is_empty() {println!("no platoons");}
+
+        //     for regular_platoon in host_army.regular_platoons.iter() {
+        //         if regular_platoon.1.2 == Entity::PLACEHOLDER {
+        //             println!("{}, {}, {}, {}, {} - PLACEHOLDER",
+        //                 regular_platoon.0.0,
+        //                 regular_platoon.0.1,
+        //                 regular_platoon.0.2,
+        //                 regular_platoon.0.3,
+        //                 regular_platoon.0.4,
+        //             );
+        //         } else {
+        //             print!("{}, {}, {}, {}, {} - NOT placeholder",
+        //                 regular_platoon.0.0,
+        //                 regular_platoon.0.1,
+        //                 regular_platoon.0.2,
+        //                 regular_platoon.0.3,
+        //                 regular_platoon.0.4,
+        //             );
+
+        //             if let Ok(_) = squad_leaders_q.get(regular_platoon.1.2) {
+        //                 println!(" | IS squad leader");
+        //             } else {
+        //                 println!(" | NOT squad leader");
+        //             }
+        //         }
+        //     }
+        // } else {
+        //     println!("can't get host's army");
+        // }
+
+        // for sl in squad_leaders_q.iter() {
+        //     if sl.1.team != 1 {continue;}
+        //     print!("{} | ", sl.3.translation);
+        //     print!("leader data: {}, {}, {}, {}, {} | ",
+        //         sl.0.0.1.0,
+        //         sl.0.0.1.1,
+        //         sl.0.0.1.2,
+        //         sl.0.0.1.3,
+        //         sl.0.0.1.4,
+        //     );
+
+        //     print!("unit data: {}, {}, {}, {}, {}, {}, {}",
+        //         sl.1.unit_data.1.1.0,
+        //         sl.1.unit_data.1.1.1,
+        //         sl.1.unit_data.1.1.2,
+        //         sl.1.unit_data.1.1.3,
+        //         sl.1.unit_data.1.1.4,
+        //         sl.1.unit_data.1.1.5,
+        //         sl.1.unit_data.1.1.6,
+        //     );
+
+        //     print!(" | supplies: {}", sl.2.supplies);
+
+        //     let mut is_leader_matches = false;
+        //     if let Some(team_army) = army.0.get(&player_data.team) {
+        //         match sl.0.0.0 {
+        //             CompanyTypes::Regular => {
+        //                 if let Some(regular_platoon) = team_army.regular_platoons.get(&sl.0.0.1) {
+        //                     if regular_platoon.2 == sl.4 {
+        //                         is_leader_matches = true;
+        //                     }
+        //                 }
+        //             },
+        //             CompanyTypes::Shock => {
+        //                 if let Some(shock_platoon) = team_army.shock_platoons.get(&sl.0.0.1) {
+        //                     if shock_platoon.2 == sl.4 {
+        //                         is_leader_matches = true;
+        //                     }
+        //                 }
+        //             },
+        //             CompanyTypes::Armored => {
+        //                 if let Some(armored_platoon) = team_army.armored_platoons.get(&sl.0.0.1) {
+        //                     if armored_platoon.2 == sl.4 {
+        //                         is_leader_matches = true;
+        //                     }
+        //                 }
+        //             },
+        //             _ => {is_leader_matches = true;},
+        //         }
+        //     }
+
+        //     println!(" | matches: {}", is_leader_matches);
+        // }
+
+        // if player_data.team == 1 {
+        //     println!("^NEW TICK^ (SERVER SIDE)");
+        // } else {
+        //     println!("^NEW TICK^ (CLIENT SIDE)");
+        // }
     }
 }
 

@@ -4,7 +4,7 @@ use bevy::{core_pipeline::tonemapping::Tonemapping, diagnostic::{FrameTimeDiagno
 use bevy_egui::{EguiPlugin, EguiSet};
 use bevy_quinnet::{client::QuinnetClientPlugin, server::QuinnetServerPlugin};
 use bevy_rapier3d::{math::{Rot, Vect}, plugin::{RapierConfiguration, TimestepMode}, prelude::{CharacterLength, Collider, ComputedColliderShape, KinematicCharacterController, NoUserData, RapierPhysicsPlugin, RigidBody}, rapier::prelude::{LockedAxes, RigidBodyBuilder, RigidBodySet, RigidBodyType}, render::RapierDebugRenderPlugin};
-use components::{asset_manager::{generate_circle_segments, LevelAssets, LineData, LineHolder, TerrainMaterialExtension}, building::{self, create_ring, AllApartmentsPlaced, AllRoadsGenerated, AllSettlementsPlaced, ArtilleryBundle, AssaultBundle, BuildingsBundles, BuildingsList, CoverComponent, DeleteTemporaryObjects, EngineerBundle, HumanResourceStorageComponent, IFVBundle, InfantryBarracksBundle, InfantryProducer, LogisticHubBundle, MaterialsProductionComponent, MaterialsStorageComponent, ProducableUnits, ProductionData, ProductionQueue, ProductionQueueObject, ProductionState, ResourceMinerBundle, SelectableBuilding, SettlementComponent, SettlementObject, SettlementsLeft, SoldierBundle, SuppliesProductionComponent, TankBundle, TemporaryObject, UnactivatedBlueprints, UnitBundles, UnitProductionBuildingComponent, VehicleFactoryBundle, VehiclesProducer, ALLOWED_DISTANCE_FROM_BORDERS, CITIES_COUNT, VILLAGES_COUNT}, camera::SelectionBox, logistics::{create_plane_between_points, LogisticUnitComponent, /*RoadComponent, RoadObject*/}, network::{AllPlayersPlacedSettlementsEvent, ClientGameInitializedEvent, ClientGameStartedEvent, ClientList, EntityMaps, InsertedConnectionData, NetworkStatus, NetworkStatuses, PlayerList, UnitsToDamage, UnitsToInsertPath, UnspecifiedEntitiesToMove}, ui_manager::{settlements_stage_ui_activation, setup_ingame_ui, ArmySettingsNodes, BuildingPlacementCache, BuildingToBuildSelectedEvent, ButtonAction, CancelArtilleryTargets, ChooseBatallionTypeEvent, ChoosePlatoonSpecializationEvent, CompleteConstruction, ConnectToHostedGameEvent, GameStartedEvent, HostNewGameEvent, LandArmyButtonClickEvent, OpenBatallionTypesEvent, OpenBuildingsListEvent, OpenPlatoonSpecializationsEvent, SquadSelectionEvent, ProductionStateChanged, SetupBatallionEvent, Specializations, StartSingleplayerEvent, ToggleArtilleryDesignation, ToggleProductionEvent, UiButtonNodes}, unit::{ArmoredPlatoon, ArmyObject, ArtilleryOrderGiven, ArtilleryUnit, AsyncTaskPools, AttackTypes, CompanyTypes, CombatComponent, DamageTypes, DeleteAfterStart, EngineerComponent, ExplosionEvent, IsArtilleryDesignationActive, IsUnitDeselectionAllowed, LimitedHashMap, LimitedHashSet, LimitedNumber, RegularPlatoon, SelectableUnit, ShockPlatoon, SuppliesConsumerComponent, UnitComponent, UnitDeathEvent, UnitNeedsToBeUncovered, UnitTypes, START_ARMORED_SQUADS_AMOUNT, START_ARTILLERY_UNITS_COUNT, START_ENGINEERS_COUNT, START_REGULAR_SQUADS_AMOUNT, START_SHOCK_SQUADS_AMOUNT}};
+use components::{asset_manager::{generate_circle_segments, LevelAssets, LineData, LineHolder, TerrainMaterialExtension}, building::{self, create_ring, AllApartmentsPlaced, AllRoadsGenerated, AllSettlementsPlaced, ArtilleryBundle, AssaultBundle, BuildingsBundles, BuildingsList, CoverComponent, DeleteTemporaryObjects, EngineerBundle, HumanResourceStorageComponent, IFVBundle, InfantryBarracksBundle, InfantryProducer, LogisticHubBundle, MaterialsProductionComponent, MaterialsStorageComponent, ProducableUnits, ProductionData, ProductionQueue, ProductionQueueObject, ProductionState, ResourceMinerBundle, SelectableBuilding, SettlementComponent, SettlementObject, SettlementsLeft, SoldierBundle, SuppliesProductionComponent, TankBundle, TemporaryObject, UnactivatedBlueprints, UnitBundles, UnitProductionBuildingComponent, VehicleFactoryBundle, VehiclesProducer, ALLOWED_DISTANCE_FROM_BORDERS, CITIES_COUNT, VILLAGES_COUNT}, camera::SelectionBox, logistics::{create_plane_between_points, LogisticUnitComponent, /*RoadComponent, RoadObject*/}, network::{AllPlayersPlacedSettlementsEvent, ClientGameInitializedEvent, ClientGameStartedEvent, ClientList, EntityMaps, InsertedConnectionData, NetworkStatus, NetworkStatuses, PlayerList, UnitsToDamage, UnitsToInsertPath, UnspecifiedEntitiesToMove}, ui_manager::{settlements_stage_ui_activation, setup_ingame_ui, ArmySettingsNodes, BuildingPlacementCache, BuildingToBuildSelectedEvent, ButtonAction, CancelArtilleryTargets, ChooseCompanyTypeEvent, ChooseSquadSpecializationEvent, CompleteConstruction, ConnectToHostedGameEvent, GameStartedEvent, HostNewGameEvent, LandArmyButtonClickEvent, OpenCompanyTypesEvent, OpenBuildingsListEvent, OpenSquadSpecializationsEvent, SquadSelectionEvent, ProductionStateChanged, SetupCompanyEvent, Specializations, StartSingleplayerEvent, ToggleArtilleryDesignation, ToggleProductionEvent, UiButtonNodes}, unit::{ArmoredSquad, ArmyObject, ArtilleryOrderGiven, ArtilleryUnit, AsyncTaskPools, AttackTypes, CompanyTypes, CombatComponent, DamageTypes, DeleteAfterStart, EngineerComponent, ExplosionEvent, IsArtilleryDesignationActive, IsUnitDeselectionAllowed, LimitedHashMap, LimitedHashSet, LimitedNumber, RegularSquad, SelectableUnit, ShockSquad, SuppliesConsumerComponent, UnitComponent, UnitDeathEvent, UnitNeedsToBeUncovered, UnitTypes, START_ARMORED_SQUADS_AMOUNT, START_ARTILLERY_UNITS_COUNT, START_ENGINEERS_COUNT, START_REGULAR_SQUADS_AMOUNT, START_SHOCK_SQUADS_AMOUNT}};
 use bevy_mod_raycast::prelude::*;
 use oxidized_navigation_serializable::{
     debug_draw::{DrawNavMesh, DrawPath, OxidizedNavigationDebugDrawPlugin}, query::{find_path, find_polygon_path, perform_string_pulling_on_path}, tiles::{deserialize_nav_mesh_tiles, serialize_nav_mesh_tiles, NavMeshTiles}, Area, NavMesh, NavMeshAffector, NavMeshAreaType, NavMeshSettings, OxidizedNavigationPlugin
@@ -12,7 +12,7 @@ use oxidized_navigation_serializable::{
 use bevy_tasks::{TaskPool, TaskPoolBuilder};
 use bevy_egui::{egui::{self, Color32, Context, Stroke}, EguiContext};
 
-use crate::components::{asset_manager::{AnimationComponent, BuildingsAssets, InstancedAnimations, InstancedMaterials, TeamMaterialExtension, UnitAssets}, building::{BuildingStageCache, BuildingsDeletionStates, PillboxBundle}, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, BattalionSelectionEvent, BrigadeSelectionEvent, BuildingButtonHovered, BuildingHints, ChangeTacticalSymbolsLevel, CompanySelectionEvent, DisplayedTacicalSymbolsLevel, OpenTacticalSymbolsLevels, PlatoonSelectionEvent, RebuildApartments, RegimentSelectionEvent, SwitchBuildingState, TransportDisembarkEvent, UiBlocker}, unit::{AttackAnimationTypes, FogOfWarTexture, InfantryTransport, IsUnitSelectionAllowed, RemainsCount, TILE_SIZE, UnitsTileMap}};
+use crate::components::{asset_manager::{AnimationComponent, BuildingsAssets, InstancedAnimations, InstancedMaterials, TeamMaterialExtension, UnitAssets}, building::{BuildingStageCache, BuildingsDeletionStates, PillboxBundle}, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, ArtilleryUnitSelectedEvent, BattalionSelectionEvent, BrigadeSelectionEvent, BuildingButtonHovered, BuildingHints, ChangeTacticalSymbolsLevel, CompanySelectionEvent, DisplayedTacicalSymbolsLevel, OpenTacticalSymbolsLevels, PlatoonSelectionEvent, RebuildApartments, RegimentSelectionEvent, SwitchBuildingState, TransportDisembarkEvent, UiBlocker}, unit::{AttackAnimationTypes, FogOfWarTexture, InfantryTransport, IsUnitSelectionAllowed, RemainsCount, TILE_SIZE, UnitsTileMap}};
 
 mod components;
 
@@ -128,11 +128,11 @@ fn main() {
     .add_event::<components::camera::MoveOrderEvent>()
     .add_event::<components::building::ProductionButtonPressed>()
     .add_event::<LandArmyButtonClickEvent>()
-    .add_event::<OpenBatallionTypesEvent>()
-    .add_event::<ChooseBatallionTypeEvent>()
-    .add_event::<SetupBatallionEvent>()
-    .add_event::<OpenPlatoonSpecializationsEvent>()
-    .add_event::<ChoosePlatoonSpecializationEvent>()
+    .add_event::<OpenCompanyTypesEvent>()
+    .add_event::<ChooseCompanyTypeEvent>()
+    .add_event::<SetupCompanyEvent>()
+    .add_event::<OpenSquadSpecializationsEvent>()
+    .add_event::<ChooseSquadSpecializationEvent>()
     .add_event::<ToggleProductionEvent>()
     .add_event::<UnitDeathEvent>()
     .add_event::<ProductionStateChanged>()
@@ -171,6 +171,7 @@ fn main() {
     .add_event::<RebuildApartments>()
     .add_event::<BuildingButtonHovered>()
     .add_event::<TransportDisembarkEvent>()
+    .add_event::<ArtilleryUnitSelectedEvent>()
     .insert_resource(PlayerData{
         team: 1,
         is_all_settlements_placed: false,
@@ -233,18 +234,19 @@ fn main() {
         land_army_settings_node: Entity::PLACEHOLDER,
         is_land_army_settings_visible: false,
         batallion_type_dropdown_lists: Vec::new(),
-        companies_row: Entity::PLACEHOLDER,
         platoons_row: Entity::PLACEHOLDER,
-        units_row: Entity::PLACEHOLDER,
+        squads_row: Entity::PLACEHOLDER,
         land_army_settings_node_height: 0,
         land_army_settings_node_width: 0,
-        batallion_buttons: Vec::new(),
+        company_buttons: Vec::new(),
         platoon_specialization_dropdown_lists: Vec::new(),
         platoon_specialization_cache: Vec::new(),
         toggle_production_button: (Entity::PLACEHOLDER, LimitedNumber::new()),
         last_battalion_button_index: -1,
         last_battalion_type_dropdown_list_index: -1,
         last_platoon_specialization_dropdown_list_index: -1,
+        current_regiment: LimitedNumber::new(),
+        squad_specialization_dropdown_lists: Vec::new(),
     })
     .insert_resource(Specializations{
         regular: Vec::new(),
@@ -613,85 +615,85 @@ fn setup(
     });
 
     army.0.insert(1, ArmyObject{
-        regular_platoons: HashMap::new(),
-        shock_platoons: HashMap::new(),
-        armored_platoons: HashMap::new(),
+        regular_squads: HashMap::new(),
+        shock_squads: HashMap::new(),
+        armored_squads: HashMap::new(),
         artillery_units: (HashMap::new(), Entity::PLACEHOLDER),
         engineers: HashMap::new(),
     });
     army.0.insert(2, ArmyObject{
-        regular_platoons: HashMap::new(),
-        shock_platoons: HashMap::new(),
-        armored_platoons: HashMap::new(),
+        regular_squads: HashMap::new(),
+        shock_squads: HashMap::new(),
+        armored_squads: HashMap::new(),
         artillery_units: (HashMap::new(), Entity::PLACEHOLDER),
         engineers: HashMap::new(),
     });
 
+    let mut squad_id: LimitedNumber<1, 3> = LimitedNumber::new();
     let mut platoon_id: LimitedNumber<1, 3> = LimitedNumber::new();
     let mut company_id: LimitedNumber<1, 3> = LimitedNumber::new();
-    let mut batallion_id: LimitedNumber<1, 3> = LimitedNumber::new();
-    let mut brigade_id: LimitedNumber<1, 3> = LimitedNumber::new();
-    let mut division_id: LimitedNumber<1, 2> = LimitedNumber::new();
-    platoon_id.set_value(0);
+    let mut battalion_id: LimitedNumber<1, 3> = LimitedNumber::new();
+    let mut regiment_id: LimitedNumber<1, 3> = LimitedNumber::new();
+    squad_id.set_value(0);
 
     for _i in 0..START_REGULAR_SQUADS_AMOUNT {
-        if platoon_id.next() {
-            if company_id.next() {
-                if batallion_id.next() {
-                    if brigade_id.next() {
-                        division_id.next();
+        if squad_id.next() {
+            if platoon_id.next() {
+                if company_id.next() {
+                    if battalion_id.next() {
+                        regiment_id.next();
                     }
                 }
             }
         }
 
-        army.0.get_mut(&player_data.team).unwrap().regular_platoons.insert((
-            division_id.get_value(),
-            brigade_id.get_value(),
-            batallion_id.get_value(),
+        army.0.get_mut(&player_data.team).unwrap().regular_squads.insert((
+            regiment_id.get_value(),
+            battalion_id.get_value(),
             company_id.get_value(),
             platoon_id.get_value(),
-        ), (RegularPlatoon((LimitedHashSet::new(), LimitedHashSet::new())), "atgm".to_string(), Entity::PLACEHOLDER));
+            squad_id.get_value(),
+        ), (RegularSquad((LimitedHashSet::new(), LimitedHashSet::new())), "atgm".to_string(), Entity::PLACEHOLDER));
     }
 
     for _i in 0..START_SHOCK_SQUADS_AMOUNT {
-        if platoon_id.next() {
-            if company_id.next() {
-                if batallion_id.next() {
-                    if brigade_id.next() {
-                        division_id.next();
+        if squad_id.next() {
+            if platoon_id.next() {
+                if company_id.next() {
+                    if battalion_id.next() {
+                        regiment_id.next();
                     }
                 }
             }
         }
 
-        army.0.get_mut(&player_data.team).unwrap().shock_platoons.insert((
-            division_id.get_value(),
-            brigade_id.get_value(),
-            batallion_id.get_value(),
+        army.0.get_mut(&player_data.team).unwrap().shock_squads.insert((
+            regiment_id.get_value(),
+            battalion_id.get_value(),
             company_id.get_value(),
             platoon_id.get_value(),
-        ), (ShockPlatoon((LimitedHashSet::new(), LimitedHashSet::new())), "lat".to_string(), Entity::PLACEHOLDER));
+            squad_id.get_value(),
+        ), (ShockSquad((LimitedHashSet::new(), LimitedHashSet::new())), "lat".to_string(), Entity::PLACEHOLDER));
     }
 
     for _i in 0..START_ARMORED_SQUADS_AMOUNT {
-        if platoon_id.next() {
-            if company_id.next() {
-                if batallion_id.next() {
-                    if brigade_id.next() {
-                        division_id.next();
+        if squad_id.next() {
+            if platoon_id.next() {
+                if company_id.next() {
+                    if battalion_id.next() {
+                        regiment_id.next();
                     }
                 }
             }
         }
 
-        army.0.get_mut(&player_data.team).unwrap().armored_platoons.insert((
-            division_id.get_value(),
-            brigade_id.get_value(),
-            batallion_id.get_value(),
+        army.0.get_mut(&player_data.team).unwrap().armored_squads.insert((
+            regiment_id.get_value(),
+            battalion_id.get_value(),
             company_id.get_value(),
             platoon_id.get_value(),
-        ), (ArmoredPlatoon(LimitedHashSet::new()), "tank".to_string(), Entity::PLACEHOLDER));
+            squad_id.get_value(),
+        ), (ArmoredSquad(LimitedHashSet::new()), "tank".to_string(), Entity::PLACEHOLDER));
     }
 
     for i in 1..START_ARTILLERY_UNITS_COUNT + 1 {
@@ -783,7 +785,7 @@ fn setup(
                 slide: true,
                 autostep: None,
                 apply_impulse_to_dynamic_bodies: false,
-                snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                 ..default()
             },
             animation_component: AnimationComponent(unit_assets.regular_soldier.1.clone()),
@@ -848,7 +850,7 @@ fn setup(
                 slide: true,
                 autostep: None,
                 apply_impulse_to_dynamic_bodies: false,
-                snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                 ..default()
             },
             animation_component: AnimationComponent(unit_assets.atgm_soldier.1.clone()),
@@ -913,7 +915,7 @@ fn setup(
                 slide: true,
                 autostep: None,
                 apply_impulse_to_dynamic_bodies: false,
-                snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                 ..default()
             },
             animation_component: AnimationComponent(unit_assets.assault_soldier.1.clone()),
@@ -978,7 +980,7 @@ fn setup(
                 slide: true,
                 autostep: None,
                 apply_impulse_to_dynamic_bodies: false,
-                snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                 ..default()
             },
             animation_component: AnimationComponent(unit_assets.rpg_soldier.1.clone()),
@@ -1044,7 +1046,7 @@ fn setup(
                 slide: true,
                 autostep: None,
                 apply_impulse_to_dynamic_bodies: false,
-                snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                 ..default()
             },
             animation_component: AnimationComponent(unit_assets.sniper_soldier.1.clone()),
@@ -1110,7 +1112,7 @@ fn setup(
                 slide: true,
                 autostep: None,
                 apply_impulse_to_dynamic_bodies: false,
-                snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                 ..default()
             },
             animation_component: AnimationComponent(unit_assets.sniper_soldier.1.clone()),
@@ -1252,7 +1254,7 @@ fn setup(
                     slide: true,
                     autostep: None,
                     apply_impulse_to_dynamic_bodies: false,
-                    snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                    snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                     ..default()
                 },
             }),
@@ -1329,7 +1331,7 @@ fn setup(
                     slide: true,
                     autostep: None,
                     apply_impulse_to_dynamic_bodies: false,
-                    snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                    snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                     ..default()
                 },
             }),
@@ -1409,7 +1411,7 @@ fn setup(
                     slide: true,
                     autostep: None,
                     apply_impulse_to_dynamic_bodies: false,
-                    snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                    snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                     ..default()
                 },
             }),
@@ -1479,7 +1481,7 @@ fn setup(
                     slide: true,
                     autostep: None,
                     apply_impulse_to_dynamic_bodies: false,
-                    snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                    snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                     ..default()
                 },
             }),
@@ -2277,9 +2279,9 @@ impl Plugin for SingleplayerPlugin {
             components::unit::process_combat,
             components::ui_manager::handle_button_clicks,
             components::ui_manager::land_army_settings_system,
-            components::ui_manager::open_batallion_type_dropdown_list,
-            components::ui_manager::choose_batallion_type,
-            components::ui_manager::setup_batallion,
+            components::ui_manager::open_company_type_dropdown_list,
+            components::ui_manager::choose_company_type,
+            components::ui_manager::setup_company,
             components::ui_manager::open_specializations_dropdown_list,
             components::ui_manager::choose_platoon_specialization,
             components::building::unit_production_system,
@@ -2327,9 +2329,10 @@ impl Plugin for SingleplayerPlugin {
             components::asset_manager::ground_line_highlighter,
             components::asset_manager::blueprint_placement_color_definer,
             components::asset_manager::lod_system,
-            delayed_load_naw_mesh,
+            components::asset_manager::new_lods_initializing_system,
         ).run_if(in_state(GameState::Singleplayer)));
         app.add_systems(Update, (
+            delayed_load_naw_mesh,
             components::building::settlements_capturing_system,
             components::ui_manager::tactical_symbols_dropdown_menu_system,
             components::ui_manager::tactical_symbols_level_choose_system,
@@ -2338,20 +2341,21 @@ impl Plugin for SingleplayerPlugin {
             components::unit::battalion_selection_system,
             components::unit::regiment_selection_system,
             components::unit::brigade_selection_system,
+            components::unit::artillery_unit_selection_system,
             components::unit::update_fog_of_war,
             components::unit::visual_projectiles_processing_system,
             components::asset_manager::trail_processing_system,
             components::unit::supplies_consumption_system,
             components::logistics::supplies_production_system,
             components::building::resources_amount_displays_processing_system,
-            components::ui_manager::resources_amount_updating_system,
+            components::ui_manager::overall_resources_amount_updating_system,
             components::building::construction_progress_displays_processing_system,
             components::building::buildings_deletion_activation_system,
             components::building::blueprints_deletion_system,
-            components::building::buildings_deletion_system,
-            components::building::buildings_deletion_cancelation_system,
         ).run_if(in_state(GameState::Singleplayer)));
         app.add_systems(Update, (
+            components::building::buildings_deletion_system,
+            components::building::buildings_deletion_cancelation_system,
             components::ui_manager::switchable_buildings_ui_manager,
             components::building::buildings_state_switcher,
             components::ui_manager::rebuild_settlement_ui_manager,
@@ -2369,6 +2373,8 @@ impl Plugin for SingleplayerPlugin {
             components::unit::transport_disembark_system,
             components::ui_manager::disembark_button_system,
             components::unit::remains_processing_system,
+        ).run_if(in_state(GameState::Singleplayer)));
+        app.add_systems(Update, (
             components::logistics::logistic_units_unstuck_system,
             components::ui_manager::ui_nodes_unlocker,//keep last
         ).run_if(in_state(GameState::Singleplayer)));
@@ -2432,9 +2438,9 @@ impl Plugin for GameServerPlugin {
             components::unit::process_combat,
             components::ui_manager::handle_button_clicks,
             components::ui_manager::land_army_settings_system,
-            components::ui_manager::open_batallion_type_dropdown_list,
-            components::ui_manager::choose_batallion_type,
-            components::ui_manager::setup_batallion,
+            components::ui_manager::open_company_type_dropdown_list,
+            components::ui_manager::choose_company_type,
+            components::ui_manager::setup_company,
             components::ui_manager::open_specializations_dropdown_list,
             components::ui_manager::choose_platoon_specialization,
             components::building::unit_production_system,
@@ -2482,9 +2488,10 @@ impl Plugin for GameServerPlugin {
             components::asset_manager::ground_line_highlighter,
             components::asset_manager::blueprint_placement_color_definer,
             components::asset_manager::lod_system,
-            delayed_load_naw_mesh,
+            components::asset_manager::new_lods_initializing_system,
         ).run_if(in_state(GameState::MultiplayerAsHost)));
         app.add_systems(Update, (
+            delayed_load_naw_mesh,
             components::building::settlements_capturing_system,
             components::ui_manager::tactical_symbols_dropdown_menu_system,
             components::ui_manager::tactical_symbols_level_choose_system,
@@ -2499,14 +2506,14 @@ impl Plugin for GameServerPlugin {
             components::unit::supplies_consumption_system,
             components::logistics::supplies_production_system,
             components::building::resources_amount_displays_processing_system,
-            components::ui_manager::resources_amount_updating_system,
+            components::ui_manager::overall_resources_amount_updating_system,
             components::building::construction_progress_displays_processing_system,
             components::building::buildings_deletion_activation_system,
             components::building::blueprints_deletion_system,
             components::building::buildings_deletion_system,
-            components::building::buildings_deletion_cancelation_system,
         ).run_if(in_state(GameState::MultiplayerAsHost)));
         app.add_systems(Update, (
+            components::building::buildings_deletion_cancelation_system,
             components::ui_manager::switchable_buildings_ui_manager,
             components::building::buildings_state_switcher,
             components::ui_manager::rebuild_settlement_ui_manager,
@@ -2514,6 +2521,7 @@ impl Plugin for GameServerPlugin {
             components::building::apartments_rebuilding_system,
             components::building::capturing_displays_processing_system,
             components::ui_manager::hint_management_system,
+            components::asset_manager::testing_system,
             components::asset_manager::apply_team_material_to_scenes,
             components::asset_manager::running_animation_manager,
             components::asset_manager::explosion_effects_handler,
@@ -2524,6 +2532,9 @@ impl Plugin for GameServerPlugin {
             components::ui_manager::disembark_button_system,
             components::unit::remains_processing_system,
             components::logistics::logistic_units_unstuck_system,
+        ).run_if(in_state(GameState::MultiplayerAsHost)));
+        app.add_systems(Update, (
+            components::unit::artillery_unit_selection_system,
             components::ui_manager::ui_nodes_unlocker,//keep last
         ).run_if(in_state(GameState::MultiplayerAsHost)));
     }
@@ -2554,11 +2565,12 @@ impl Plugin for GameClientPlugin {
             components::unit::process_agents_movement,
             components::unit::check_tiles,
             components::unit::find_targets,
+            components::unit::process_combat,
             components::ui_manager::handle_button_clicks,
             components::ui_manager::land_army_settings_system,
-            components::ui_manager::open_batallion_type_dropdown_list,
-            components::ui_manager::choose_batallion_type,
-            components::ui_manager::setup_batallion,
+            components::ui_manager::open_company_type_dropdown_list,
+            components::ui_manager::choose_company_type,
+            components::ui_manager::setup_company,
             components::ui_manager::open_specializations_dropdown_list,
             components::ui_manager::choose_platoon_specialization,
             components::ui_manager::toggle_production,
@@ -2567,6 +2579,8 @@ impl Plugin for GameClientPlugin {
             components::unit::platoon_leaders_monitoring_system,
             components::ui_manager::platoon_nodes_positioning_system,
             components::unit::squad_selection_system,
+            components::unit::cover_disturb_system,
+            components::unit::cover_assignation_system,
             components::ui_manager::toggle_buildings_list_system,
             components::ui_manager::building_placement_activation_system,
             components::ui_manager::building_placement_handling_system,
@@ -2579,12 +2593,14 @@ impl Plugin for GameClientPlugin {
             components::ui_manager::toggle_artillety_management_node,
             components::unit::toggle_artillery_designation,
             components::unit::artillery_order_delayed,
+            components::unit::explosion_processing_system,
             components::ui_manager::building_stage_ui_activation,
             components::ui_manager::army_setup_stage_ui_activation,
             components::asset_manager::initialize_level_gltf_objects,
             components::asset_manager::ground_line_highlighter,
             components::asset_manager::blueprint_placement_color_definer,
             components::asset_manager::lod_system,
+            components::asset_manager::new_lods_initializing_system,
             delayed_load_naw_mesh,
         ).run_if(in_state(GameState::MultiplayerAsClient)));
         app.add_systems(Update, (
@@ -2598,13 +2614,32 @@ impl Plugin for GameClientPlugin {
             components::unit::update_fog_of_war,
             components::unit::visual_projectiles_processing_system,
             components::asset_manager::trail_processing_system,
+            components::unit::supplies_consumption_system,
+            components::building::resources_amount_displays_processing_system,
+            components::building::construction_progress_displays_processing_system,
+            components::building::buildings_deletion_activation_system,
+            components::building::blueprints_deletion_system,
+            components::building::buildings_deletion_system,
+            components::building::buildings_deletion_cancelation_system,
+            components::ui_manager::switchable_buildings_ui_manager,
+            components::building::buildings_state_switcher,
+            components::ui_manager::rebuild_settlement_ui_manager,
         ).run_if(in_state(GameState::MultiplayerAsClient)));
         app.add_systems(Update, (
+            components::building::rebuild_settlement_apartments_system,
+            components::building::capturing_displays_processing_system,
+            components::unit::transport_assignation_system,
+            components::unit::transport_disturb_system,
+            components::unit::transport_disembark_system,
+            components::ui_manager::disembark_button_system,
+            components::unit::remains_processing_system,
             components::ui_manager::hint_management_system,
+            components::asset_manager::testing_system,
             components::asset_manager::apply_team_material_to_scenes,
             components::asset_manager::running_animation_manager,
             components::asset_manager::explosion_effects_handler,
             components::unit::remains_processing_system,
+            components::unit::artillery_unit_selection_system,
             components::ui_manager::ui_nodes_unlocker,//keep last
         ).run_if(in_state(GameState::MultiplayerAsClient)));
     }

@@ -6,17 +6,17 @@ use bevy_quinnet::{client::QuinnetClient, server::QuinnetServer};
 use bevy_rapier3d::{plugin::RapierContext, prelude::{Collider, QueryFilter}, rapier::crossbeam::epoch::CompareAndSetOrdering};
 use oxidized_navigation_serializable::NavMeshAffector;
 
-use crate::{GameStage, GameStages, GameState, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, PlayerData, SUPPLIES_COLOR, components::{asset_manager::{CircleData, CircleHolder, ForbiddenBlueprint, InstancedMaterials, OtherAssets, TeamMaterialExtension, Terrain}, building::{BuildingStageCache, BuildingsDeletionStates, HumanResourceStorageComponent, MaterialsProductionComponent, MaterialsStorageComponent, SettlementComponent, SwitchableBuilding}, camera::SelectionBox, unit::{ARMY_SIZE, BATTALION_SIZE, COMPANY_SIZE, DisabledUnit, InfantryTransport, IsUnitSelectionAllowed, PLATOON_SIZE, REGIMENT_SIZE, SuppliesConsumerComponent}}};
+use crate::{GameStage, GameStages, GameState, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, PlayerData, SUPPLIES_COLOR, components::{asset_manager::{CircleData, CircleHolder, ForbiddenBlueprint, InstancedMaterials, OtherAssets, TeamMaterialExtension, Terrain}, building::{BuildingStageCache, BuildingsDeletionStates, HumanResourceStorageComponent, MaterialsProductionComponent, MaterialsStorageComponent, SettlementComponent, SwitchableBuilding}, camera::SelectionBox, network::EntityMaps, unit::{ARMY_SIZE, BATTALION_SIZE, COMPANY_SIZE, DisabledUnit, InfantryTransport, IsUnitSelectionAllowed, PLATOON_SIZE, REGIMENT_SIZE, START_ARTILLERY_UNITS_COUNT, SuppliesConsumerComponent}}};
 
-use super::{asset_manager::{generate_circle_segments, LineData, LineHolder}, building::{AllSettlementsPlaced, BuildingBlueprint, BuildingsBundles, BuildingsList, InfantryBarracksBundle, ProductionButtonPressed, ProductionQueue, ProductionState, SoldierBundle, UnactivatedBlueprints, UnitBundles, VehicleFactoryBundle, ALLOWED_DISTANCE_FROM_BORDERS, CITIES_COUNT}, camera::{CameraComponent, SelectionBounds}, logistics::ResourceZone, network::{ClientList, ClientMessage, InsertedConnectionData, NetworkStatus, NetworkStatuses, PlayerList, ServerMessage}, unit::{self, Armies, ArmoredPlatoon, ArtilleryUnit, CompanyTypes, CombatComponent, IsArtilleryDesignationActive, LimitedHashMap, LimitedHashSet, LimitedNumber, SquadLeader, RegularPlatoon, SelectedUnit, SerializableArmoredPlatoon, SerializableArmyObject, SerializableRegularPlatoon, SerializableShockPlatoon, ShockPlatoon, UnitTypes, UnitsTileMap, MAX_PLATOON_COUNT, START_ARMORED_SQUADS_AMOUNT, START_REGULAR_SQUADS_AMOUNT, START_SHOCK_SQUADS_AMOUNT, TILE_SIZE}};
+use super::{asset_manager::{generate_circle_segments, LineData, LineHolder}, building::{AllSettlementsPlaced, BuildingBlueprint, BuildingsBundles, BuildingsList, InfantryBarracksBundle, ProductionButtonPressed, ProductionQueue, ProductionState, SoldierBundle, UnactivatedBlueprints, UnitBundles, VehicleFactoryBundle, ALLOWED_DISTANCE_FROM_BORDERS, CITIES_COUNT}, camera::{CameraComponent, SelectionBounds}, logistics::ResourceZone, network::{ClientList, ClientMessage, InsertedConnectionData, NetworkStatus, NetworkStatuses, PlayerList, ServerMessage}, unit::{self, Armies, ArmoredSquad, ArtilleryUnit, CompanyTypes, CombatComponent, IsArtilleryDesignationActive, LimitedHashMap, LimitedHashSet, LimitedNumber, SquadLeader, RegularSquad, SelectedUnit, SerializableArmoredSquad, SerializableArmyObject, SerializableRegularSquad, SerializableShockSquad, ShockSquad, UnitTypes, UnitsTileMap, MAX_SQUAD_COUNT, START_ARMORED_SQUADS_AMOUNT, START_REGULAR_SQUADS_AMOUNT, START_SHOCK_SQUADS_AMOUNT, TILE_SIZE}};
 
 pub enum Actions {
     OpenArmySettings,
-    OpenBatallionTypes((i32, (i32, i32, i32))),
-    ChooseBatallionType((CompanyTypes, (i32, i32, i32), i32)),
-    SetupBatallion((i32, (i32, i32, i32))),
-    OpenPlatoonSpecializations((i32, (i32, i32, i32, i32, i32), CompanyTypes)),
-    ChoosePlatoonSpecialization(((String, String), (i32, i32, i32, i32, i32), i32, CompanyTypes)),
+    OpenCompanyTypes((i32, (i32, i32, i32))),
+    ChooseCompanyType((CompanyTypes, (i32, i32, i32), i32)),
+    SetupCompany((i32, (i32, i32, i32))),
+    OpenSquadSpecializations((i32, (i32, i32, i32, i32, i32), CompanyTypes)),
+    ChooseSquadSpecialization(((String, String), (i32, i32, i32, i32, i32), i32, CompanyTypes)),
     SquadSelection((i32, (CompanyTypes, (i32, i32, i32 ,i32 ,i32)))),
     PlatoonSelection((i32, (CompanyTypes, Vec<(i32, i32, i32 ,i32 ,i32)>))),
     CompanySelection((i32, (CompanyTypes, Vec<(i32, i32, i32 ,i32 ,i32)>))),
@@ -37,25 +37,27 @@ pub enum Actions {
     SwitchBuildingState(Entity),
     RebuildApartments(Entity),
     DisembarkInfantry,
+    ArtilleryUnitSelection((i32, i32)),
+    SwipeRegiment(i32),
 }
 
 #[derive(Event)]
 pub struct LandArmyButtonClickEvent;
 
 #[derive(Event)]
-pub struct OpenBatallionTypesEvent((i32, (i32, i32, i32)));
+pub struct OpenCompanyTypesEvent((i32, (i32, i32, i32)));
 
 #[derive(Event)]
-pub struct ChooseBatallionTypeEvent((CompanyTypes, (i32, i32, i32), i32));
+pub struct ChooseCompanyTypeEvent((CompanyTypes, (i32, i32, i32), i32));
 
 #[derive(Event)]
-pub struct SetupBatallionEvent((i32, (i32, i32, i32)));
+pub struct SetupCompanyEvent((i32, (i32, i32, i32)));
 
 #[derive(Event)]
-pub struct OpenPlatoonSpecializationsEvent((i32, (i32, i32, i32, i32, i32), CompanyTypes));
+pub struct OpenSquadSpecializationsEvent((i32, (i32, i32, i32, i32, i32), CompanyTypes));
 
 #[derive(Event)]
-pub struct ChoosePlatoonSpecializationEvent(((String, String), (i32, i32, i32, i32, i32), i32, CompanyTypes));
+pub struct ChooseSquadSpecializationEvent(((String, String), (i32, i32, i32, i32, i32), i32, CompanyTypes));
 
 #[derive(Event)]
 pub struct ToggleProductionEvent;
@@ -127,6 +129,9 @@ pub struct RebuildApartments(pub Entity);
 pub struct TransportDisembarkEvent;
 
 #[derive(Event)]
+pub struct ArtilleryUnitSelectedEvent(pub (i32, i32));
+
+#[derive(Event)]
 pub struct BuildingButtonHovered(pub String);
 
 #[derive(Resource)]
@@ -135,17 +140,18 @@ pub struct ArmySettingsNodes {
     pub land_army_settings_node_height: u32,
     pub land_army_settings_node_width: u32,
     pub is_land_army_settings_visible: bool,
-    pub batallion_buttons: Vec<(Entity,LimitedNumber<0, 2>)>,
+    pub company_buttons: Vec<Entity>,
     pub last_battalion_button_index: i32,
     pub batallion_type_dropdown_lists: Vec<(Entity, CompanyTypes, LimitedNumber<0, 2>)>,
     pub last_battalion_type_dropdown_list_index: i32,
     pub platoon_specialization_dropdown_lists: Vec<(Entity, String, LimitedNumber<0, 2>)>,
     pub last_platoon_specialization_dropdown_list_index: i32,
     pub platoon_specialization_cache: Vec<((String, String), CompanyTypes)>,
-    pub companies_row: Entity,
     pub platoons_row: Entity,
-    pub units_row: Entity,
+    pub squads_row: Entity,
     pub toggle_production_button: (Entity, LimitedNumber<0, 2>),
+    pub current_regiment: LimitedNumber<1, 3>,
+    pub squad_specialization_dropdown_lists: Vec<Entity>,
 }
 
 #[derive(Component)]
@@ -165,6 +171,9 @@ pub struct RegimentSelector(pub (i32, (Vec<(CompanyTypes, (i32, i32, i32, i32, i
 
 #[derive(Component)]
 pub struct BrigadeSelector(pub (i32, (Vec<(CompanyTypes, (i32, i32, i32, i32, i32))>, bool)));
+
+#[derive(Component)]
+pub struct ArtilleryUnitSelector(pub (i32, i32, bool));
 
 #[derive(Component)]
 pub struct ButtonAction {
@@ -234,6 +243,7 @@ pub fn setup_ingame_ui(
     army: Res<Armies>,
     other_assets: Res<OtherAssets>,
     asset_server: Res<AssetServer>,
+    player_data: Res<PlayerData>,
 ){
     let window = windows_q.single();
     let window_width = window.physical_width();
@@ -540,7 +550,6 @@ pub fn setup_ingame_ui(
                     }],
                     justify: JustifyText::Center,
                     ..default()
-
                 },
                 style: Style {
                     justify_content: JustifyContent::Center,
@@ -612,7 +621,7 @@ pub fn setup_ingame_ui(
     //     });
     // });
 
-    let land_army_settings_node_width = window_width - (ui_button_nodes.button_size * 2.) as u32;
+    let land_army_settings_node_width = window_width - (ui_button_nodes.button_size) as u32;
     let land_army_settings_node_height = window_height - left_bottom_node_size - (ui_button_nodes.button_size) as u32;
 
     army_settings_nodes.land_army_settings_node_width = land_army_settings_node_width;
@@ -624,8 +633,7 @@ pub fn setup_ingame_ui(
             width: Val::Px(land_army_settings_node_width as f32),
             height: Val::Px(land_army_settings_node_height as f32),
             top: Val::Px(ui_button_nodes.button_size * 0.5),
-            left: Val::Px(ui_button_nodes.button_size * 0.5),
-            flex_direction: FlexDirection::Column,
+            left: Val::Px(ui_button_nodes.button_size / 2.),
             ..default()
         },
         background_color: Color::srgba(0.1, 0.1, 0.1, 0.25).into(),
@@ -634,441 +642,555 @@ pub fn setup_ingame_ui(
 
     let land_army_settings_node_entity = commands.spawn(land_army_settings_node).insert(ParentNode).id();
 
-    commands.entity(land_army_settings_node_entity).insert(Visibility::Hidden);
+    //commands.entity(land_army_settings_node_entity).insert(Visibility::Hidden);
 
     army_settings_nodes.land_army_settings_node = land_army_settings_node_entity;
 
-    let mut divisions_row = Entity::PLACEHOLDER;
-    let mut brigades_row = Entity::PLACEHOLDER;
-    let mut batallions_row = Entity::PLACEHOLDER;
-    let mut companies_row = Entity::PLACEHOLDER;
-    let mut platoons_row = Entity::PLACEHOLDER;
-    let mut units_row = Entity::PLACEHOLDER;
+    let mut left_army_node = Entity::PLACEHOLDER;
+    let mut middle_army_node = Entity::PLACEHOLDER;
+    let mut right_army_node = Entity::PLACEHOLDER;
+    let mut toggle_button_node = Entity::PLACEHOLDER;
 
-    commands.entity(land_army_settings_node_entity).with_children(|parent| {
-        divisions_row = parent.spawn(NodeBundle{
-            style: Style {
-                position_type: PositionType::Relative,
-                width: Val::Px(land_army_settings_node_width as f32),
-                height: Val::Px(land_army_settings_node_height as f32 / 6.5),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            background_color: Color::srgba(0.1, 0.1, 0.1, 0.).into(),
-            ..default()
-        }).id();
-    });
-
-    commands.entity(land_army_settings_node_entity).with_children(|parent| {
-        brigades_row = parent.spawn(NodeBundle{
-            style: Style {
-                position_type: PositionType::Relative,
-                width: Val::Px(land_army_settings_node_width as f32),
-                height: Val::Px(land_army_settings_node_height as f32 / 6.5),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            background_color: Color::srgba(0.1, 0.1, 0.1, 0.).into(),
-            ..default()
-        }).id();
-    });
-
-    commands.entity(land_army_settings_node_entity).with_children(|parent| {
-        batallions_row = parent.spawn(NodeBundle{
-            style: Style {
-                position_type: PositionType::Relative,
-                width: Val::Px(land_army_settings_node_width as f32),
-                height: Val::Px((land_army_settings_node_height / 5) as f32),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            background_color: Color::srgba(0.1, 0.1, 0.1, 0.).into(),
-            ..default()
-        }).id();
-    });
-
-    commands.entity(land_army_settings_node_entity).with_children(|parent| {
-        companies_row = parent.spawn(NodeBundle{
-            style: Style {
-                position_type: PositionType::Relative,
-                width: Val::Px(land_army_settings_node_width as f32),
-                height: Val::Px(land_army_settings_node_height as f32 / 6.5),
-                flex_direction: FlexDirection::Row,
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            background_color: Color::srgba(0.1, 0.1, 0.1, 0.).into(),
-            ..default()
-        }).id();
-    });
-
-    commands.entity(land_army_settings_node_entity).with_children(|parent| {
-        platoons_row = parent.spawn(NodeBundle{
-            style: Style {
-                position_type: PositionType::Relative,
-                width: Val::Px(land_army_settings_node_width as f32),
-                height: Val::Px((land_army_settings_node_height / 5) as f32),
-                flex_direction: FlexDirection::Row,
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            background_color: Color::srgba(0.1, 0.1, 0.1, 0.).into(),
-            ..default()
-        }).id();
-    });
-
-    commands.entity(land_army_settings_node_entity).with_children(|parent| {
-        units_row = parent.spawn(NodeBundle{
-            style: Style {
-                position_type: PositionType::Relative,
-                width: Val::Px(land_army_settings_node_width as f32),
-                height: Val::Px(land_army_settings_node_height as f32 / 6.5),
-                flex_direction: FlexDirection::Row,
-                justify_content: JustifyContent::End,
-                align_items: AlignItems::End,
-                ..default()
-            },
-            background_color: Color::srgba(0.1, 0.1, 0.1, 0.).into(),
-            ..default()
-        }).id();
-    });
-
-    army_settings_nodes.companies_row = companies_row;
-    army_settings_nodes.platoons_row = platoons_row;
-    army_settings_nodes.units_row = units_row;
-
-    let mut division_placeholders: Vec<Entity> = Vec::new();
-    for _i in 0..2 {
-        commands.entity(divisions_row).with_children(|parent| {
-            division_placeholders.push(
-                parent.spawn(NodeBundle{
-                    style: Style {
-                        position_type: PositionType::Relative,
-                        width: Val::Px((land_army_settings_node_width / 2) as f32 - ui_button_nodes.margin * 2.),
-                        height: Val::Px(land_army_settings_node_height as f32 / 6.5 - ui_button_nodes.margin * 2.),
-                        margin: UiRect {
-                            left: Val::Px(ui_button_nodes.margin),
-                            right: Val::Px(ui_button_nodes.margin),
-                            top: Val::Px(ui_button_nodes.margin),
-                            bottom: Val::Px(ui_button_nodes.margin),
-                        },
-                        flex_direction: FlexDirection::Column,
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
-                    ..default()
-                }).id()
-            );
-        });
-    }
-
-    let mut brigade_placeholders: Vec<Entity> = Vec::new();
-    for _i in 0..6 {
-        commands.entity(brigades_row).with_children(|parent| {
-            brigade_placeholders.push(
-                parent.spawn(NodeBundle{
-                    style: Style {
-                        position_type: PositionType::Relative,
-                        width: Val::Px((land_army_settings_node_width / 6) as f32 - ui_button_nodes.margin * 2.),
-                        height: Val::Px(land_army_settings_node_height as f32 / 6.5 - ui_button_nodes.margin * 2.),
-                        margin: UiRect {
-                            left: Val::Px(ui_button_nodes.margin),
-                            right: Val::Px(ui_button_nodes.margin),
-                            top: Val::Px(ui_button_nodes.margin),
-                            bottom: Val::Px(ui_button_nodes.margin),
-                        },
-                        flex_direction: FlexDirection::Column,
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
-                    ..default()
-                }).id()
-            );
-        });
-    }
-
-    let mut batallion_placeholders: Vec<Entity> = Vec::new();
-    for _i in 0..18 {
-        commands.entity(batallions_row).with_children(|parent| {
-            batallion_placeholders.push(
-                parent.spawn(NodeBundle{
-                    style: Style {
-                        position_type: PositionType::Relative,
-                        width: Val::Px((land_army_settings_node_width / 18) as f32 - ui_button_nodes.margin * 2.),
-                        height: Val::Px((land_army_settings_node_height / 5) as f32 - ui_button_nodes.margin * 2.),
-                        margin: UiRect {
-                            left: Val::Px(ui_button_nodes.margin),
-                            right: Val::Px(ui_button_nodes.margin),
-                            top: Val::Px(ui_button_nodes.margin),
-                            bottom: Val::Px(ui_button_nodes.margin),
-                        },
-                        flex_direction: FlexDirection::Column,
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
-                    ..default()
-                }).id()
-            );
-        });
-    }
-
-    for placeholder in division_placeholders {
-        commands.entity(placeholder).with_children(|parent| {
-            parent.spawn(ButtonBundle{
+    commands.entity(land_army_settings_node_entity).with_children(|parent|{
+        left_army_node = parent.spawn(
+            NodeBundle {
                 style: Style {
                     position_type: PositionType::Relative,
-                    width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                    height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                    margin: UiRect {
-                        left: Val::Px(ui_button_nodes.margin),
-                        right: Val::Px(ui_button_nodes.margin),
-                        top: Val::Px(ui_button_nodes.margin),
-                        bottom: Val::Px(ui_button_nodes.margin),
-                    },
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
+                    width: Val::Px(land_army_settings_node_width as f32 * 0.1),
+                    height: Val::Px(land_army_settings_node_height as f32),
+                    top: Val::Px(0.),
+                    left: Val::Px(0.),
                     ..default()
                 },
-                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                background_color: Color::srgba(1.1, 0.1, 0.1, 0.).into(),
                 ..default()
-            })
-            .with_children(|button_parent| {
-                button_parent.spawn(TextBundle {
-                    text: Text{
-                        sections: vec![TextSection {
-                            value: "Division".to_string(),
-                            style: TextStyle {
-                                font_size: 20.,
-                                ..default()
-                            },
-                            ..default()
-                        }],
-                        justify: JustifyText::Center,
-                        ..default() 
-                    },
-                    ..default()
-                });
-            });
-        });
-    }
-
-    for placeholder in brigade_placeholders {
-        commands.entity(placeholder).with_children(|parent| {
-            parent.spawn(ButtonBundle{
-                style: Style {
-                    position_type: PositionType::Relative,
-                    width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                    height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                    margin: UiRect {
-                        left: Val::Px(ui_button_nodes.margin),
-                        right: Val::Px(ui_button_nodes.margin),
-                        top: Val::Px(ui_button_nodes.margin),
-                        bottom: Val::Px(ui_button_nodes.margin),
-                    },
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    ..default()
-                },
-                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
-                ..default()
-            })
-            .with_children(|button_parent| {
-                button_parent.spawn(TextBundle {
-                    text: Text{
-                        sections: vec![TextSection {
-                            value: "Brigade".to_string(),
-                            style: TextStyle {
-                                font_size: 20.,
-                                ..default()
-                            },
-                            ..default()
-                        }],
-                        justify: JustifyText::Center,
-                        ..default() 
-                    },
-                    ..default()
-                });
-            });
-        });
-    }
-
-    let mut division_number: LimitedNumber<1, 3> = LimitedNumber::new();
-    let mut brigade_number: LimitedNumber<1, 3> = LimitedNumber::new();
-    let mut batallion_number: LimitedNumber<1, 3> = LimitedNumber::new();
-    batallion_number.set_value(0);
-    let mut counter = -1;
-    
-    let regular_count = START_REGULAR_SQUADS_AMOUNT / 9;
-    let shock_count = START_SHOCK_SQUADS_AMOUNT / 9;
-    let armored_count = START_ARMORED_SQUADS_AMOUNT / 9;
-    let mut battalion_type = CompanyTypes::None;
-    let mut battalion_type_name = "".to_string();
-
-    for placeholder in batallion_placeholders {
-        if batallion_number.next() {
-            if brigade_number.next() {
-                division_number.next();
             }
-        }
+        ).id();
 
-        counter += 1;
-        
-        commands.entity(placeholder).with_children(|parent| {
-            army_settings_nodes.batallion_buttons.push((
-                parent.spawn(ButtonBundle{
-                    style: Style {
-                        position_type: PositionType::Relative,
-                        width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                        height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                        margin: UiRect {
-                            left: Val::Px(ui_button_nodes.margin),
-                            right: Val::Px(ui_button_nodes.margin),
-                            top: Val::Px(ui_button_nodes.margin),
-                            bottom: Val::Px(ui_button_nodes.margin),
-                        },
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
-                    ..default()
-                }).insert(ButtonAction{
-                    action: Actions::SetupBatallion((counter, (division_number.get_value(), brigade_number.get_value(), batallion_number.get_value())))}
-                )
-                .with_children(|button_parent| {
-                    button_parent.spawn(TextBundle {
-                        text: Text{
-                            sections: vec![TextSection {
-                                value: "Batallion".to_string(),
-                                style: TextStyle {
-                                    font_size: 10.,
-                                    ..default()
-                                },
-                                ..default()
-                            }],
-                            justify: JustifyText::Center,
-                            ..default()
-    
-                        },
-                        ..default()
-                    });
-                }).id(),
-                LimitedNumber::new()
-            ));
-        });
-
-        if counter < regular_count {
-            battalion_type = CompanyTypes::Regular;
-            battalion_type_name = "Regular".to_string();
-        } else if counter < regular_count + shock_count {
-            battalion_type = CompanyTypes::Shock;
-            battalion_type_name = "Shock".to_string();
-        } else if counter < regular_count + shock_count + armored_count {
-            battalion_type = CompanyTypes::Armored;
-            battalion_type_name = "Armored".to_string();
-        }
-
-        commands.entity(placeholder).with_children(|parent| {
-            parent.spawn(ButtonBundle{
+        middle_army_node = parent.spawn(
+            NodeBundle {
                 style: Style {
                     position_type: PositionType::Relative,
-                    width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                    height: Val::Px((ui_button_nodes.button_size - ui_button_nodes.margin * 2.) / 4.),
-                    margin: UiRect {
-                        left: Val::Px(ui_button_nodes.margin),
-                        right: Val::Px(ui_button_nodes.margin),
-                        top: Val::Px(ui_button_nodes.margin),
-                        bottom: Val::Px(ui_button_nodes.margin),
-                    },
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
+                    width: Val::Px(land_army_settings_node_width as f32 * 0.8),
+                    height: Val::Px(land_army_settings_node_height as f32),
+                    top: Val::Px(0.),
+                    left: Val::Px(0.),
+                    flex_direction: FlexDirection::Row,
                     ..default()
                 },
-                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                background_color: Color::srgba(0.1, 1.1, 0.1, 0.).into(),
                 ..default()
-            }).insert(ButtonAction{
-                action: Actions::OpenBatallionTypes((counter, (division_number.get_value(), brigade_number.get_value(), batallion_number.get_value())))}
-            )
-            .with_children(|button_parent| {
-                army_settings_nodes.batallion_type_dropdown_lists.push((
-                    button_parent.spawn(TextBundle {
-                        text: Text{
-                            sections: vec![TextSection {
-                                value: battalion_type_name.clone(),
-                                style: TextStyle {
-                                    font_size: 10.,
-                                    ..default()
-                                },
-                                ..default()
-                            }],
-                            justify: JustifyText::Center,
-                            ..default()
-    
-                        },
-                        style: Style {
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        ..default()
-                    }).id(),
-                    battalion_type,
-                    LimitedNumber::new()
-                ));
-            });
-        });
-    }
+            }
+        ).id();
 
-    for _i in 0..START_REGULAR_SQUADS_AMOUNT {
-        army_settings_nodes.platoon_specialization_cache.push((("atgm".to_string(), "ATGM".to_string()), CompanyTypes::Regular));
-    }
+        right_army_node = parent.spawn(
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Relative,
+                    width: Val::Px(land_army_settings_node_width as f32 * 0.1),
+                    height: Val::Px(land_army_settings_node_height as f32),
+                    top: Val::Px(0.),
+                    left: Val::Px(0.),
+                    ..default()
+                },
+                background_color: Color::srgba(0.1, 0.1, 1.1, 0.).into(),
+                ..default()
+            }
+        ).id();
+    });
 
-    for _i in START_REGULAR_SQUADS_AMOUNT..START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT {
-        army_settings_nodes.platoon_specialization_cache.push((("lat".to_string(), "LAT".to_string()), CompanyTypes::Shock));
-    }
+    let swipe_button_height = ui_button_nodes.button_size * 3.;
 
-    for _i in START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT..START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT + START_ARMORED_SQUADS_AMOUNT {
-        army_settings_nodes.platoon_specialization_cache.push((("tank".to_string(), "Tank".to_string()), CompanyTypes::Armored));
-    }
-    
-    commands.entity(units_row).with_children(|parent| {
-        parent.spawn(ButtonBundle{
+    let mut left_swipe_button = Entity::PLACEHOLDER;
+    let mut right_swipe_button = Entity::PLACEHOLDER;
+
+    commands.entity(left_army_node).with_children(|parent| {
+        left_swipe_button = parent.spawn(ButtonBundle{
             style: Style {
-                position_type: PositionType::Relative,
-                width: Val::Px(ui_button_nodes.button_size * 3. - ui_button_nodes.margin * 2.),
-                height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+                position_type: PositionType::Absolute,
+                width: Val::Px(ui_button_nodes.button_size),
+                height: Val::Px(swipe_button_height),
                 margin: UiRect {
                     left: Val::Px(ui_button_nodes.margin),
                     right: Val::Px(ui_button_nodes.margin),
                     top: Val::Px(ui_button_nodes.margin),
                     bottom: Val::Px(ui_button_nodes.margin),
                 },
+                top: Val::Px(land_army_settings_node_height as f32 / 2. - swipe_button_height / 2.),
+                left: Val::Px(land_army_settings_node_width as f32 * 0.1 / 2. - ui_button_nodes.button_size),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
             },
             background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
             ..default()
-        }).insert(ButtonAction{action: Actions::ToggleProduction})
+        }).insert(ButtonAction{
+            action: Actions::SwipeRegiment(0),
+        })
         .with_children(|button_parent| {
-            army_settings_nodes.toggle_production_button = (
+            button_parent.spawn(TextBundle {
+                text: Text{
+                    sections: vec![TextSection {
+                        value: "<".to_string(),
+                        style: TextStyle {
+                            font_size: 100.,
+                            ..default()
+                        },
+                        ..default()
+                    }],
+                    justify: JustifyText::Center,
+                    ..default()
+                },
+                ..default()
+            });
+        }).id();
+    });
+
+    commands.entity(right_army_node).with_children(|parent| {
+        right_swipe_button = parent.spawn(ButtonBundle{
+            style: Style {
+                position_type: PositionType::Absolute,
+                width: Val::Px(ui_button_nodes.button_size),
+                height: Val::Px(swipe_button_height),
+                margin: UiRect {
+                    left: Val::Px(ui_button_nodes.margin),
+                    right: Val::Px(ui_button_nodes.margin),
+                    top: Val::Px(ui_button_nodes.margin),
+                    bottom: Val::Px(ui_button_nodes.margin),
+                },
+                top: Val::Px(land_army_settings_node_height as f32 / 2. - swipe_button_height / 2.),
+                right: Val::Px(land_army_settings_node_width as f32 * 0.1 / 2. - ui_button_nodes.button_size),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+            ..default()
+        }).insert(ButtonAction{
+            action: Actions::SwipeRegiment(1),
+        })
+        .with_children(|button_parent| {
+            button_parent.spawn(TextBundle {
+                text: Text{
+                    sections: vec![TextSection {
+                        value: ">".to_string(),
+                        style: TextStyle {
+                            font_size: 100.,
+                            ..default()
+                        },
+                        ..default()
+                    }],
+                    justify: JustifyText::Center,
+                    ..default()
+                },
+                ..default()
+            });
+        }).id();
+    });
+
+    let mut regiments_row = Entity::PLACEHOLDER;
+    let mut battalions_row = Entity::PLACEHOLDER;
+    let mut companies_row = Entity::PLACEHOLDER;
+    let mut platoons_row = Entity::PLACEHOLDER;
+    let mut squads_row = Entity::PLACEHOLDER;
+
+    commands.entity(middle_army_node).with_children(|parent| {
+        toggle_button_node = parent.spawn(
+            ButtonBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Px(land_army_settings_node_width as f32 * 0.2),
+                    height: Val::Px(ui_button_nodes.button_size),
+                    top: Val::Px(land_army_settings_node_height as f32),
+                    left: Val::Px(land_army_settings_node_width as f32 * 0.8 /2. - land_army_settings_node_width as f32 * 0.2 / 2.),
+                    align_content: AlignContent::Center,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    justify_items: JustifyItems::Center,
+                    ..default()
+                },
+                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                ..default()
+            }
+        )
+        .insert(
+            ButtonAction{action: Actions::ToggleProduction}
+        )
+        .with_children(|bar_parent| {
+            bar_parent.spawn(TextBundle {
+                text: Text{
+                    sections: vec![TextSection {
+                        value: "Ready to start".to_string(),
+                        style: TextStyle {
+                            font_size: 30.,
+                            ..default()
+                        },
+                        ..default()
+                    }],
+                    justify: JustifyText::Center,
+                    ..default()
+                },
+                ..default()
+            });
+        })
+        .id();
+
+        regiments_row = parent.spawn(
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Px(land_army_settings_node_width as f32 * 0.8),
+                    height: Val::Px(land_army_settings_node_height as f32 / 6.),
+                    top: Val::Px(0.),
+                    left: Val::Px(0.),
+                    align_content: AlignContent::Center,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    justify_items: JustifyItems::Center,
+                    ..default()
+                },
+                background_color: Color::srgba(0.1, 0.1, 0.5, 0.).into(),
+                ..default()
+            }
+        ).id();
+
+        battalions_row = parent.spawn(
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Px(land_army_settings_node_width as f32 * 0.8),
+                    height: Val::Px(land_army_settings_node_height as f32 / 6.),
+                    top: Val::Px(land_army_settings_node_height as f32 / 6.),
+                    left: Val::Px(0.),
+                    align_content: AlignContent::Center,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    justify_items: JustifyItems::Center,
+                    ..default()
+                },
+                background_color: Color::srgba(0.5, 0.1, 0.1, 0.).into(),
+                ..default()
+            }
+        ).id();
+
+        companies_row = parent.spawn(
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Px(land_army_settings_node_width as f32 * 0.8),
+                    height: Val::Px(land_army_settings_node_height as f32 / 6.),
+                    top: Val::Px(land_army_settings_node_height as f32 / 6. * 2.),
+                    left: Val::Px(0.),
+                    align_content: AlignContent::Center,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    justify_items: JustifyItems::Center,
+                    ..default()
+                },
+                background_color: Color::srgba(0.1, 0.1, 0.5, 0.).into(),
+                ..default()
+            }
+        ).id();
+
+        platoons_row = parent.spawn(
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Px(land_army_settings_node_width as f32 * 0.8),
+                    height: Val::Px(land_army_settings_node_height as f32 / 6.),
+                    top: Val::Px(land_army_settings_node_height as f32 / 6. * 3.),
+                    left: Val::Px(0.),
+                    align_content: AlignContent::Center,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    justify_items: JustifyItems::Center,
+                    ..default()
+                },
+                background_color: Color::srgba(0.5, 0.1, 0.1, 0.).into(),
+                ..default()
+            }
+        ).id();
+
+        squads_row = parent.spawn(
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Px(land_army_settings_node_width as f32 * 0.8),
+                    height: Val::Px(land_army_settings_node_height as f32 / 6.),
+                    top: Val::Px(land_army_settings_node_height as f32 / 6. * 4.),
+                    left: Val::Px(0.),
+                    align_content: AlignContent::Center,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    justify_items: JustifyItems::Center,
+                    ..default()
+                },
+                background_color: Color::srgba(0.1, 0.1, 0.5, 0.).into(),
+                ..default()
+            }
+        ).id();
+    });
+
+    army_settings_nodes.platoons_row = platoons_row;
+    army_settings_nodes.squads_row = squads_row;
+
+    commands.entity(regiments_row).with_children(|parent| {
+        parent.spawn(
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Px(ui_button_nodes.button_size * 2.),
+                    height: Val::Px(ui_button_nodes.button_size),
+                    top: Val::Px(land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                    left: Val::Px(land_army_settings_node_width as f32 * 0.8 / 2. - ui_button_nodes.button_size * 2. / 2.),
+                    align_content: AlignContent::Center,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    justify_items: JustifyItems::Center,
+                    ..default()
+                },
+                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                ..default()
+            }
+        )
+        .with_children(|bar_parent| {
+            bar_parent.spawn(TextBundle {
+                text: Text{
+                    sections: vec![TextSection {
+                        value: "1st Regiment".to_string(),
+                        style: TextStyle {
+                            font_size: 30.,
+                            ..default()
+                        },
+                        ..default()
+                    }],
+                    justify: JustifyText::Center,
+                    ..default()
+                },
+                ..default()
+            });
+        });
+    });
+
+    commands.entity(battalions_row).with_children(|parent| {
+        parent.spawn(
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Px(ui_button_nodes.button_size * 2.),
+                    height: Val::Px(ui_button_nodes.button_size),
+                    top: Val::Px(land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                    left: Val::Px(
+                        land_army_settings_node_width as f32 * 0.8 / 2.
+                        - ui_button_nodes.button_size * 2. / 2.
+                        - ui_button_nodes.button_size * 2.
+                        - ui_button_nodes.button_size * 0.1
+                        - ui_button_nodes.button_size * 2.
+                        - ui_button_nodes.button_size * 0.5
+                        - ui_button_nodes.button_size * 2.
+                        - ui_button_nodes.button_size * 0.1
+                    ),
+                    align_content: AlignContent::Center,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    justify_items: JustifyItems::Center,
+                    ..default()
+                },
+                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                ..default()
+            }
+        )
+        .with_children(|bar_parent| {
+            bar_parent.spawn(TextBundle {
+                text: Text{
+                    sections: vec![TextSection {
+                        value: "1st Battalion".to_string(),
+                        style: TextStyle {
+                            font_size: 30.,
+                            ..default()
+                        },
+                        ..default()
+                    }],
+                    justify: JustifyText::Center,
+                    ..default()
+                },
+                ..default()
+            });
+        });
+
+        parent.spawn(
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Px(ui_button_nodes.button_size * 2.),
+                    height: Val::Px(ui_button_nodes.button_size),
+                    top: Val::Px(land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                    left: Val::Px(
+                        land_army_settings_node_width as f32 * 0.8 / 2.
+                        - ui_button_nodes.button_size * 2. / 2.
+                    ),
+                    align_content: AlignContent::Center,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    justify_items: JustifyItems::Center,
+                    ..default()
+                },
+                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                ..default()
+            }
+        )
+        .with_children(|bar_parent| {
+            bar_parent.spawn(TextBundle {
+                text: Text{
+                    sections: vec![TextSection {
+                        value: "2nd Battalion".to_string(),
+                        style: TextStyle {
+                            font_size: 30.,
+                            ..default()
+                        },
+                        ..default()
+                    }],
+                    justify: JustifyText::Center,
+                    ..default()
+                },
+                ..default()
+            });
+        });
+
+        parent.spawn(
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Px(ui_button_nodes.button_size * 2.),
+                    height: Val::Px(ui_button_nodes.button_size),
+                    top: Val::Px(land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                    left: Val::Px(
+                        land_army_settings_node_width as f32 * 0.8 / 2.
+                        + ui_button_nodes.button_size * 2.
+                        + ui_button_nodes.button_size * 0.1
+                        + ui_button_nodes.button_size * 2.
+                        + ui_button_nodes.button_size * 0.5
+                        + ui_button_nodes.button_size * 2. / 2.
+                        + ui_button_nodes.button_size * 0.1
+                    ),
+                    align_content: AlignContent::Center,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    justify_items: JustifyItems::Center,
+                    ..default()
+                },
+                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                ..default()
+            }
+        )
+        .with_children(|bar_parent| {
+            bar_parent.spawn(TextBundle {
+                text: Text{
+                    sections: vec![TextSection {
+                        value: "3rd Battalion".to_string(),
+                        style: TextStyle {
+                            font_size: 30.,
+                            ..default()
+                        },
+                        ..default()
+                    }],
+                    justify: JustifyText::Center,
+                    ..default()
+                },
+                ..default()
+            });
+        });
+    });
+
+    let mut company1 = Entity::PLACEHOLDER;
+    let mut company2 = Entity::PLACEHOLDER;
+    let mut company3 = Entity::PLACEHOLDER;
+    let mut company4 = Entity::PLACEHOLDER;
+    let mut company5 = Entity::PLACEHOLDER;
+    let mut company6 = Entity::PLACEHOLDER;
+    let mut company7 = Entity::PLACEHOLDER;
+    let mut company8 = Entity::PLACEHOLDER;
+    let mut company9 = Entity::PLACEHOLDER;
+
+    commands.entity(companies_row).with_children(|parent| {
+        company1 = parent.spawn(
+            ButtonBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Px(ui_button_nodes.button_size * 2.),
+                    height: Val::Px(ui_button_nodes.button_size),
+                    top: Val::Px(land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                    left: Val::Px(
+                        land_army_settings_node_width as f32 * 0.8 / 2.
+                        - ui_button_nodes.button_size * 2. / 2.
+                        - ui_button_nodes.button_size * 2.
+                        - ui_button_nodes.button_size * 0.1
+                        - ui_button_nodes.button_size * 2.
+                        - ui_button_nodes.button_size * 0.5
+                        - ui_button_nodes.button_size * 2.
+                        - ui_button_nodes.button_size * 0.1
+                        - ui_button_nodes.button_size * 2.
+                        - ui_button_nodes.button_size * 0.1
+                    ),
+                    align_content: AlignContent::Center,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    justify_items: JustifyItems::Center,
+                    ..default()
+                },
+                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                ..default()
+            }
+        )
+        .insert(
+            ButtonAction{action: Actions::SetupCompany((0, (1, 1, 1)))}
+        )
+        .with_children(|bar_parent| {
+            bar_parent.spawn(TextBundle {
+                text: Text{
+                    sections: vec![TextSection {
+                        value: "1st Company".to_string(),
+                        style: TextStyle {
+                            font_size: 30.,
+                            ..default()
+                        },
+                        ..default()
+                    }],
+                    justify: JustifyText::Center,
+                    ..default()
+                },
+                ..default()
+            });
+        })
+        .with_children(|bar_parent| {
+            bar_parent.spawn(
+                ButtonBundle {
+                    style: Style {
+                        position_type: PositionType::Absolute,
+                        width: Val::Px(ui_button_nodes.button_size * 2.),
+                        height: Val::Px(ui_button_nodes.button_size * 0.4),
+                        top: Val::Px(ui_button_nodes.button_size * 1.1),
+                        left: Val::Px(0.),
+                        align_content: AlignContent::Center,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        justify_items: JustifyItems::Center,
+                        ..default()
+                    },
+                    background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                    ..default()
+                }
+            )
+            .insert(
+                ButtonAction{action: Actions::OpenCompanyTypes((0, (1,1,1)))}
+            )
+            .with_children(|button_parent| {
                 button_parent.spawn(TextBundle {
                     text: Text{
                         sections: vec![TextSection {
-                            value: "Ready to start".to_string(),
+                            value: "Regular".to_string(),
                             style: TextStyle {
-                                font_size: 15.,
+                                font_size: 30.,
                                 ..default()
                             },
                             ..default()
@@ -1077,11 +1199,1160 @@ pub fn setup_ingame_ui(
                         ..default()
                     },
                     ..default()
-                }).id(),
-                LimitedNumber::new(),
-            );
-        });
+                });
+            });
+        })
+        .id();
+
+        company2 = parent.spawn(
+            ButtonBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Px(ui_button_nodes.button_size * 2.),
+                    height: Val::Px(ui_button_nodes.button_size),
+                    top: Val::Px(land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                    left: Val::Px(
+                        land_army_settings_node_width as f32 * 0.8 / 2.
+                        - ui_button_nodes.button_size * 2. / 2.
+                        - ui_button_nodes.button_size * 2.
+                        - ui_button_nodes.button_size * 0.1
+                        - ui_button_nodes.button_size * 2.
+                        - ui_button_nodes.button_size * 0.5
+                        - ui_button_nodes.button_size * 2.
+                        - ui_button_nodes.button_size * 0.1
+                    ),
+                    align_content: AlignContent::Center,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    justify_items: JustifyItems::Center,
+                    ..default()
+                },
+                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                ..default()
+            }
+        )
+        .insert(
+            ButtonAction{action: Actions::SetupCompany((1, (1, 1, 2)))}
+        )
+        .with_children(|bar_parent| {
+            bar_parent.spawn(TextBundle {
+                text: Text{
+                    sections: vec![TextSection {
+                        value: "2nd Company".to_string(),
+                        style: TextStyle {
+                            font_size: 30.,
+                            ..default()
+                        },
+                        ..default()
+                    }],
+                    justify: JustifyText::Center,
+                    ..default()
+                },
+                ..default()
+            });
+        })
+        .with_children(|bar_parent| {
+            bar_parent.spawn(
+                ButtonBundle {
+                    style: Style {
+                        position_type: PositionType::Absolute,
+                        width: Val::Px(ui_button_nodes.button_size * 2.),
+                        height: Val::Px(ui_button_nodes.button_size * 0.4),
+                        top: Val::Px(ui_button_nodes.button_size * 1.1),
+                        left: Val::Px(0.),
+                        align_content: AlignContent::Center,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        justify_items: JustifyItems::Center,
+                        ..default()
+                    },
+                    background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                    ..default()
+                }
+            )
+            .insert(
+                ButtonAction{action: Actions::OpenCompanyTypes((1, (1, 1, 2)))}
+            )
+            .with_children(|button_parent| {
+                button_parent.spawn(TextBundle {
+                    text: Text{
+                        sections: vec![TextSection {
+                            value: "Regular".to_string(),
+                            style: TextStyle {
+                                font_size: 30.,
+                                ..default()
+                            },
+                            ..default()
+                        }],
+                        justify: JustifyText::Center,
+                        ..default()
+                    },
+                    ..default()
+                });
+            });
+        })
+        .id();
+
+        company3 = parent.spawn(
+            ButtonBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Px(ui_button_nodes.button_size * 2.),
+                    height: Val::Px(ui_button_nodes.button_size),
+                    top: Val::Px(land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                    left: Val::Px(
+                        land_army_settings_node_width as f32 * 0.8 / 2.
+                        - ui_button_nodes.button_size * 2. / 2.
+                        - ui_button_nodes.button_size * 2.
+                        - ui_button_nodes.button_size * 0.1
+                        - ui_button_nodes.button_size * 2.
+                        - ui_button_nodes.button_size * 0.5
+                    ),
+                    align_content: AlignContent::Center,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    justify_items: JustifyItems::Center,
+                    ..default()
+                },
+                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                ..default()
+            }
+        )
+        .insert(
+            ButtonAction{action: Actions::SetupCompany((2, (1, 1, 3)))}
+        )
+        .with_children(|bar_parent| {
+            bar_parent.spawn(TextBundle {
+                text: Text{
+                    sections: vec![TextSection {
+                        value: "3rd Company".to_string(),
+                        style: TextStyle {
+                            font_size: 30.,
+                            ..default()
+                        },
+                        ..default()
+                    }],
+                    justify: JustifyText::Center,
+                    ..default()
+                },
+                ..default()
+            });
+        })
+        .with_children(|bar_parent| {
+            bar_parent.spawn(
+                ButtonBundle {
+                    style: Style {
+                        position_type: PositionType::Absolute,
+                        width: Val::Px(ui_button_nodes.button_size * 2.),
+                        height: Val::Px(ui_button_nodes.button_size * 0.4),
+                        top: Val::Px(ui_button_nodes.button_size * 1.1),
+                        left: Val::Px(0.),
+                        align_content: AlignContent::Center,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        justify_items: JustifyItems::Center,
+                        ..default()
+                    },
+                    background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                    ..default()
+                }
+            )
+            .insert(
+                ButtonAction{action: Actions::OpenCompanyTypes((2, (1, 1, 3)))}
+            )
+            .with_children(|button_parent| {
+                button_parent.spawn(TextBundle {
+                    text: Text{
+                        sections: vec![TextSection {
+                            value: "Regular".to_string(),
+                            style: TextStyle {
+                                font_size: 30.,
+                                ..default()
+                            },
+                            ..default()
+                        }],
+                        justify: JustifyText::Center,
+                        ..default()
+                    },
+                    ..default()
+                });
+            });
+        })
+        .id();
+
+        company4 = parent.spawn(
+            ButtonBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Px(ui_button_nodes.button_size * 2.),
+                    height: Val::Px(ui_button_nodes.button_size),
+                    top: Val::Px(land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                    left: Val::Px(
+                        land_army_settings_node_width as f32 * 0.8 / 2.
+                        - ui_button_nodes.button_size * 2. / 2.
+                        - ui_button_nodes.button_size * 2.
+                        - ui_button_nodes.button_size * 0.1
+                    ),
+                    align_content: AlignContent::Center,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    justify_items: JustifyItems::Center,
+                    ..default()
+                },
+                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                ..default()
+            }
+        )
+        .insert(
+            ButtonAction{action: Actions::SetupCompany((3, (1, 2, 1)))}
+        )
+        .with_children(|bar_parent| {
+            bar_parent.spawn(TextBundle {
+                text: Text{
+                    sections: vec![TextSection {
+                        value: "1st Company".to_string(),
+                        style: TextStyle {
+                            font_size: 30.,
+                            ..default()
+                        },
+                        ..default()
+                    }],
+                    justify: JustifyText::Center,
+                    ..default()
+                },
+                ..default()
+            });
+        })
+        .with_children(|bar_parent| {
+            bar_parent.spawn(
+                ButtonBundle {
+                    style: Style {
+                        position_type: PositionType::Absolute,
+                        width: Val::Px(ui_button_nodes.button_size * 2.),
+                        height: Val::Px(ui_button_nodes.button_size * 0.4),
+                        top: Val::Px(ui_button_nodes.button_size * 1.1),
+                        left: Val::Px(0.),
+                        align_content: AlignContent::Center,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        justify_items: JustifyItems::Center,
+                        ..default()
+                    },
+                    background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                    ..default()
+                }
+            )
+            .insert(
+                ButtonAction{action: Actions::OpenCompanyTypes((3, (1, 2, 1)))}
+            )
+            .with_children(|button_parent| {
+                button_parent.spawn(TextBundle {
+                    text: Text{
+                        sections: vec![TextSection {
+                            value: "Regular".to_string(),
+                            style: TextStyle {
+                                font_size: 30.,
+                                ..default()
+                            },
+                            ..default()
+                        }],
+                        justify: JustifyText::Center,
+                        ..default()
+                    },
+                    ..default()
+                });
+            });
+        })
+        .id();
+
+        company5 = parent.spawn(
+            ButtonBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Px(ui_button_nodes.button_size * 2.),
+                    height: Val::Px(ui_button_nodes.button_size),
+                    top: Val::Px(land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                    left: Val::Px(
+                        land_army_settings_node_width as f32 * 0.8 / 2.
+                        - ui_button_nodes.button_size * 2. / 2.
+                    ),
+                    align_content: AlignContent::Center,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    justify_items: JustifyItems::Center,
+                    ..default()
+                },
+                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                ..default()
+            }
+        )
+        .insert(
+            ButtonAction{action: Actions::SetupCompany((4, (1, 2, 2)))}
+        )
+        .with_children(|bar_parent| {
+            bar_parent.spawn(TextBundle {
+                text: Text{
+                    sections: vec![TextSection {
+                        value: "2nd Company".to_string(),
+                        style: TextStyle {
+                            font_size: 30.,
+                            ..default()
+                        },
+                        ..default()
+                    }],
+                    justify: JustifyText::Center,
+                    ..default()
+                },
+                ..default()
+            });
+        })
+        .with_children(|bar_parent| {
+            bar_parent.spawn(
+                ButtonBundle {
+                    style: Style {
+                        position_type: PositionType::Absolute,
+                        width: Val::Px(ui_button_nodes.button_size * 2.),
+                        height: Val::Px(ui_button_nodes.button_size * 0.4),
+                        top: Val::Px(ui_button_nodes.button_size * 1.1),
+                        left: Val::Px(0.),
+                        align_content: AlignContent::Center,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        justify_items: JustifyItems::Center,
+                        ..default()
+                    },
+                    background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                    ..default()
+                }
+            )
+            .insert(
+                ButtonAction{action: Actions::OpenCompanyTypes((4, (1, 2, 2)))}
+            )
+            .with_children(|button_parent| {
+                button_parent.spawn(TextBundle {
+                    text: Text{
+                        sections: vec![TextSection {
+                            value: "Regular".to_string(),
+                            style: TextStyle {
+                                font_size: 30.,
+                                ..default()
+                            },
+                            ..default()
+                        }],
+                        justify: JustifyText::Center,
+                        ..default()
+                    },
+                    ..default()
+                });
+            });
+        })
+        .id();
+
+        company6 = parent.spawn(
+            ButtonBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Px(ui_button_nodes.button_size * 2.),
+                    height: Val::Px(ui_button_nodes.button_size),
+                    top: Val::Px(land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                    left: Val::Px(
+                        land_army_settings_node_width as f32 * 0.8 / 2.
+                        + ui_button_nodes.button_size * 2. / 2.
+                        + ui_button_nodes.button_size * 0.1
+                    ),
+                    align_content: AlignContent::Center,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    justify_items: JustifyItems::Center,
+                    ..default()
+                },
+                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                ..default()
+            }
+        )
+        .insert(
+            ButtonAction{action: Actions::SetupCompany((5, (1, 2, 3)))}
+        )
+        .with_children(|bar_parent| {
+            bar_parent.spawn(TextBundle {
+                text: Text{
+                    sections: vec![TextSection {
+                        value: "3rd Company".to_string(),
+                        style: TextStyle {
+                            font_size: 30.,
+                            ..default()
+                        },
+                        ..default()
+                    }],
+                    justify: JustifyText::Center,
+                    ..default()
+                },
+                ..default()
+            });
+        })
+        .with_children(|bar_parent| {
+            bar_parent.spawn(
+                ButtonBundle {
+                    style: Style {
+                        position_type: PositionType::Absolute,
+                        width: Val::Px(ui_button_nodes.button_size * 2.),
+                        height: Val::Px(ui_button_nodes.button_size * 0.4),
+                        top: Val::Px(ui_button_nodes.button_size * 1.1),
+                        left: Val::Px(0.),
+                        align_content: AlignContent::Center,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        justify_items: JustifyItems::Center,
+                        ..default()
+                    },
+                    background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                    ..default()
+                }
+            )
+            .insert(
+                ButtonAction{action: Actions::OpenCompanyTypes((5, (1, 2, 3)))}
+            )
+            .with_children(|button_parent| {
+                button_parent.spawn(TextBundle {
+                    text: Text{
+                        sections: vec![TextSection {
+                            value: "Regular".to_string(),
+                            style: TextStyle {
+                                font_size: 30.,
+                                ..default()
+                            },
+                            ..default()
+                        }],
+                        justify: JustifyText::Center,
+                        ..default()
+                    },
+                    ..default()
+                });
+            });
+        })
+        .id();
+
+        company7 = parent.spawn(
+            ButtonBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Px(ui_button_nodes.button_size * 2.),
+                    height: Val::Px(ui_button_nodes.button_size),
+                    top: Val::Px(land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                    left: Val::Px(
+                        land_army_settings_node_width as f32 * 0.8 / 2.
+                        + ui_button_nodes.button_size * 2.
+                        + ui_button_nodes.button_size * 0.1
+                        + ui_button_nodes.button_size * 2. / 2.
+                        + ui_button_nodes.button_size * 0.5
+                    ),
+                    align_content: AlignContent::Center,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    justify_items: JustifyItems::Center,
+                    ..default()
+                },
+                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                ..default()
+            }
+        )
+        .insert(
+            ButtonAction{action: Actions::SetupCompany((6, (1, 3, 1)))}
+        )
+        .with_children(|bar_parent| {
+            bar_parent.spawn(TextBundle {
+                text: Text{
+                    sections: vec![TextSection {
+                        value: "1st Company".to_string(),
+                        style: TextStyle {
+                            font_size: 30.,
+                            ..default()
+                        },
+                        ..default()
+                    }],
+                    justify: JustifyText::Center,
+                    ..default()
+                },
+                ..default()
+            });
+        })
+        .with_children(|bar_parent| {
+            bar_parent.spawn(
+                ButtonBundle {
+                    style: Style {
+                        position_type: PositionType::Absolute,
+                        width: Val::Px(ui_button_nodes.button_size * 2.),
+                        height: Val::Px(ui_button_nodes.button_size * 0.4),
+                        top: Val::Px(ui_button_nodes.button_size * 1.1),
+                        left: Val::Px(0.),
+                        align_content: AlignContent::Center,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        justify_items: JustifyItems::Center,
+                        ..default()
+                    },
+                    background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                    ..default()
+                }
+            )
+            .insert(
+                ButtonAction{action: Actions::OpenCompanyTypes((6, (1, 3, 1)))}
+            )
+            .with_children(|button_parent| {
+                button_parent.spawn(TextBundle {
+                    text: Text{
+                        sections: vec![TextSection {
+                            value: "Regular".to_string(),
+                            style: TextStyle {
+                                font_size: 30.,
+                                ..default()
+                            },
+                            ..default()
+                        }],
+                        justify: JustifyText::Center,
+                        ..default()
+                    },
+                    ..default()
+                });
+            });
+        })
+        .id();
+
+        company8 = parent.spawn(
+            ButtonBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Px(ui_button_nodes.button_size * 2.),
+                    height: Val::Px(ui_button_nodes.button_size),
+                    top: Val::Px(land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                    left: Val::Px(
+                        land_army_settings_node_width as f32 * 0.8 / 2.
+                        + ui_button_nodes.button_size * 2.
+                        + ui_button_nodes.button_size * 0.1
+                        + ui_button_nodes.button_size * 2.
+                        + ui_button_nodes.button_size * 0.5
+                        + ui_button_nodes.button_size * 2. / 2.
+                        + ui_button_nodes.button_size * 0.1
+                    ),
+                    align_content: AlignContent::Center,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    justify_items: JustifyItems::Center,
+                    ..default()
+                },
+                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                ..default()
+            }
+        )
+        .insert(
+            ButtonAction{action: Actions::SetupCompany((7, (1, 3, 2)))}
+        )
+        .with_children(|bar_parent| {
+            bar_parent.spawn(TextBundle {
+                text: Text{
+                    sections: vec![TextSection {
+                        value: "2nd Company".to_string(),
+                        style: TextStyle {
+                            font_size: 30.,
+                            ..default()
+                        },
+                        ..default()
+                    }],
+                    justify: JustifyText::Center,
+                    ..default()
+                },
+                ..default()
+            });
+        })
+        .with_children(|bar_parent| {
+            bar_parent.spawn(
+                ButtonBundle {
+                    style: Style {
+                        position_type: PositionType::Absolute,
+                        width: Val::Px(ui_button_nodes.button_size * 2.),
+                        height: Val::Px(ui_button_nodes.button_size * 0.4),
+                        top: Val::Px(ui_button_nodes.button_size * 1.1),
+                        left: Val::Px(0.),
+                        align_content: AlignContent::Center,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        justify_items: JustifyItems::Center,
+                        ..default()
+                    },
+                    background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                    ..default()
+                }
+            )
+            .insert(
+                ButtonAction{action: Actions::OpenCompanyTypes((7, (1, 3, 2)))}
+            )
+            .with_children(|button_parent| {
+                button_parent.spawn(TextBundle {
+                    text: Text{
+                        sections: vec![TextSection {
+                            value: "Regular".to_string(),
+                            style: TextStyle {
+                                font_size: 30.,
+                                ..default()
+                            },
+                            ..default()
+                        }],
+                        justify: JustifyText::Center,
+                        ..default()
+                    },
+                    ..default()
+                });
+            });
+        })
+        .id();
+
+        company9 = parent.spawn(
+            ButtonBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Px(ui_button_nodes.button_size * 2.),
+                    height: Val::Px(ui_button_nodes.button_size),
+                    top: Val::Px(land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                    left: Val::Px(
+                        land_army_settings_node_width as f32 * 0.8 / 2.
+                        + ui_button_nodes.button_size * 2.
+                        + ui_button_nodes.button_size * 0.1
+                        + ui_button_nodes.button_size * 2.
+                        + ui_button_nodes.button_size * 0.5
+                        + ui_button_nodes.button_size * 2.
+                        + ui_button_nodes.button_size * 0.1
+                        + ui_button_nodes.button_size * 2. / 2.
+                        + ui_button_nodes.button_size * 0.1
+                    ),
+                    align_content: AlignContent::Center,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    justify_items: JustifyItems::Center,
+                    ..default()
+                },
+                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                ..default()
+            }
+        )
+        .insert(
+            ButtonAction{action: Actions::SetupCompany((8, (1, 3, 3)))}
+        )
+        .with_children(|bar_parent| {
+            bar_parent.spawn(TextBundle {
+                text: Text{
+                    sections: vec![TextSection {
+                        value: "3rd Company".to_string(),
+                        style: TextStyle {
+                            font_size: 30.,
+                            ..default()
+                        },
+                        ..default()
+                    }],
+                    justify: JustifyText::Center,
+                    ..default()
+                },
+                ..default()
+            });
+        })
+        .with_children(|bar_parent| {
+            bar_parent.spawn(
+                ButtonBundle {
+                    style: Style {
+                        position_type: PositionType::Absolute,
+                        width: Val::Px(ui_button_nodes.button_size * 2.),
+                        height: Val::Px(ui_button_nodes.button_size * 0.4),
+                        top: Val::Px(ui_button_nodes.button_size * 1.1),
+                        left: Val::Px(0.),
+                        align_content: AlignContent::Center,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        justify_items: JustifyItems::Center,
+                        ..default()
+                    },
+                    background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                    ..default()
+                }
+            )
+            .insert(
+                ButtonAction{action: Actions::OpenCompanyTypes((8, (1, 3, 3)))}
+            )
+            .with_children(|button_parent| {
+                button_parent.spawn(TextBundle {
+                    text: Text{
+                        sections: vec![TextSection {
+                            value: "Regular".to_string(),
+                            style: TextStyle {
+                                font_size: 30.,
+                                ..default()
+                            },
+                            ..default()
+                        }],
+                        justify: JustifyText::Center,
+                        ..default()
+                    },
+                    ..default()
+                });
+            });
+        })
+        .id();
     });
+
+    army_settings_nodes.company_buttons = vec![
+        company1,
+        company2,
+        company3,
+        company4,
+        company5,
+        company6,
+        company7,
+        company8,
+        company9,
+    ];
+
+    // let mut divisions_row = Entity::PLACEHOLDER;
+    // let mut brigades_row = Entity::PLACEHOLDER;
+    // let mut batallions_row = Entity::PLACEHOLDER;
+    // let mut companies_row = Entity::PLACEHOLDER;
+    // let mut platoons_row = Entity::PLACEHOLDER;
+    // let mut units_row = Entity::PLACEHOLDER;
+
+    // commands.entity(land_army_settings_node_entity).with_children(|parent| {
+    //     divisions_row = parent.spawn(NodeBundle{
+    //         style: Style {
+    //             position_type: PositionType::Relative,
+    //             width: Val::Px(land_army_settings_node_width as f32),
+    //             height: Val::Px(land_army_settings_node_height as f32 / 6.5),
+    //             flex_direction: FlexDirection::Row,
+    //             align_items: AlignItems::Center,
+    //             ..default()
+    //         },
+    //         background_color: Color::srgba(0.1, 0.1, 0.1, 0.).into(),
+    //         ..default()
+    //     }).id();
+    // });
+
+    // commands.entity(land_army_settings_node_entity).with_children(|parent| {
+    //     brigades_row = parent.spawn(NodeBundle{
+    //         style: Style {
+    //             position_type: PositionType::Relative,
+    //             width: Val::Px(land_army_settings_node_width as f32),
+    //             height: Val::Px(land_army_settings_node_height as f32 / 6.5),
+    //             flex_direction: FlexDirection::Row,
+    //             align_items: AlignItems::Center,
+    //             ..default()
+    //         },
+    //         background_color: Color::srgba(0.1, 0.1, 0.1, 0.).into(),
+    //         ..default()
+    //     }).id();
+    // });
+
+    // commands.entity(land_army_settings_node_entity).with_children(|parent| {
+    //     batallions_row = parent.spawn(NodeBundle{
+    //         style: Style {
+    //             position_type: PositionType::Relative,
+    //             width: Val::Px(land_army_settings_node_width as f32),
+    //             height: Val::Px((land_army_settings_node_height / 5) as f32),
+    //             flex_direction: FlexDirection::Row,
+    //             align_items: AlignItems::Center,
+    //             ..default()
+    //         },
+    //         background_color: Color::srgba(0.1, 0.1, 0.1, 0.).into(),
+    //         ..default()
+    //     }).id();
+    // });
+
+    // commands.entity(land_army_settings_node_entity).with_children(|parent| {
+    //     companies_row = parent.spawn(NodeBundle{
+    //         style: Style {
+    //             position_type: PositionType::Relative,
+    //             width: Val::Px(land_army_settings_node_width as f32),
+    //             height: Val::Px(land_army_settings_node_height as f32 / 6.5),
+    //             flex_direction: FlexDirection::Row,
+    //             justify_content: JustifyContent::Center,
+    //             align_items: AlignItems::Center,
+    //             ..default()
+    //         },
+    //         background_color: Color::srgba(0.1, 0.1, 0.1, 0.).into(),
+    //         ..default()
+    //     }).id();
+    // });
+
+    // commands.entity(land_army_settings_node_entity).with_children(|parent| {
+    //     platoons_row = parent.spawn(NodeBundle{
+    //         style: Style {
+    //             position_type: PositionType::Relative,
+    //             width: Val::Px(land_army_settings_node_width as f32),
+    //             height: Val::Px((land_army_settings_node_height / 5) as f32),
+    //             flex_direction: FlexDirection::Row,
+    //             justify_content: JustifyContent::Center,
+    //             align_items: AlignItems::Center,
+    //             ..default()
+    //         },
+    //         background_color: Color::srgba(0.1, 0.1, 0.1, 0.).into(),
+    //         ..default()
+    //     }).id();
+    // });
+
+    // commands.entity(land_army_settings_node_entity).with_children(|parent| {
+    //     units_row = parent.spawn(NodeBundle{
+    //         style: Style {
+    //             position_type: PositionType::Relative,
+    //             width: Val::Px(land_army_settings_node_width as f32),
+    //             height: Val::Px(land_army_settings_node_height as f32 / 6.5),
+    //             flex_direction: FlexDirection::Row,
+    //             justify_content: JustifyContent::End,
+    //             align_items: AlignItems::End,
+    //             ..default()
+    //         },
+    //         background_color: Color::srgba(0.1, 0.1, 0.1, 0.).into(),
+    //         ..default()
+    //     }).id();
+    // });
+
+    // army_settings_nodes.companies_row = companies_row;
+    // army_settings_nodes.platoons_row = platoons_row;
+    // army_settings_nodes.units_row = units_row;
+
+    // let mut division_placeholders: Vec<Entity> = Vec::new();
+    // for _i in 0..2 {
+    //     commands.entity(divisions_row).with_children(|parent| {
+    //         division_placeholders.push(
+    //             parent.spawn(NodeBundle{
+    //                 style: Style {
+    //                     position_type: PositionType::Relative,
+    //                     width: Val::Px((land_army_settings_node_width / 2) as f32 - ui_button_nodes.margin * 2.),
+    //                     height: Val::Px(land_army_settings_node_height as f32 / 6.5 - ui_button_nodes.margin * 2.),
+    //                     margin: UiRect {
+    //                         left: Val::Px(ui_button_nodes.margin),
+    //                         right: Val::Px(ui_button_nodes.margin),
+    //                         top: Val::Px(ui_button_nodes.margin),
+    //                         bottom: Val::Px(ui_button_nodes.margin),
+    //                     },
+    //                     flex_direction: FlexDirection::Column,
+    //                     justify_content: JustifyContent::Center,
+    //                     align_items: AlignItems::Center,
+    //                     ..default()
+    //                 },
+    //                 background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
+    //                 ..default()
+    //             }).id()
+    //         );
+    //     });
+    // }
+
+    // let mut brigade_placeholders: Vec<Entity> = Vec::new();
+    // for _i in 0..6 {
+    //     commands.entity(brigades_row).with_children(|parent| {
+    //         brigade_placeholders.push(
+    //             parent.spawn(NodeBundle{
+    //                 style: Style {
+    //                     position_type: PositionType::Relative,
+    //                     width: Val::Px((land_army_settings_node_width / 6) as f32 - ui_button_nodes.margin * 2.),
+    //                     height: Val::Px(land_army_settings_node_height as f32 / 6.5 - ui_button_nodes.margin * 2.),
+    //                     margin: UiRect {
+    //                         left: Val::Px(ui_button_nodes.margin),
+    //                         right: Val::Px(ui_button_nodes.margin),
+    //                         top: Val::Px(ui_button_nodes.margin),
+    //                         bottom: Val::Px(ui_button_nodes.margin),
+    //                     },
+    //                     flex_direction: FlexDirection::Column,
+    //                     justify_content: JustifyContent::Center,
+    //                     align_items: AlignItems::Center,
+    //                     ..default()
+    //                 },
+    //                 background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
+    //                 ..default()
+    //             }).id()
+    //         );
+    //     });
+    // }
+
+    // let mut batallion_placeholders: Vec<Entity> = Vec::new();
+    // for _i in 0..18 {
+    //     commands.entity(batallions_row).with_children(|parent| {
+    //         batallion_placeholders.push(
+    //             parent.spawn(NodeBundle{
+    //                 style: Style {
+    //                     position_type: PositionType::Relative,
+    //                     width: Val::Px((land_army_settings_node_width / 18) as f32 - ui_button_nodes.margin * 2.),
+    //                     height: Val::Px((land_army_settings_node_height / 5) as f32 - ui_button_nodes.margin * 2.),
+    //                     margin: UiRect {
+    //                         left: Val::Px(ui_button_nodes.margin),
+    //                         right: Val::Px(ui_button_nodes.margin),
+    //                         top: Val::Px(ui_button_nodes.margin),
+    //                         bottom: Val::Px(ui_button_nodes.margin),
+    //                     },
+    //                     flex_direction: FlexDirection::Column,
+    //                     justify_content: JustifyContent::Center,
+    //                     align_items: AlignItems::Center,
+    //                     ..default()
+    //                 },
+    //                 background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
+    //                 ..default()
+    //             }).id()
+    //         );
+    //     });
+    // }
+
+    // for placeholder in division_placeholders {
+    //     commands.entity(placeholder).with_children(|parent| {
+    //         parent.spawn(ButtonBundle{
+    //             style: Style {
+    //                 position_type: PositionType::Relative,
+    //                 width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+    //                 height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+    //                 margin: UiRect {
+    //                     left: Val::Px(ui_button_nodes.margin),
+    //                     right: Val::Px(ui_button_nodes.margin),
+    //                     top: Val::Px(ui_button_nodes.margin),
+    //                     bottom: Val::Px(ui_button_nodes.margin),
+    //                 },
+    //                 justify_content: JustifyContent::Center,
+    //                 align_items: AlignItems::Center,
+    //                 ..default()
+    //             },
+    //             background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+    //             ..default()
+    //         })
+    //         .with_children(|button_parent| {
+    //             button_parent.spawn(TextBundle {
+    //                 text: Text{
+    //                     sections: vec![TextSection {
+    //                         value: "Division".to_string(),
+    //                         style: TextStyle {
+    //                             font_size: 20.,
+    //                             ..default()
+    //                         },
+    //                         ..default()
+    //                     }],
+    //                     justify: JustifyText::Center,
+    //                     ..default() 
+    //                 },
+    //                 ..default()
+    //             });
+    //         });
+    //     });
+    // }
+
+    // for placeholder in brigade_placeholders {
+    //     commands.entity(placeholder).with_children(|parent| {
+    //         parent.spawn(ButtonBundle{
+    //             style: Style {
+    //                 position_type: PositionType::Relative,
+    //                 width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+    //                 height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+    //                 margin: UiRect {
+    //                     left: Val::Px(ui_button_nodes.margin),
+    //                     right: Val::Px(ui_button_nodes.margin),
+    //                     top: Val::Px(ui_button_nodes.margin),
+    //                     bottom: Val::Px(ui_button_nodes.margin),
+    //                 },
+    //                 justify_content: JustifyContent::Center,
+    //                 align_items: AlignItems::Center,
+    //                 ..default()
+    //             },
+    //             background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+    //             ..default()
+    //         })
+    //         .with_children(|button_parent| {
+    //             button_parent.spawn(TextBundle {
+    //                 text: Text{
+    //                     sections: vec![TextSection {
+    //                         value: "Brigade".to_string(),
+    //                         style: TextStyle {
+    //                             font_size: 20.,
+    //                             ..default()
+    //                         },
+    //                         ..default()
+    //                     }],
+    //                     justify: JustifyText::Center,
+    //                     ..default() 
+    //                 },
+    //                 ..default()
+    //             });
+    //         });
+    //     });
+    // }
+
+    // let mut division_number: LimitedNumber<1, 3> = LimitedNumber::new();
+    // let mut brigade_number: LimitedNumber<1, 3> = LimitedNumber::new();
+    // let mut batallion_number: LimitedNumber<1, 3> = LimitedNumber::new();
+    // batallion_number.set_value(0);
+    // let mut counter = -1;
+    
+    // let regular_count = START_REGULAR_SQUADS_AMOUNT / 9;
+    // let shock_count = START_SHOCK_SQUADS_AMOUNT / 9;
+    // let armored_count = START_ARMORED_SQUADS_AMOUNT / 9;
+    // let mut battalion_type = CompanyTypes::None;
+    // let mut battalion_type_name = "".to_string();
+
+    // for placeholder in batallion_placeholders {
+    //     if batallion_number.next() {
+    //         if brigade_number.next() {
+    //             division_number.next();
+    //         }
+    //     }
+
+    //     counter += 1;
+        
+    //     commands.entity(placeholder).with_children(|parent| {
+    //         army_settings_nodes.batallion_buttons.push((
+    //             parent.spawn(ButtonBundle{
+    //                 style: Style {
+    //                     position_type: PositionType::Relative,
+    //                     width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+    //                     height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+    //                     margin: UiRect {
+    //                         left: Val::Px(ui_button_nodes.margin),
+    //                         right: Val::Px(ui_button_nodes.margin),
+    //                         top: Val::Px(ui_button_nodes.margin),
+    //                         bottom: Val::Px(ui_button_nodes.margin),
+    //                     },
+    //                     justify_content: JustifyContent::Center,
+    //                     align_items: AlignItems::Center,
+    //                     ..default()
+    //                 },
+    //                 background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+    //                 ..default()
+    //             }).insert(ButtonAction{
+    //                 action: Actions::SetupBatallion((counter, (division_number.get_value(), brigade_number.get_value(), batallion_number.get_value())))}
+    //             )
+    //             .with_children(|button_parent| {
+    //                 button_parent.spawn(TextBundle {
+    //                     text: Text{
+    //                         sections: vec![TextSection {
+    //                             value: "Batallion".to_string(),
+    //                             style: TextStyle {
+    //                                 font_size: 10.,
+    //                                 ..default()
+    //                             },
+    //                             ..default()
+    //                         }],
+    //                         justify: JustifyText::Center,
+    //                         ..default()
+    
+    //                     },
+    //                     ..default()
+    //                 });
+    //             }).id(),
+    //             LimitedNumber::new()
+    //         ));
+    //     });
+
+    //     if counter < regular_count {
+    //         battalion_type = CompanyTypes::Regular;
+    //         battalion_type_name = "Regular".to_string();
+    //     } else if counter < regular_count + shock_count {
+    //         battalion_type = CompanyTypes::Shock;
+    //         battalion_type_name = "Shock".to_string();
+    //     } else if counter < regular_count + shock_count + armored_count {
+    //         battalion_type = CompanyTypes::Armored;
+    //         battalion_type_name = "Armored".to_string();
+    //     }
+
+    //     commands.entity(placeholder).with_children(|parent| {
+    //         parent.spawn(ButtonBundle{
+    //             style: Style {
+    //                 position_type: PositionType::Relative,
+    //                 width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+    //                 height: Val::Px((ui_button_nodes.button_size - ui_button_nodes.margin * 2.) / 4.),
+    //                 margin: UiRect {
+    //                     left: Val::Px(ui_button_nodes.margin),
+    //                     right: Val::Px(ui_button_nodes.margin),
+    //                     top: Val::Px(ui_button_nodes.margin),
+    //                     bottom: Val::Px(ui_button_nodes.margin),
+    //                 },
+    //                 justify_content: JustifyContent::Center,
+    //                 align_items: AlignItems::Center,
+    //                 ..default()
+    //             },
+    //             background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+    //             ..default()
+    //         }).insert(ButtonAction{
+    //             action: Actions::OpenBatallionTypes((counter, (division_number.get_value(), brigade_number.get_value(), batallion_number.get_value())))}
+    //         )
+    //         .with_children(|button_parent| {
+    //             army_settings_nodes.batallion_type_dropdown_lists.push((
+    //                 button_parent.spawn(TextBundle {
+    //                     text: Text{
+    //                         sections: vec![TextSection {
+    //                             value: battalion_type_name.clone(),
+    //                             style: TextStyle {
+    //                                 font_size: 10.,
+    //                                 ..default()
+    //                             },
+    //                             ..default()
+    //                         }],
+    //                         justify: JustifyText::Center,
+    //                         ..default()
+    
+    //                     },
+    //                     style: Style {
+    //                         justify_content: JustifyContent::Center,
+    //                         align_items: AlignItems::Center,
+    //                         ..default()
+    //                     },
+    //                     ..default()
+    //                 }).id(),
+    //                 battalion_type,
+    //                 LimitedNumber::new()
+    //             ));
+    //         });
+    //     });
+    // }
+
+    // for _i in 0..START_REGULAR_SQUADS_AMOUNT {
+    //     army_settings_nodes.platoon_specialization_cache.push((("atgm".to_string(), "ATGM".to_string()), CompanyTypes::Regular));
+    // }
+
+    // for _i in START_REGULAR_SQUADS_AMOUNT..START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT {
+    //     army_settings_nodes.platoon_specialization_cache.push((("lat".to_string(), "LAT".to_string()), CompanyTypes::Shock));
+    // }
+
+    // for _i in START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT..START_REGULAR_SQUADS_AMOUNT + START_SHOCK_SQUADS_AMOUNT + START_ARMORED_SQUADS_AMOUNT {
+    //     army_settings_nodes.platoon_specialization_cache.push((("tank".to_string(), "Tank".to_string()), CompanyTypes::Armored));
+    // }
+    
+    // commands.entity(units_row).with_children(|parent| {
+    //     parent.spawn(ButtonBundle{
+    //         style: Style {
+    //             position_type: PositionType::Relative,
+    //             width: Val::Px(ui_button_nodes.button_size * 3. - ui_button_nodes.margin * 2.),
+    //             height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+    //             margin: UiRect {
+    //                 left: Val::Px(ui_button_nodes.margin),
+    //                 right: Val::Px(ui_button_nodes.margin),
+    //                 top: Val::Px(ui_button_nodes.margin),
+    //                 bottom: Val::Px(ui_button_nodes.margin),
+    //             },
+    //             justify_content: JustifyContent::Center,
+    //             align_items: AlignItems::Center,
+    //             ..default()
+    //         },
+    //         background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+    //         ..default()
+    //     }).insert(ButtonAction{action: Actions::ToggleProduction})
+    //     .with_children(|button_parent| {
+    //         army_settings_nodes.toggle_production_button = (
+    //             button_parent.spawn(TextBundle {
+    //                 text: Text{
+    //                     sections: vec![TextSection {
+    //                         value: "Ready to start".to_string(),
+    //                         style: TextStyle {
+    //                             font_size: 15.,
+    //                             ..default()
+    //                         },
+    //                         ..default()
+    //                     }],
+    //                     justify: JustifyText::Center,
+    //                     ..default()
+    //                 },
+    //                 ..default()
+    //             }).id(),
+    //             LimitedNumber::new(),
+    //         );
+    //     });
+    // });
 
     let mut squad_index: LimitedNumber<1, 3>;
     let mut platoon_index: LimitedNumber<1, 3>;
@@ -1194,7 +2465,7 @@ pub fn setup_ingame_ui(
         }
     }
 
-    let mut current_platoon: Vec<(i32, i32, i32, i32, i32)> = Vec::new();
+    let mut current_squad: Vec<(i32, i32, i32, i32, i32)> = Vec::new();
 
     for i in 1..=2 {
         squad_index = LimitedNumber::new();
@@ -1215,7 +2486,7 @@ pub fn setup_ingame_ui(
                 }
             }
 
-            current_platoon.push((
+            current_squad.push((
                 regiment_index.get_value(),
                 battalion_index.get_value(),
                 company_index.get_value(),
@@ -1223,12 +2494,12 @@ pub fn setup_ingame_ui(
                 squad_index.get_value(),
             ));
 
-            if current_platoon.len() == PLATOON_SIZE {
+            if current_squad.len() == PLATOON_SIZE {
                 commands.spawn(ButtonBundle {
                     style: Style {
                         position_type: PositionType::Relative,
-                        width: Val::Px(ui_button_nodes.button_size / 2.),
-                        height: Val::Px(ui_button_nodes.button_size / 2.),
+                        width: Val::Px(unit_button_size),
+                        height: Val::Px(unit_button_size),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
                         ..default()
@@ -1240,7 +2511,7 @@ pub fn setup_ingame_ui(
                     i,
                     (
                         CompanyTypes::None,
-                        current_platoon.clone(),
+                        current_squad.clone(),
                         false,
                     ),
                 )))
@@ -1248,12 +2519,12 @@ pub fn setup_ingame_ui(
                     i,
                     (
                         CompanyTypes::None,
-                        current_platoon.clone(),
+                        current_squad.clone(),
                     ),
                 ))})
                 .insert(Visibility::Hidden);
 
-                current_platoon.clear();
+                current_squad.clear();
             }
         }
     }
@@ -1291,8 +2562,8 @@ pub fn setup_ingame_ui(
                 commands.spawn(ButtonBundle {
                     style: Style {
                         position_type: PositionType::Relative,
-                        width: Val::Px(ui_button_nodes.button_size / 2.),
-                        height: Val::Px(ui_button_nodes.button_size / 2.),
+                        width: Val::Px(unit_button_size),
+                        height: Val::Px(unit_button_size),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
                         ..default()
@@ -1358,8 +2629,8 @@ pub fn setup_ingame_ui(
                 commands.spawn(ButtonBundle {
                     style: Style {
                         position_type: PositionType::Relative,
-                        width: Val::Px(ui_button_nodes.button_size / 2.),
-                        height: Val::Px(ui_button_nodes.button_size / 2.),
+                        width: Val::Px(unit_button_size),
+                        height: Val::Px(unit_button_size),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
                         ..default()
@@ -1424,8 +2695,8 @@ pub fn setup_ingame_ui(
                 commands.spawn(ButtonBundle {
                     style: Style {
                         position_type: PositionType::Relative,
-                        width: Val::Px(ui_button_nodes.button_size / 2.),
-                        height: Val::Px(ui_button_nodes.button_size / 2.),
+                        width: Val::Px(unit_button_size),
+                        height: Val::Px(unit_button_size),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
                         ..default()
@@ -1490,8 +2761,8 @@ pub fn setup_ingame_ui(
                 commands.spawn(ButtonBundle {
                     style: Style {
                         position_type: PositionType::Relative,
-                        width: Val::Px(ui_button_nodes.button_size / 2.),
-                        height: Val::Px(ui_button_nodes.button_size / 2.),
+                        width: Val::Px(unit_button_size),
+                        height: Val::Px(unit_button_size),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
                         ..default()
@@ -1517,6 +2788,75 @@ pub fn setup_ingame_ui(
 
                 current_brigade.clear();
             }
+        }
+    }
+
+    for team in 1..=2 {
+        for number in 1..=START_ARTILLERY_UNITS_COUNT {
+            let mut bar_entity = Entity::PLACEHOLDER;
+            
+            let button_entity = commands.spawn(ButtonBundle {
+                style: Style {
+                    position_type: PositionType::Relative,
+                    width: Val::Px(unit_button_size),
+                    height: Val::Px(unit_button_size),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                image: UiImage::new(other_assets.artillery_unit_symbol_blufor.clone()),
+                background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
+                ..default()
+            })
+            .with_children(|parent| {
+                    parent.spawn(NodeBundle{
+                        style: Style {
+                            position_type: PositionType::Relative,
+                            width: Val::Px(unit_button_size),
+                            height: Val::Px(unit_button_size / 4.),
+                            flex_direction: FlexDirection::Column,
+                            justify_content: JustifyContent::Start,
+                            align_items: AlignItems::Start,
+                            top: Val::Px(unit_button_size / 2. + unit_button_size / 4. / 2.),
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }).with_children(|parent| {
+                        bar_entity = parent.spawn(NodeBundle {
+                            style: Style {
+                                position_type: PositionType::Relative,
+                                width: Val::Px(unit_button_size),
+                                height: Val::Px(unit_button_size / 4.),
+                                flex_direction: FlexDirection::Column,
+                                justify_content: JustifyContent::Start,
+                                align_items: AlignItems::Start,
+                                ..default()
+                            },
+                            background_color: SUPPLIES_COLOR.into(),
+                            ..default()
+                        })
+                        .insert(SuppliesBar {
+                            original_width: unit_button_size,
+                        }).id();
+                    });
+                }
+            )
+            .insert(ArtilleryUnitSelector((
+                team,
+                number,
+                false,
+            )))
+            .insert(ButtonAction{action: Actions::ArtilleryUnitSelection((
+                team,
+                number,
+            ))})
+            .insert(Visibility::Hidden)
+            .id();
+
+            commands.entity(button_entity).insert(SuppliesBarHolder{
+                entity: bar_entity,
+            });
         }
     }
 
@@ -1692,11 +3032,11 @@ pub fn handle_button_clicks(
     mut event_writer1:
     (
         EventWriter<LandArmyButtonClickEvent>,
-        EventWriter<OpenBatallionTypesEvent>,
-        EventWriter<ChooseBatallionTypeEvent>,
-        EventWriter<SetupBatallionEvent>,
-        EventWriter<OpenPlatoonSpecializationsEvent>,
-        EventWriter<ChoosePlatoonSpecializationEvent>,
+        EventWriter<OpenCompanyTypesEvent>,
+        EventWriter<ChooseCompanyTypeEvent>,
+        EventWriter<SetupCompanyEvent>,
+        EventWriter<OpenSquadSpecializationsEvent>,
+        EventWriter<ChooseSquadSpecializationEvent>,
         EventWriter<ToggleProductionEvent>,
         EventWriter<SquadSelectionEvent>,
         EventWriter<OpenBuildingsListEvent>,
@@ -1720,6 +3060,7 @@ pub fn handle_button_clicks(
         EventWriter<SwitchBuildingState>,
         EventWriter<RebuildApartments>,
         EventWriter<TransportDisembarkEvent>,
+        EventWriter<ArtilleryUnitSelectedEvent>,
     ),
     mut buttons_hover_event_writer: (
         EventWriter<BuildingButtonHovered>,
@@ -1741,20 +3082,20 @@ pub fn handle_button_clicks(
                     Actions::OpenArmySettings => {
                         event_writer1.0.send(LandArmyButtonClickEvent);
                     },
-                    Actions::OpenBatallionTypes(d) => {
-                        event_writer1.1.send(OpenBatallionTypesEvent(*d));
+                    Actions::OpenCompanyTypes(d) => {
+                        event_writer1.1.send(OpenCompanyTypesEvent(*d));
                     },
-                    Actions::ChooseBatallionType(d) => {
-                        event_writer1.2.send(ChooseBatallionTypeEvent(*d));
+                    Actions::ChooseCompanyType(d) => {
+                        event_writer1.2.send(ChooseCompanyTypeEvent(*d));
                     },
-                    Actions::SetupBatallion(d) => {
-                        event_writer1.3.send(SetupBatallionEvent(*d));
+                    Actions::SetupCompany(d) => {
+                        event_writer1.3.send(SetupCompanyEvent(*d));
                     },
-                    Actions::OpenPlatoonSpecializations(d) => {
-                        event_writer1.4.send(OpenPlatoonSpecializationsEvent(*d));
+                    Actions::OpenSquadSpecializations(d) => {
+                        event_writer1.4.send(OpenSquadSpecializationsEvent(*d));
                     },
-                    Actions::ChoosePlatoonSpecialization(d) => {
-                        event_writer1.5.send(ChoosePlatoonSpecializationEvent(d.clone()));
+                    Actions::ChooseSquadSpecialization(d) => {
+                        event_writer1.5.send(ChooseSquadSpecializationEvent(d.clone()));
                     },
                     Actions::ToggleProduction => {
                         event_writer1.6.send(ToggleProductionEvent);
@@ -1834,6 +3175,12 @@ pub fn handle_button_clicks(
                     Actions::DisembarkInfantry => {
                         event_writer2.9.send(TransportDisembarkEvent);
                     }
+                    Actions::ArtilleryUnitSelection(d) => {
+                        if d.0 != player_data.team {
+                            continue;
+                        }
+                        event_writer2.10.send(ArtilleryUnitSelectedEvent(*d));
+                    }
                     _ => {},
                 }
 
@@ -1895,11 +3242,11 @@ pub fn land_army_settings_system(
     }
 }
 
-pub fn open_batallion_type_dropdown_list(
+pub fn open_company_type_dropdown_list(
     ui_button_nodes: Res<UiButtonNodes>,
     mut army_settings_nodes: ResMut<ArmySettingsNodes>,
     mut commands: Commands,
-    mut event_reader: EventReader<OpenBatallionTypesEvent>,
+    mut event_reader: EventReader<OpenCompanyTypesEvent>,
 ){
     for event in event_reader.read() {
         if army_settings_nodes.last_battalion_type_dropdown_list_index != -1 {
@@ -1920,8 +3267,8 @@ pub fn open_batallion_type_dropdown_list(
                 commands.entity(dropdown_list.0).despawn_descendants();
             }
 
-            commands.entity(army_settings_nodes.companies_row).despawn_descendants();
             commands.entity(army_settings_nodes.platoons_row).despawn_descendants();
+            commands.entity(army_settings_nodes.squads_row).despawn_descendants();
 
             commands.entity(army_settings_nodes.batallion_type_dropdown_lists[event.0.0 as usize].0).with_children(|parent| {
                 parent.spawn(NodeBundle{
@@ -1957,7 +3304,7 @@ pub fn open_batallion_type_dropdown_list(
                         background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                         ..default()
                     }).insert(ButtonAction{
-                        action: Actions::ChooseBatallionType((CompanyTypes::Regular, (event.0.1.0, event.0.1.1, event.0.1.2), event.0.0)),
+                        action: Actions::ChooseCompanyType((CompanyTypes::Regular, (event.0.1.0, event.0.1.1, event.0.1.2), event.0.0)),
                     })
                     .with_children(|button_parent| {
                         button_parent.spawn(TextBundle {
@@ -1996,7 +3343,7 @@ pub fn open_batallion_type_dropdown_list(
                         background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                         ..default()
                     }).insert(ButtonAction{
-                        action: Actions::ChooseBatallionType((CompanyTypes::Shock, (event.0.1.0, event.0.1.1, event.0.1.2), event.0.0)),
+                        action: Actions::ChooseCompanyType((CompanyTypes::Shock, (event.0.1.0, event.0.1.1, event.0.1.2), event.0.0)),
                     })
                     .with_children(|button_parent| {
                         button_parent.spawn(TextBundle {
@@ -2035,7 +3382,7 @@ pub fn open_batallion_type_dropdown_list(
                         background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                         ..default()
                     }).insert(ButtonAction{
-                        action: Actions::ChooseBatallionType((CompanyTypes::Armored, (event.0.1.0, event.0.1.1, event.0.1.2), event.0.0)),
+                        action: Actions::ChooseCompanyType((CompanyTypes::Armored, (event.0.1.0, event.0.1.1, event.0.1.2), event.0.0)),
                     })
                     .with_children(|button_parent| {
                         button_parent.spawn(TextBundle {
@@ -2061,12 +3408,12 @@ pub fn open_batallion_type_dropdown_list(
     }
 }
 
-pub fn choose_batallion_type(
+pub fn choose_company_type(
     mut army: ResMut<Armies>,
     mut commands: Commands,
     mut army_settings_nodes: ResMut<ArmySettingsNodes>,
     player_data: Res<PlayerData>,
-    mut event_reader: EventReader<ChooseBatallionTypeEvent>,
+    mut event_reader: EventReader<ChooseCompanyTypeEvent>,
 ){
     for event in event_reader.read() {
         let index = army_settings_nodes.last_battalion_type_dropdown_list_index as usize;
@@ -2082,7 +3429,7 @@ pub fn choose_batallion_type(
                         company_id.next();
                     }
 
-                    army.0.get_mut(&player_data.team).unwrap().shock_platoons.remove(&(
+                    army.0.get_mut(&player_data.team).unwrap().shock_squads.remove(&(
                         event.0.1.0,
                         event.0.1.1,
                         event.0.1.2,
@@ -2090,7 +3437,7 @@ pub fn choose_batallion_type(
                         platoon_id.get_value(),
                     ));
 
-                    army.0.get_mut(&player_data.team).unwrap().armored_platoons.remove(&(
+                    army.0.get_mut(&player_data.team).unwrap().armored_squads.remove(&(
                         event.0.1.0,
                         event.0.1.1,
                         event.0.1.2,
@@ -2098,14 +3445,14 @@ pub fn choose_batallion_type(
                         platoon_id.get_value(),
                     ));
 
-                    army.0.get_mut(&player_data.team).unwrap().regular_platoons.insert(
+                    army.0.get_mut(&player_data.team).unwrap().regular_squads.insert(
                         (
                             event.0.1.0,
                             event.0.1.1,
                             event.0.1.2,
                             company_id.get_value(),
                             platoon_id.get_value(),
-                        ), (RegularPlatoon((LimitedHashSet::new(), LimitedHashSet::new())), "atgm".to_string(), Entity::PLACEHOLDER)
+                        ), (RegularSquad((LimitedHashSet::new(), LimitedHashSet::new())), "atgm".to_string(), Entity::PLACEHOLDER)
                     );
 
                     commands.entity(army_settings_nodes.batallion_type_dropdown_lists[event.0.2 as usize].0).despawn_descendants();
@@ -2126,7 +3473,7 @@ pub fn choose_batallion_type(
                         company_id.next();
                     }
 
-                    army.0.get_mut(&player_data.team).unwrap().regular_platoons.remove(&(
+                    army.0.get_mut(&player_data.team).unwrap().regular_squads.remove(&(
                         event.0.1.0,
                         event.0.1.1,
                         event.0.1.2,
@@ -2134,7 +3481,7 @@ pub fn choose_batallion_type(
                         platoon_id.get_value(),
                     ));
 
-                    army.0.get_mut(&player_data.team).unwrap().armored_platoons.remove(&(
+                    army.0.get_mut(&player_data.team).unwrap().armored_squads.remove(&(
                         event.0.1.0,
                         event.0.1.1,
                         event.0.1.2,
@@ -2142,14 +3489,14 @@ pub fn choose_batallion_type(
                         platoon_id.get_value(),
                     ));
 
-                    army.0.get_mut(&player_data.team).unwrap().shock_platoons.insert(
+                    army.0.get_mut(&player_data.team).unwrap().shock_squads.insert(
                         (
                             event.0.1.0,
                             event.0.1.1,
                             event.0.1.2,
                             company_id.get_value(),
                             platoon_id.get_value(),
-                        ), (ShockPlatoon((LimitedHashSet::new(), LimitedHashSet::new())), "lat".to_string(), Entity::PLACEHOLDER)
+                        ), (ShockSquad((LimitedHashSet::new(), LimitedHashSet::new())), "lat".to_string(), Entity::PLACEHOLDER)
                     );
 
                     commands.entity(army_settings_nodes.batallion_type_dropdown_lists[event.0.2 as usize].0).despawn_descendants();
@@ -2170,7 +3517,7 @@ pub fn choose_batallion_type(
                         company_id.next();
                     }
 
-                    army.0.get_mut(&player_data.team).unwrap().shock_platoons.remove(&(
+                    army.0.get_mut(&player_data.team).unwrap().shock_squads.remove(&(
                         event.0.1.0,
                         event.0.1.1,
                         event.0.1.2,
@@ -2178,7 +3525,7 @@ pub fn choose_batallion_type(
                         platoon_id.get_value(),
                     ));
 
-                    army.0.get_mut(&player_data.team).unwrap().regular_platoons.remove(&(
+                    army.0.get_mut(&player_data.team).unwrap().regular_squads.remove(&(
                         event.0.1.0,
                         event.0.1.1,
                         event.0.1.2,
@@ -2186,14 +3533,14 @@ pub fn choose_batallion_type(
                         platoon_id.get_value(),
                     ));
 
-                    army.0.get_mut(&player_data.team).unwrap().armored_platoons.insert(
+                    army.0.get_mut(&player_data.team).unwrap().armored_squads.insert(
                         (
                             event.0.1.0,
                             event.0.1.1,
                             event.0.1.2,
                             company_id.get_value(),
                             platoon_id.get_value(),
-                        ), (ArmoredPlatoon(LimitedHashSet::new()), "tank".to_string(), Entity::PLACEHOLDER)
+                        ), (ArmoredSquad(LimitedHashSet::new()), "tank".to_string(), Entity::PLACEHOLDER)
                     );
 
                     commands.entity(army_settings_nodes.batallion_type_dropdown_lists[event.0.2 as usize].0).despawn_descendants();
@@ -2213,655 +3560,1717 @@ pub fn choose_batallion_type(
     }
 }
 
-pub fn setup_batallion(
+pub fn setup_company(
     mut commands: Commands,
     mut army_settings_nodes: ResMut<ArmySettingsNodes>,
     ui_button_nodes: Res<UiButtonNodes>,
-    mut event_reader: EventReader<SetupBatallionEvent>,
+    mut event_reader: EventReader<SetupCompanyEvent>,
+    mut last_opened_company: Local<i32>,
+    mut current_company_highlighter: Local<Option<Entity>>,
+    player_data: Res<PlayerData>,
+    armies: Res<Armies>,
 ){
     for event in event_reader.read() {
-        if army_settings_nodes.last_battalion_button_index != -1 {
-            let index = army_settings_nodes.last_battalion_button_index as usize;
-
-            if event.0.0 != army_settings_nodes.last_battalion_button_index &&
-            army_settings_nodes.batallion_buttons[index].1.get_value() == 1 {
-                army_settings_nodes.batallion_buttons[index].1.next();
-            }
-        }
-
-        army_settings_nodes.last_battalion_button_index = event.0.0;
-
-        if army_settings_nodes.batallion_buttons[event.0.0 as usize].1.next() {
-            commands.entity(army_settings_nodes.companies_row).despawn_descendants();
+        if event.0.0 == *last_opened_company {
+            *last_opened_company = -1;
             commands.entity(army_settings_nodes.platoons_row).despawn_descendants();
-        }
-        else {
-            commands.entity(army_settings_nodes.companies_row).despawn_descendants();
-            commands.entity(army_settings_nodes.platoons_row).despawn_descendants();
+            commands.entity(army_settings_nodes.squads_row).despawn_descendants();
 
-            let mut company_id: LimitedNumber<1, 3> = LimitedNumber::new();
-            let mut platoon_id: LimitedNumber<1, 3> = LimitedNumber::new();
-            platoon_id.set_value(0);
-    
-            match army_settings_nodes.batallion_type_dropdown_lists[event.0.0 as usize].1 {
-                CompanyTypes::Regular => {
-                    let mut company_placeholders: Vec<Entity> = Vec::new();
-                    for _i in 0..3 {
-                        commands.entity(army_settings_nodes.companies_row).with_children(|parent| {
-                            company_placeholders.push(
-                                parent.spawn(NodeBundle{
-                                    style: Style {
-                                        position_type: PositionType::Relative,
-                                        width: Val::Px((army_settings_nodes.land_army_settings_node_width / 6) as f32 - ui_button_nodes.margin * 2.),
-                                        height: Val::Px((army_settings_nodes.land_army_settings_node_height / 6) as f32 - ui_button_nodes.margin * 2.),
-                                        margin: UiRect {
-                                            left: Val::Px(ui_button_nodes.margin),
-                                            right: Val::Px(ui_button_nodes.margin),
-                                            top: Val::Px(ui_button_nodes.margin),
-                                            bottom: Val::Px(ui_button_nodes.margin),
-                                        },
-                                        justify_content: JustifyContent::Center,
-                                        align_items: AlignItems::Center,
-                                        flex_direction: FlexDirection::Column,
-                                        ..default()
-                                    },
-                                    background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
-                                    ..default()
-                                }).id()
-                            );
-                        });
-                    }
-                
-                    let mut platoon_placeholders: Vec<Entity> = Vec::new();
-                    for _i in 0..9 {
-                        commands.entity(army_settings_nodes.platoons_row).with_children(|parent| {
-                            platoon_placeholders.push(
-                                parent.spawn(NodeBundle{
-                                    style: Style {
-                                        position_type: PositionType::Relative,
-                                        width: Val::Px((army_settings_nodes.land_army_settings_node_width / 18) as f32 - ui_button_nodes.margin * 2.),
-                                        height: Val::Px((army_settings_nodes.land_army_settings_node_height / 6) as f32 - ui_button_nodes.margin * 2.),
-                                        margin: UiRect {
-                                            left: Val::Px(ui_button_nodes.margin),
-                                            right: Val::Px(ui_button_nodes.margin),
-                                            top: Val::Px(ui_button_nodes.margin),
-                                            bottom: Val::Px(ui_button_nodes.margin),
-                                        },
-                                        justify_content: JustifyContent::Center,
-                                        align_items: AlignItems::Center,
-                                        flex_direction: FlexDirection::Column,
-                                        ..default()
-                                    },
-                                    background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
-                                    ..default()
-                                }).id()
-                            );
-                        });
-                    }
-    
-                    for placeholder in company_placeholders {
-                        commands.entity(placeholder).with_children(|parent| {
-                            parent.spawn(ButtonBundle{
-                                style: Style {
-                                    position_type: PositionType::Relative,
-                                    width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                                    height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                                    margin: UiRect {
-                                        left: Val::Px(ui_button_nodes.margin),
-                                        right: Val::Px(ui_button_nodes.margin),
-                                        top: Val::Px(ui_button_nodes.margin),
-                                        bottom: Val::Px(ui_button_nodes.margin),
-                                    },
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
-                                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
-                                ..default()
-                            })
-                            .with_children(|button_parent| {
-                                button_parent.spawn(TextBundle {
-                                    text: Text{
-                                        sections: vec![TextSection {
-                                            value: "Company".to_string(),
-                                            style: TextStyle {
-                                                font_size: 20.,
-                                                ..default()
-                                            },
-                                            ..default()
-                                        }],
-                                        justify: JustifyText::Center,
-                                        ..default() 
-                                    },
-                                    ..default()
-                                });
-                            });
-                        });
-                    }
-
-                    let mut counter = 0;
-                    let platoon_start_index = event.0.0 * 9;
-
-                    army_settings_nodes.platoon_specialization_dropdown_lists.clear();
-
-                    for placeholder in platoon_placeholders {
-                        if platoon_id.next() {
-                            company_id.next();
-                        }
-
-                        if army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].1 != CompanyTypes::Regular {
-                            army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].0 = ("atgm".to_string(), "ATGM".to_string());
-                            army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].1 = CompanyTypes::Regular;
-                        }
-
-                        let current_platoon_specialization = army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].0.clone();
-
-                        commands.entity(placeholder).with_children(|parent| {
-                            parent.spawn(ButtonBundle{
-                                style: Style {
-                                    position_type: PositionType::Relative,
-                                    width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                                    height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                                    margin: UiRect {
-                                        left: Val::Px(ui_button_nodes.margin),
-                                        right: Val::Px(ui_button_nodes.margin),
-                                        top: Val::Px(ui_button_nodes.margin),
-                                        bottom: Val::Px(ui_button_nodes.margin),
-                                    },
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
-                                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
-                                ..default()
-                            })
-                            .with_children(|button_parent| {
-                                button_parent.spawn(TextBundle {
-                                    text: Text{
-                                        sections: vec![TextSection {
-                                            value: "Platoon".to_string(),
-                                            style: TextStyle {
-                                                font_size: 10.,
-                                                ..default()
-                                            },
-                                            ..default()
-                                        }],
-                                        justify: JustifyText::Center,
-                                        ..default() 
-                                    },
-                                    ..default()
-                                });
-                            });
-                        });
-
-                        commands.entity(placeholder).with_children(|parent| {
-                            parent.spawn(ButtonBundle{
-                                style: Style {
-                                    position_type: PositionType::Relative,
-                                    width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                                    height: Val::Px((ui_button_nodes.button_size - ui_button_nodes.margin * 2.) / 4.),
-                                    margin: UiRect {
-                                        left: Val::Px(ui_button_nodes.margin),
-                                        right: Val::Px(ui_button_nodes.margin),
-                                        top: Val::Px(ui_button_nodes.margin),
-                                        bottom: Val::Px(ui_button_nodes.margin),
-                                    },
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
-                                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
-                                ..default()
-                            }).insert(ButtonAction{
-                                action: Actions::OpenPlatoonSpecializations((
-                                    counter, (event.0.1.0, event.0.1.1, event.0.1.2, company_id.get_value(), platoon_id.get_value()), CompanyTypes::Regular
-                                ))}
-                            )
-                            .with_children(|button_parent| {
-                                army_settings_nodes.platoon_specialization_dropdown_lists.push((
-                                    button_parent.spawn(TextBundle {
-                                        text: Text{
-                                            sections: vec![TextSection {
-                                                value: current_platoon_specialization.1.clone(),
-                                                style: TextStyle {
-                                                    font_size: 10.,
-                                                    ..default()
-                                                },
-                                                ..default()
-                                            }],
-                                            justify: JustifyText::Center,
-                                            ..default()
-                    
-                                        },
-                                        style: Style {
-                                            justify_content: JustifyContent::Center,
-                                            align_items: AlignItems::Center,
-                                            ..default()
-                                        },
-                                        ..default()
-                                    }).id(),
-                                    current_platoon_specialization.0.clone(),
-                                    LimitedNumber::new()
-                                ));
-                            });
-                        });
-
-                        counter += 1;
-                    }
-                },
-                CompanyTypes::Shock => {
-                    let mut company_placeholders: Vec<Entity> = Vec::new();
-                    for _i in 0..3 {
-                        commands.entity(army_settings_nodes.companies_row).with_children(|parent| {
-                            company_placeholders.push(
-                                parent.spawn(NodeBundle{
-                                    style: Style {
-                                        position_type: PositionType::Relative,
-                                        width: Val::Px((army_settings_nodes.land_army_settings_node_width / 6) as f32 - ui_button_nodes.margin * 2.),
-                                        height: Val::Px((army_settings_nodes.land_army_settings_node_height / 6) as f32 - ui_button_nodes.margin * 2.),
-                                        margin: UiRect {
-                                            left: Val::Px(ui_button_nodes.margin),
-                                            right: Val::Px(ui_button_nodes.margin),
-                                            top: Val::Px(ui_button_nodes.margin),
-                                            bottom: Val::Px(ui_button_nodes.margin),
-                                        },
-                                        justify_content: JustifyContent::Center,
-                                        align_items: AlignItems::Center,
-                                        flex_direction: FlexDirection::Column,
-                                        ..default()
-                                    },
-                                    background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
-                                    ..default()
-                                }).id()
-                            );
-                        });
-                    }
-                
-                    let mut platoon_placeholders: Vec<Entity> = Vec::new();
-                    for _i in 0..9 {
-                        commands.entity(army_settings_nodes.platoons_row).with_children(|parent| {
-                            platoon_placeholders.push(
-                                parent.spawn(NodeBundle{
-                                    style: Style {
-                                        position_type: PositionType::Relative,
-                                        width: Val::Px((army_settings_nodes.land_army_settings_node_width / 18) as f32 - ui_button_nodes.margin * 2.),
-                                        height: Val::Px((army_settings_nodes.land_army_settings_node_height / 6) as f32 - ui_button_nodes.margin * 2.),
-                                        margin: UiRect {
-                                            left: Val::Px(ui_button_nodes.margin),
-                                            right: Val::Px(ui_button_nodes.margin),
-                                            top: Val::Px(ui_button_nodes.margin),
-                                            bottom: Val::Px(ui_button_nodes.margin),
-                                        },
-                                        justify_content: JustifyContent::Center,
-                                        align_items: AlignItems::Center,
-                                        flex_direction: FlexDirection::Column,
-                                        ..default()
-                                    },
-                                    background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
-                                    ..default()
-                                }).id()
-                            );
-                        });
-                    }
-    
-                    for placeholder in company_placeholders {
-                        commands.entity(placeholder).with_children(|parent| {
-                            parent.spawn(ButtonBundle{
-                                style: Style {
-                                    position_type: PositionType::Relative,
-                                    width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                                    height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                                    margin: UiRect {
-                                        left: Val::Px(ui_button_nodes.margin),
-                                        right: Val::Px(ui_button_nodes.margin),
-                                        top: Val::Px(ui_button_nodes.margin),
-                                        bottom: Val::Px(ui_button_nodes.margin),
-                                    },
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
-                                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
-                                ..default()
-                            })
-                            .with_children(|button_parent| {
-                                button_parent.spawn(TextBundle {
-                                    text: Text{
-                                        sections: vec![TextSection {
-                                            value: "Company".to_string(),
-                                            style: TextStyle {
-                                                font_size: 20.,
-                                                ..default()
-                                            },
-                                            ..default()
-                                        }],
-                                        justify: JustifyText::Center,
-                                        ..default() 
-                                    },
-                                    ..default()
-                                });
-                            });
-                        });
-                    }
-
-                    let mut counter = 0;
-                    let platoon_start_index = event.0.0 * 9;
-
-                    army_settings_nodes.platoon_specialization_dropdown_lists.clear();
-
-                    for placeholder in platoon_placeholders {
-                        if platoon_id.next() {
-                            company_id.next();
-                        }
-
-                        if army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].1 != CompanyTypes::Shock {
-                            army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].0 = ("lat".to_string(), "LAT".to_string());
-                            army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].1 = CompanyTypes::Shock;
-                        }
-
-                        let current_platoon_specialization = army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].0.clone();
-
-                        commands.entity(placeholder).with_children(|parent| {
-                            parent.spawn(ButtonBundle{
-                                style: Style {
-                                    position_type: PositionType::Relative,
-                                    width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                                    height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                                    margin: UiRect {
-                                        left: Val::Px(ui_button_nodes.margin),
-                                        right: Val::Px(ui_button_nodes.margin),
-                                        top: Val::Px(ui_button_nodes.margin),
-                                        bottom: Val::Px(ui_button_nodes.margin),
-                                    },
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
-                                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
-                                ..default()
-                            })
-                            .with_children(|button_parent| {
-                                button_parent.spawn(TextBundle {
-                                    text: Text{
-                                        sections: vec![TextSection {
-                                            value: "Platoon".to_string(),
-                                            style: TextStyle {
-                                                font_size: 10.,
-                                                ..default()
-                                            },
-                                            ..default()
-                                        }],
-                                        justify: JustifyText::Center,
-                                        ..default() 
-                                    },
-                                    ..default()
-                                });
-                            });
-                        });
-
-                        commands.entity(placeholder).with_children(|parent| {
-                            parent.spawn(ButtonBundle{
-                                style: Style {
-                                    position_type: PositionType::Relative,
-                                    width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                                    height: Val::Px((ui_button_nodes.button_size - ui_button_nodes.margin * 2.) / 4.),
-                                    margin: UiRect {
-                                        left: Val::Px(ui_button_nodes.margin),
-                                        right: Val::Px(ui_button_nodes.margin),
-                                        top: Val::Px(ui_button_nodes.margin),
-                                        bottom: Val::Px(ui_button_nodes.margin),
-                                    },
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
-                                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
-                                ..default()
-                            }).insert(ButtonAction{
-                                action: Actions::OpenPlatoonSpecializations((
-                                    counter, (event.0.1.0, event.0.1.1, event.0.1.2, company_id.get_value(), platoon_id.get_value()), CompanyTypes::Shock
-                                ))}
-                            )
-                            .with_children(|button_parent| {
-                                army_settings_nodes.platoon_specialization_dropdown_lists.push((
-                                    button_parent.spawn(TextBundle {
-                                        text: Text{
-                                            sections: vec![TextSection {
-                                                value: current_platoon_specialization.1.clone(),
-                                                style: TextStyle {
-                                                    font_size: 10.,
-                                                    ..default()
-                                                },
-                                                ..default()
-                                            }],
-                                            justify: JustifyText::Center,
-                                            ..default()
-                    
-                                        },
-                                        style: Style {
-                                            justify_content: JustifyContent::Center,
-                                            align_items: AlignItems::Center,
-                                            ..default()
-                                        },
-                                        ..default()
-                                    }).id(),
-                                    current_platoon_specialization.0.clone(),
-                                    LimitedNumber::new()
-                                ));
-                            });
-                        });
-
-                        counter += 1;
-                    }
-                },
-                CompanyTypes::Armored => {
-                    let mut company_placeholders: Vec<Entity> = Vec::new();
-                    for _i in 0..3 {
-                        commands.entity(army_settings_nodes.companies_row).with_children(|parent| {
-                            company_placeholders.push(
-                                parent.spawn(NodeBundle{
-                                    style: Style {
-                                        position_type: PositionType::Relative,
-                                        width: Val::Px((army_settings_nodes.land_army_settings_node_width / 6) as f32 - ui_button_nodes.margin * 2.),
-                                        height: Val::Px((army_settings_nodes.land_army_settings_node_height / 6) as f32 - ui_button_nodes.margin * 2.),
-                                        margin: UiRect {
-                                            left: Val::Px(ui_button_nodes.margin),
-                                            right: Val::Px(ui_button_nodes.margin),
-                                            top: Val::Px(ui_button_nodes.margin),
-                                            bottom: Val::Px(ui_button_nodes.margin),
-                                        },
-                                        justify_content: JustifyContent::Center,
-                                        align_items: AlignItems::Center,
-                                        flex_direction: FlexDirection::Column,
-                                        ..default()
-                                    },
-                                    background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
-                                    ..default()
-                                }).id()
-                            );
-                        });
-                    }
-                
-                    let mut platoon_placeholders: Vec<Entity> = Vec::new();
-                    for _i in 0..9 {
-                        commands.entity(army_settings_nodes.platoons_row).with_children(|parent| {
-                            platoon_placeholders.push(
-                                parent.spawn(NodeBundle{
-                                    style: Style {
-                                        position_type: PositionType::Relative,
-                                        width: Val::Px((army_settings_nodes.land_army_settings_node_width / 18) as f32 - ui_button_nodes.margin * 2.),
-                                        height: Val::Px((army_settings_nodes.land_army_settings_node_height / 6) as f32 - ui_button_nodes.margin * 2.),
-                                        margin: UiRect {
-                                            left: Val::Px(ui_button_nodes.margin),
-                                            right: Val::Px(ui_button_nodes.margin),
-                                            top: Val::Px(ui_button_nodes.margin),
-                                            bottom: Val::Px(ui_button_nodes.margin),
-                                        },
-                                        justify_content: JustifyContent::Center,
-                                        align_items: AlignItems::Center,
-                                        flex_direction: FlexDirection::Column,
-                                        ..default()
-                                    },
-                                    background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
-                                    ..default()
-                                }).id()
-                            );
-                        });
-                    }
-    
-                    for placeholder in company_placeholders {
-                        commands.entity(placeholder).with_children(|parent| {
-                            parent.spawn(ButtonBundle{
-                                style: Style {
-                                    position_type: PositionType::Relative,
-                                    width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                                    height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                                    margin: UiRect {
-                                        left: Val::Px(ui_button_nodes.margin),
-                                        right: Val::Px(ui_button_nodes.margin),
-                                        top: Val::Px(ui_button_nodes.margin),
-                                        bottom: Val::Px(ui_button_nodes.margin),
-                                    },
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
-                                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
-                                ..default()
-                            })
-                            .with_children(|button_parent| {
-                                button_parent.spawn(TextBundle {
-                                    text: Text{
-                                        sections: vec![TextSection {
-                                            value: "Company".to_string(),
-                                            style: TextStyle {
-                                                font_size: 20.,
-                                                ..default()
-                                            },
-                                            ..default()
-                                        }],
-                                        justify: JustifyText::Center,
-                                        ..default() 
-                                    },
-                                    ..default()
-                                });
-                            });
-                        });
-                    }
-
-                    let mut counter = 0;
-                    let platoon_start_index = event.0.0 * 9;
-
-                    army_settings_nodes.platoon_specialization_dropdown_lists.clear();
-
-                    for placeholder in platoon_placeholders {
-                        if platoon_id.next() {
-                            company_id.next();
-                        }
-
-                        if army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].1 != CompanyTypes::Armored {
-                            army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].0 = ("tank".to_string(), "Tank".to_string());
-                            army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].1 = CompanyTypes::Armored;
-                        }
-
-                        let current_platoon_specialization = army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].0.clone();
-
-                        commands.entity(placeholder).with_children(|parent| {
-                            parent.spawn(ButtonBundle{
-                                style: Style {
-                                    position_type: PositionType::Relative,
-                                    width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                                    height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                                    margin: UiRect {
-                                        left: Val::Px(ui_button_nodes.margin),
-                                        right: Val::Px(ui_button_nodes.margin),
-                                        top: Val::Px(ui_button_nodes.margin),
-                                        bottom: Val::Px(ui_button_nodes.margin),
-                                    },
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
-                                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
-                                ..default()
-                            })
-                            .with_children(|button_parent| {
-                                button_parent.spawn(TextBundle {
-                                    text: Text{
-                                        sections: vec![TextSection {
-                                            value: "Platoon".to_string(),
-                                            style: TextStyle {
-                                                font_size: 10.,
-                                                ..default()
-                                            },
-                                            ..default()
-                                        }],
-                                        justify: JustifyText::Center,
-                                        ..default() 
-                                    },
-                                    ..default()
-                                });
-                            });
-                        });
-
-                        commands.entity(placeholder).with_children(|parent| {
-                            parent.spawn(ButtonBundle{
-                                style: Style {
-                                    position_type: PositionType::Relative,
-                                    width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                                    height: Val::Px((ui_button_nodes.button_size - ui_button_nodes.margin * 2.) / 4.),
-                                    margin: UiRect {
-                                        left: Val::Px(ui_button_nodes.margin),
-                                        right: Val::Px(ui_button_nodes.margin),
-                                        top: Val::Px(ui_button_nodes.margin),
-                                        bottom: Val::Px(ui_button_nodes.margin),
-                                    },
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
-                                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
-                                ..default()
-                            }).insert(ButtonAction{
-                                action: Actions::OpenPlatoonSpecializations((
-                                    counter, (event.0.1.0, event.0.1.1, event.0.1.2, company_id.get_value(), platoon_id.get_value()), CompanyTypes::Armored
-                                ))}
-                            )
-                            .with_children(|button_parent| {
-                                army_settings_nodes.platoon_specialization_dropdown_lists.push((
-                                    button_parent.spawn(TextBundle {
-                                        text: Text{
-                                            sections: vec![TextSection {
-                                                value: current_platoon_specialization.1.clone(),
-                                                style: TextStyle {
-                                                    font_size: 10.,
-                                                    ..default()
-                                                },
-                                                ..default()
-                                            }],
-                                            justify: JustifyText::Center,
-                                            ..default()
-                    
-                                        },
-                                        style: Style {
-                                            justify_content: JustifyContent::Center,
-                                            align_items: AlignItems::Center,
-                                            ..default()
-                                        },
-                                        ..default()
-                                    }).id(),
-                                    current_platoon_specialization.0.clone(),
-                                    LimitedNumber::new()
-                                ));
-                            });
-                        });
-
-                        counter += 1;
-                    }
-                },
-                _ => {},
+            if let Some(highlighter) = *current_company_highlighter {
+                if commands.get_entity(highlighter).is_some() {
+                    commands.entity(highlighter).despawn_recursive();
+                }
             }
+
+            *current_company_highlighter = None;
+        } else {
+            *last_opened_company = event.0.0;
+
+            commands.entity(army_settings_nodes.platoons_row).despawn_descendants();
+            commands.entity(army_settings_nodes.squads_row).despawn_descendants();
+
+            if let Some(highlighter) = *current_company_highlighter {
+                if commands.get_entity(highlighter).is_some() {
+                    commands.entity(highlighter).despawn_recursive();
+                }
+            }
+
+            *current_company_highlighter = None;
+
+            let mut highlighter = Entity::PLACEHOLDER;
+
+            commands.entity(army_settings_nodes.company_buttons[event.0.0 as usize]).with_children(|parent| {
+                highlighter = parent.spawn(
+                    NodeBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size * 1.),
+                            top: Val::Px(0.),
+                            left: Val::Px(0.),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0., 1., 0., 0.25).into(),
+                        ..default()
+                    }
+                ).id();
+            });
+
+            *current_company_highlighter = Some(highlighter);
+
+            commands.entity(army_settings_nodes.platoons_row).with_children(|parent| {
+                parent.spawn(
+                    NodeBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. / 2. - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                - ui_button_nodes.button_size * 2. / 2.
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.1
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.5
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.1
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "1st Platoon".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                });
+
+                parent.spawn(
+                    NodeBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. / 2. - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                - ui_button_nodes.button_size * 2. / 2.
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "2nd Platoon".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                });
+
+                parent.spawn(
+                    NodeBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. / 2. - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                + ui_button_nodes.button_size * 2.
+                                + ui_button_nodes.button_size * 0.1
+                                + ui_button_nodes.button_size * 2.
+                                + ui_button_nodes.button_size * 0.5
+                                + ui_button_nodes.button_size * 2. / 2.
+                                + ui_button_nodes.button_size * 0.1
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "3rd Platoon".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                });
+            });
+
+            let mut squads = vec![
+                (0, (event.0.1.0, event.0.1.1, event.0.1.2, 1, 1), CompanyTypes::None),
+                (1, (event.0.1.0, event.0.1.1, event.0.1.2, 1, 2), CompanyTypes::None),
+                (2, (event.0.1.0, event.0.1.1, event.0.1.2, 1, 3), CompanyTypes::None),
+
+                (3, (event.0.1.0, event.0.1.1, event.0.1.2, 2, 1), CompanyTypes::None),
+                (4, (event.0.1.0, event.0.1.1, event.0.1.2, 2, 2), CompanyTypes::None),
+                (5, (event.0.1.0, event.0.1.1, event.0.1.2, 2, 3), CompanyTypes::None),
+
+                (6, (event.0.1.0, event.0.1.1, event.0.1.2, 3, 1), CompanyTypes::None),
+                (7, (event.0.1.0, event.0.1.1, event.0.1.2, 3, 2), CompanyTypes::None),
+                (8, (event.0.1.0, event.0.1.1, event.0.1.2, 3, 3), CompanyTypes::None),
+            ];
+
+            let mut current_specializations: Vec<String> = Vec::new();
+
+            if let Some(team_army) = armies.0.get(&player_data.team) {
+                if let Some(_regular_squad) = team_army.regular_squads.get(&squads[0].1) {
+                    squads[0].2 = CompanyTypes::Regular;
+                    squads[1].2 = CompanyTypes::Regular;
+                    squads[2].2 = CompanyTypes::Regular;
+                } else if let Some(_shock_squad) = team_army.shock_squads.get(&squads[0].1) {
+                    squads[0].2 = CompanyTypes::Shock;
+                    squads[1].2 = CompanyTypes::Shock;
+                    squads[2].2 = CompanyTypes::Shock;
+                } else if let Some(_armored_squad) = team_army.armored_squads.get(&squads[0].1) {
+                    squads[0].2 = CompanyTypes::Armored;
+                    squads[1].2 = CompanyTypes::Armored;
+                    squads[2].2 = CompanyTypes::Armored;
+                }
+
+                if let Some(_regular_squad) = team_army.regular_squads.get(&squads[3].1) {
+                    squads[3].2 = CompanyTypes::Regular;
+                    squads[4].2 = CompanyTypes::Regular;
+                    squads[5].2 = CompanyTypes::Regular;
+                } else if let Some(_shock_squad) = team_army.shock_squads.get(&squads[3].1) {
+                    squads[3].2 = CompanyTypes::Shock;
+                    squads[4].2 = CompanyTypes::Shock;
+                    squads[5].2 = CompanyTypes::Shock;
+                } else if let Some(_armored_squad) = team_army.armored_squads.get(&squads[3].1) {
+                    squads[3].2 = CompanyTypes::Armored;
+                    squads[4].2 = CompanyTypes::Armored;
+                    squads[5].2 = CompanyTypes::Armored;
+                }
+
+                if let Some(_regular_squad) = team_army.regular_squads.get(&squads[6].1) {
+                    squads[6].2 = CompanyTypes::Regular;
+                    squads[7].2 = CompanyTypes::Regular;
+                    squads[8].2 = CompanyTypes::Regular;
+                } else if let Some(_shock_squad) = team_army.shock_squads.get(&squads[6].1) {
+                    squads[6].2 = CompanyTypes::Shock;
+                    squads[7].2 = CompanyTypes::Shock;
+                    squads[8].2 = CompanyTypes::Shock;
+                } else if let Some(_armored_squad) = team_army.armored_squads.get(&squads[6].1) {
+                    squads[6].2 = CompanyTypes::Armored;
+                    squads[7].2 = CompanyTypes::Armored;
+                    squads[8].2 = CompanyTypes::Armored;
+                }
+
+                for squad_id in squads.iter() {
+                    match squad_id.2 {
+                        CompanyTypes::Regular => {
+                            if let Some(squad) = team_army.regular_squads.get(&squad_id.1) {
+                                match squad.1.as_str() {
+                                    "atgm" => {
+                                        current_specializations.push("ATGM".to_string());
+                                    }
+                                    "sniperr" => {
+                                        current_specializations.push("Sniper".to_string());
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        CompanyTypes::Shock => {
+                            if let Some(squad) = team_army.shock_squads.get(&squad_id.1) {
+                                match squad.1.as_str() {
+                                    "lat" => {
+                                        current_specializations.push("LAT".to_string());
+                                    }
+                                    "snipers" => {
+                                        current_specializations.push("Sniper".to_string());
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        CompanyTypes::Armored => {
+                            if let Some(squad) = team_army.armored_squads.get(&squad_id.1) {
+                                match squad.1.as_str() {
+                                    "tank" => {
+                                        current_specializations.push("Tank".to_string());
+                                    }
+                                    "ifv" => {
+                                        current_specializations.push("IFV".to_string());
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            let mut squad1 = Entity::PLACEHOLDER;
+            let mut squad2 = Entity::PLACEHOLDER;
+            let mut squad3 = Entity::PLACEHOLDER;
+            let mut squad4 = Entity::PLACEHOLDER;
+            let mut squad5 = Entity::PLACEHOLDER;
+            let mut squad6 = Entity::PLACEHOLDER;
+            let mut squad7 = Entity::PLACEHOLDER;
+            let mut squad8 = Entity::PLACEHOLDER;
+            let mut squad9 = Entity::PLACEHOLDER;
+
+            commands.entity(army_settings_nodes.squads_row).with_children(|parent| {
+                parent.spawn(
+                    ButtonBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                - ui_button_nodes.button_size * 2. / 2.
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.1
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.5
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.1
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.1
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "1st Squad".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                })
+                .with_children(|bar_parent| {
+                    squad1 = bar_parent.spawn(
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(ui_button_nodes.button_size * 2.),
+                                height: Val::Px(ui_button_nodes.button_size * 0.4),
+                                top: Val::Px(ui_button_nodes.button_size * 1.1),
+                                left: Val::Px(0.),
+                                align_content: AlignContent::Center,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                justify_items: JustifyItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                            ..default()
+                        }
+                    )
+                    .insert(
+                        ButtonAction{action: Actions::OpenSquadSpecializations(squads[0])}
+                    )
+                    .with_children(|button_parent| {
+                        button_parent.spawn(TextBundle {
+                            text: Text{
+                                sections: vec![TextSection {
+                                    value: current_specializations[0].clone(),
+                                    style: TextStyle {
+                                        font_size: 30.,
+                                        ..default()
+                                    },
+                                    ..default()
+                                }],
+                                justify: JustifyText::Center,
+                                ..default()
+                            },
+                            ..default()
+                        });
+                    }).id();
+                });
+
+                parent.spawn(
+                    ButtonBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                - ui_button_nodes.button_size * 2. / 2.
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.1
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.5
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.1
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "2nd Squad".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                })
+                .with_children(|bar_parent| {
+                    squad2 = bar_parent.spawn(
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(ui_button_nodes.button_size * 2.),
+                                height: Val::Px(ui_button_nodes.button_size * 0.4),
+                                top: Val::Px(ui_button_nodes.button_size * 1.1),
+                                left: Val::Px(0.),
+                                align_content: AlignContent::Center,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                justify_items: JustifyItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                            ..default()
+                        }
+                    )
+                    .insert(
+                        ButtonAction{action: Actions::OpenSquadSpecializations(squads[1])}
+                    )
+                    .with_children(|button_parent| {
+                        button_parent.spawn(TextBundle {
+                            text: Text{
+                                sections: vec![TextSection {
+                                    value: current_specializations[1].clone(),
+                                    style: TextStyle {
+                                        font_size: 30.,
+                                        ..default()
+                                    },
+                                    ..default()
+                                }],
+                                justify: JustifyText::Center,
+                                ..default()
+                            },
+                            ..default()
+                        });
+                    }).id();
+                });
+
+                parent.spawn(
+                    ButtonBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                - ui_button_nodes.button_size * 2. / 2.
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.1
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.5
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "3rd Squad".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                })
+                .with_children(|bar_parent| {
+                    squad3 = bar_parent.spawn(
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(ui_button_nodes.button_size * 2.),
+                                height: Val::Px(ui_button_nodes.button_size * 0.4),
+                                top: Val::Px(ui_button_nodes.button_size * 1.1),
+                                left: Val::Px(0.),
+                                align_content: AlignContent::Center,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                justify_items: JustifyItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                            ..default()
+                        }
+                    )
+                    .insert(
+                        ButtonAction{action: Actions::OpenSquadSpecializations(squads[2])}
+                    )
+                    .with_children(|button_parent| {
+                        button_parent.spawn(TextBundle {
+                            text: Text{
+                                sections: vec![TextSection {
+                                    value: current_specializations[2].clone(),
+                                    style: TextStyle {
+                                        font_size: 30.,
+                                        ..default()
+                                    },
+                                    ..default()
+                                }],
+                                justify: JustifyText::Center,
+                                ..default()
+                            },
+                            ..default()
+                        });
+                    }).id();
+                });
+
+                parent.spawn(
+                    ButtonBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                - ui_button_nodes.button_size * 2. / 2.
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.1
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "1st Squad".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                })
+                .with_children(|bar_parent| {
+                    squad4 = bar_parent.spawn(
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(ui_button_nodes.button_size * 2.),
+                                height: Val::Px(ui_button_nodes.button_size * 0.4),
+                                top: Val::Px(ui_button_nodes.button_size * 1.1),
+                                left: Val::Px(0.),
+                                align_content: AlignContent::Center,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                justify_items: JustifyItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                            ..default()
+                        }
+                    )
+                    .insert(
+                        ButtonAction{action: Actions::OpenSquadSpecializations(squads[3])}
+                    )
+                    .with_children(|button_parent| {
+                        button_parent.spawn(TextBundle {
+                            text: Text{
+                                sections: vec![TextSection {
+                                    value: current_specializations[3].clone(),
+                                    style: TextStyle {
+                                        font_size: 30.,
+                                        ..default()
+                                    },
+                                    ..default()
+                                }],
+                                justify: JustifyText::Center,
+                                ..default()
+                            },
+                            ..default()
+                        });
+                    }).id();
+                });
+
+                parent.spawn(
+                    ButtonBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                - ui_button_nodes.button_size * 2. / 2.
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "2nd Squad".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                })
+                .with_children(|bar_parent| {
+                    squad5 = bar_parent.spawn(
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(ui_button_nodes.button_size * 2.),
+                                height: Val::Px(ui_button_nodes.button_size * 0.4),
+                                top: Val::Px(ui_button_nodes.button_size * 1.1),
+                                left: Val::Px(0.),
+                                align_content: AlignContent::Center,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                justify_items: JustifyItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                            ..default()
+                        }
+                    )
+                    .insert(
+                        ButtonAction{action: Actions::OpenSquadSpecializations(squads[4])}
+                    )
+                    .with_children(|button_parent| {
+                        button_parent.spawn(TextBundle {
+                            text: Text{
+                                sections: vec![TextSection {
+                                    value: current_specializations[4].clone(),
+                                    style: TextStyle {
+                                        font_size: 30.,
+                                        ..default()
+                                    },
+                                    ..default()
+                                }],
+                                justify: JustifyText::Center,
+                                ..default()
+                            },
+                            ..default()
+                        });
+                    }).id();
+                });
+
+                parent.spawn(
+                    ButtonBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                + ui_button_nodes.button_size * 2. / 2.
+                                + ui_button_nodes.button_size * 0.1
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "3rd Squad".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                })
+                .with_children(|bar_parent| {
+                    squad6 = bar_parent.spawn(
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(ui_button_nodes.button_size * 2.),
+                                height: Val::Px(ui_button_nodes.button_size * 0.4),
+                                top: Val::Px(ui_button_nodes.button_size * 1.1),
+                                left: Val::Px(0.),
+                                align_content: AlignContent::Center,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                justify_items: JustifyItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                            ..default()
+                        }
+                    )
+                    .insert(
+                        ButtonAction{action: Actions::OpenSquadSpecializations(squads[5])}
+                    )
+                    .with_children(|button_parent| {
+                        button_parent.spawn(TextBundle {
+                            text: Text{
+                                sections: vec![TextSection {
+                                    value: current_specializations[5].clone(),
+                                    style: TextStyle {
+                                        font_size: 30.,
+                                        ..default()
+                                    },
+                                    ..default()
+                                }],
+                                justify: JustifyText::Center,
+                                ..default()
+                            },
+                            ..default()
+                        });
+                    }).id();
+                });
+
+                parent.spawn(
+                    ButtonBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                + ui_button_nodes.button_size * 2.
+                                + ui_button_nodes.button_size * 0.1
+                                + ui_button_nodes.button_size * 2. / 2.
+                                + ui_button_nodes.button_size * 0.5
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "1st Squad".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                })
+                .with_children(|bar_parent| {
+                    squad7 = bar_parent.spawn(
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(ui_button_nodes.button_size * 2.),
+                                height: Val::Px(ui_button_nodes.button_size * 0.4),
+                                top: Val::Px(ui_button_nodes.button_size * 1.1),
+                                left: Val::Px(0.),
+                                align_content: AlignContent::Center,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                justify_items: JustifyItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                            ..default()
+                        }
+                    )
+                    .insert(
+                        ButtonAction{action: Actions::OpenSquadSpecializations(squads[6])}
+                    )
+                    .with_children(|button_parent| {
+                        button_parent.spawn(TextBundle {
+                            text: Text{
+                                sections: vec![TextSection {
+                                    value: current_specializations[6].clone(),
+                                    style: TextStyle {
+                                        font_size: 30.,
+                                        ..default()
+                                    },
+                                    ..default()
+                                }],
+                                justify: JustifyText::Center,
+                                ..default()
+                            },
+                            ..default()
+                        });
+                    }).id();
+                });
+
+                parent.spawn(
+                    ButtonBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                + ui_button_nodes.button_size * 2.
+                                + ui_button_nodes.button_size * 0.1
+                                + ui_button_nodes.button_size * 2.
+                                + ui_button_nodes.button_size * 0.5
+                                + ui_button_nodes.button_size * 2. / 2.
+                                + ui_button_nodes.button_size * 0.1
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "2nd Squad".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                })
+                .with_children(|bar_parent| {
+                    squad8 = bar_parent.spawn(
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(ui_button_nodes.button_size * 2.),
+                                height: Val::Px(ui_button_nodes.button_size * 0.4),
+                                top: Val::Px(ui_button_nodes.button_size * 1.1),
+                                left: Val::Px(0.),
+                                align_content: AlignContent::Center,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                justify_items: JustifyItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                            ..default()
+                        }
+                    )
+                    .insert(
+                        ButtonAction{action: Actions::OpenSquadSpecializations(squads[7])}
+                    )
+                    .with_children(|button_parent| {
+                        button_parent.spawn(TextBundle {
+                            text: Text{
+                                sections: vec![TextSection {
+                                    value: current_specializations[7].clone(),
+                                    style: TextStyle {
+                                        font_size: 30.,
+                                        ..default()
+                                    },
+                                    ..default()
+                                }],
+                                justify: JustifyText::Center,
+                                ..default()
+                            },
+                            ..default()
+                        });
+                    }).id();
+                });
+
+                parent.spawn(
+                    ButtonBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                + ui_button_nodes.button_size * 2.
+                                + ui_button_nodes.button_size * 0.1
+                                + ui_button_nodes.button_size * 2.
+                                + ui_button_nodes.button_size * 0.5
+                                + ui_button_nodes.button_size * 2.
+                                + ui_button_nodes.button_size * 0.1
+                                + ui_button_nodes.button_size * 2. / 2.
+                                + ui_button_nodes.button_size * 0.1
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "3rd Squad".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                })
+                .with_children(|bar_parent| {
+                    squad9 = bar_parent.spawn(
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(ui_button_nodes.button_size * 2.),
+                                height: Val::Px(ui_button_nodes.button_size * 0.4),
+                                top: Val::Px(ui_button_nodes.button_size * 1.1),
+                                left: Val::Px(0.),
+                                align_content: AlignContent::Center,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                justify_items: JustifyItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                            ..default()
+                        }
+                    )
+                    .insert(
+                        ButtonAction{action: Actions::OpenSquadSpecializations(squads[8])}
+                    )
+                    .with_children(|button_parent| {
+                        button_parent.spawn(TextBundle {
+                            text: Text{
+                                sections: vec![TextSection {
+                                    value: current_specializations[8].clone(),
+                                    style: TextStyle {
+                                        font_size: 30.,
+                                        ..default()
+                                    },
+                                    ..default()
+                                }],
+                                justify: JustifyText::Center,
+                                ..default()
+                            },
+                            ..default()
+                        });
+                    }).id();
+                });
+            });
+
+            army_settings_nodes.squad_specialization_dropdown_lists = vec![
+                squad1,
+                squad2,
+                squad3,
+                squad4,
+                squad5,
+                squad6,
+                squad7,
+                squad8,
+                squad9,
+            ];
         }
+
+        // if army_settings_nodes.last_battalion_button_index != -1 {
+        //     let index = army_settings_nodes.last_battalion_button_index as usize;
+
+        //     if event.0.0 != army_settings_nodes.last_battalion_button_index &&
+        //     army_settings_nodes.company_buttons[index].1.get_value() == 1 {
+        //         army_settings_nodes.company_buttons[index].1.next();
+        //     }
+        // }
+
+        // army_settings_nodes.last_battalion_button_index = event.0.0;
+
+        // if army_settings_nodes.company_buttons[event.0.0 as usize].1.next() {
+        //     commands.entity(army_settings_nodes.platoons_row).despawn_descendants();
+        //     commands.entity(army_settings_nodes.squads_row).despawn_descendants();
+        // }
+        // else {
+        //     commands.entity(army_settings_nodes.platoons_row).despawn_descendants();
+        //     commands.entity(army_settings_nodes.squads_row).despawn_descendants();
+
+        //     let mut company_id: LimitedNumber<1, 3> = LimitedNumber::new();
+        //     let mut platoon_id: LimitedNumber<1, 3> = LimitedNumber::new();
+        //     platoon_id.set_value(0);
+    
+        //     match army_settings_nodes.batallion_type_dropdown_lists[event.0.0 as usize].1 {
+        //         CompanyTypes::Regular => {
+        //             let mut company_placeholders: Vec<Entity> = Vec::new();
+        //             for _i in 0..3 {
+        //                 commands.entity(army_settings_nodes.platoons_row).with_children(|parent| {
+        //                     company_placeholders.push(
+        //                         parent.spawn(NodeBundle{
+        //                             style: Style {
+        //                                 position_type: PositionType::Relative,
+        //                                 width: Val::Px((army_settings_nodes.land_army_settings_node_width / 6) as f32 - ui_button_nodes.margin * 2.),
+        //                                 height: Val::Px((army_settings_nodes.land_army_settings_node_height / 6) as f32 - ui_button_nodes.margin * 2.),
+        //                                 margin: UiRect {
+        //                                     left: Val::Px(ui_button_nodes.margin),
+        //                                     right: Val::Px(ui_button_nodes.margin),
+        //                                     top: Val::Px(ui_button_nodes.margin),
+        //                                     bottom: Val::Px(ui_button_nodes.margin),
+        //                                 },
+        //                                 justify_content: JustifyContent::Center,
+        //                                 align_items: AlignItems::Center,
+        //                                 flex_direction: FlexDirection::Column,
+        //                                 ..default()
+        //                             },
+        //                             background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
+        //                             ..default()
+        //                         }).id()
+        //                     );
+        //                 });
+        //             }
+                
+        //             let mut platoon_placeholders: Vec<Entity> = Vec::new();
+        //             for _i in 0..9 {
+        //                 commands.entity(army_settings_nodes.squads_row).with_children(|parent| {
+        //                     platoon_placeholders.push(
+        //                         parent.spawn(NodeBundle{
+        //                             style: Style {
+        //                                 position_type: PositionType::Relative,
+        //                                 width: Val::Px((army_settings_nodes.land_army_settings_node_width / 18) as f32 - ui_button_nodes.margin * 2.),
+        //                                 height: Val::Px((army_settings_nodes.land_army_settings_node_height / 6) as f32 - ui_button_nodes.margin * 2.),
+        //                                 margin: UiRect {
+        //                                     left: Val::Px(ui_button_nodes.margin),
+        //                                     right: Val::Px(ui_button_nodes.margin),
+        //                                     top: Val::Px(ui_button_nodes.margin),
+        //                                     bottom: Val::Px(ui_button_nodes.margin),
+        //                                 },
+        //                                 justify_content: JustifyContent::Center,
+        //                                 align_items: AlignItems::Center,
+        //                                 flex_direction: FlexDirection::Column,
+        //                                 ..default()
+        //                             },
+        //                             background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
+        //                             ..default()
+        //                         }).id()
+        //                     );
+        //                 });
+        //             }
+    
+        //             for placeholder in company_placeholders {
+        //                 commands.entity(placeholder).with_children(|parent| {
+        //                     parent.spawn(ButtonBundle{
+        //                         style: Style {
+        //                             position_type: PositionType::Relative,
+        //                             width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+        //                             height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+        //                             margin: UiRect {
+        //                                 left: Val::Px(ui_button_nodes.margin),
+        //                                 right: Val::Px(ui_button_nodes.margin),
+        //                                 top: Val::Px(ui_button_nodes.margin),
+        //                                 bottom: Val::Px(ui_button_nodes.margin),
+        //                             },
+        //                             justify_content: JustifyContent::Center,
+        //                             align_items: AlignItems::Center,
+        //                             ..default()
+        //                         },
+        //                         background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+        //                         ..default()
+        //                     })
+        //                     .with_children(|button_parent| {
+        //                         button_parent.spawn(TextBundle {
+        //                             text: Text{
+        //                                 sections: vec![TextSection {
+        //                                     value: "Company".to_string(),
+        //                                     style: TextStyle {
+        //                                         font_size: 20.,
+        //                                         ..default()
+        //                                     },
+        //                                     ..default()
+        //                                 }],
+        //                                 justify: JustifyText::Center,
+        //                                 ..default() 
+        //                             },
+        //                             ..default()
+        //                         });
+        //                     });
+        //                 });
+        //             }
+
+        //             let mut counter = 0;
+        //             let platoon_start_index = event.0.0 * 9;
+
+        //             army_settings_nodes.platoon_specialization_dropdown_lists.clear();
+
+        //             for placeholder in platoon_placeholders {
+        //                 if platoon_id.next() {
+        //                     company_id.next();
+        //                 }
+
+        //                 if army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].1 != CompanyTypes::Regular {
+        //                     army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].0 = ("atgm".to_string(), "ATGM".to_string());
+        //                     army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].1 = CompanyTypes::Regular;
+        //                 }
+
+        //                 let current_platoon_specialization = army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].0.clone();
+
+        //                 commands.entity(placeholder).with_children(|parent| {
+        //                     parent.spawn(ButtonBundle{
+        //                         style: Style {
+        //                             position_type: PositionType::Relative,
+        //                             width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+        //                             height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+        //                             margin: UiRect {
+        //                                 left: Val::Px(ui_button_nodes.margin),
+        //                                 right: Val::Px(ui_button_nodes.margin),
+        //                                 top: Val::Px(ui_button_nodes.margin),
+        //                                 bottom: Val::Px(ui_button_nodes.margin),
+        //                             },
+        //                             justify_content: JustifyContent::Center,
+        //                             align_items: AlignItems::Center,
+        //                             ..default()
+        //                         },
+        //                         background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+        //                         ..default()
+        //                     })
+        //                     .with_children(|button_parent| {
+        //                         button_parent.spawn(TextBundle {
+        //                             text: Text{
+        //                                 sections: vec![TextSection {
+        //                                     value: "Platoon".to_string(),
+        //                                     style: TextStyle {
+        //                                         font_size: 10.,
+        //                                         ..default()
+        //                                     },
+        //                                     ..default()
+        //                                 }],
+        //                                 justify: JustifyText::Center,
+        //                                 ..default() 
+        //                             },
+        //                             ..default()
+        //                         });
+        //                     });
+        //                 });
+
+        //                 commands.entity(placeholder).with_children(|parent| {
+        //                     parent.spawn(ButtonBundle{
+        //                         style: Style {
+        //                             position_type: PositionType::Relative,
+        //                             width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+        //                             height: Val::Px((ui_button_nodes.button_size - ui_button_nodes.margin * 2.) / 4.),
+        //                             margin: UiRect {
+        //                                 left: Val::Px(ui_button_nodes.margin),
+        //                                 right: Val::Px(ui_button_nodes.margin),
+        //                                 top: Val::Px(ui_button_nodes.margin),
+        //                                 bottom: Val::Px(ui_button_nodes.margin),
+        //                             },
+        //                             justify_content: JustifyContent::Center,
+        //                             align_items: AlignItems::Center,
+        //                             ..default()
+        //                         },
+        //                         background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+        //                         ..default()
+        //                     }).insert(ButtonAction{
+        //                         action: Actions::OpenPlatoonSpecializations((
+        //                             counter, (event.0.1.0, event.0.1.1, event.0.1.2, company_id.get_value(), platoon_id.get_value()), CompanyTypes::Regular
+        //                         ))}
+        //                     )
+        //                     .with_children(|button_parent| {
+        //                         army_settings_nodes.platoon_specialization_dropdown_lists.push((
+        //                             button_parent.spawn(TextBundle {
+        //                                 text: Text{
+        //                                     sections: vec![TextSection {
+        //                                         value: current_platoon_specialization.1.clone(),
+        //                                         style: TextStyle {
+        //                                             font_size: 10.,
+        //                                             ..default()
+        //                                         },
+        //                                         ..default()
+        //                                     }],
+        //                                     justify: JustifyText::Center,
+        //                                     ..default()
+                    
+        //                                 },
+        //                                 style: Style {
+        //                                     justify_content: JustifyContent::Center,
+        //                                     align_items: AlignItems::Center,
+        //                                     ..default()
+        //                                 },
+        //                                 ..default()
+        //                             }).id(),
+        //                             current_platoon_specialization.0.clone(),
+        //                             LimitedNumber::new()
+        //                         ));
+        //                     });
+        //                 });
+
+        //                 counter += 1;
+        //             }
+        //         },
+        //         CompanyTypes::Shock => {
+        //             let mut company_placeholders: Vec<Entity> = Vec::new();
+        //             for _i in 0..3 {
+        //                 commands.entity(army_settings_nodes.platoons_row).with_children(|parent| {
+        //                     company_placeholders.push(
+        //                         parent.spawn(NodeBundle{
+        //                             style: Style {
+        //                                 position_type: PositionType::Relative,
+        //                                 width: Val::Px((army_settings_nodes.land_army_settings_node_width / 6) as f32 - ui_button_nodes.margin * 2.),
+        //                                 height: Val::Px((army_settings_nodes.land_army_settings_node_height / 6) as f32 - ui_button_nodes.margin * 2.),
+        //                                 margin: UiRect {
+        //                                     left: Val::Px(ui_button_nodes.margin),
+        //                                     right: Val::Px(ui_button_nodes.margin),
+        //                                     top: Val::Px(ui_button_nodes.margin),
+        //                                     bottom: Val::Px(ui_button_nodes.margin),
+        //                                 },
+        //                                 justify_content: JustifyContent::Center,
+        //                                 align_items: AlignItems::Center,
+        //                                 flex_direction: FlexDirection::Column,
+        //                                 ..default()
+        //                             },
+        //                             background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
+        //                             ..default()
+        //                         }).id()
+        //                     );
+        //                 });
+        //             }
+                
+        //             let mut platoon_placeholders: Vec<Entity> = Vec::new();
+        //             for _i in 0..9 {
+        //                 commands.entity(army_settings_nodes.squads_row).with_children(|parent| {
+        //                     platoon_placeholders.push(
+        //                         parent.spawn(NodeBundle{
+        //                             style: Style {
+        //                                 position_type: PositionType::Relative,
+        //                                 width: Val::Px((army_settings_nodes.land_army_settings_node_width / 18) as f32 - ui_button_nodes.margin * 2.),
+        //                                 height: Val::Px((army_settings_nodes.land_army_settings_node_height / 6) as f32 - ui_button_nodes.margin * 2.),
+        //                                 margin: UiRect {
+        //                                     left: Val::Px(ui_button_nodes.margin),
+        //                                     right: Val::Px(ui_button_nodes.margin),
+        //                                     top: Val::Px(ui_button_nodes.margin),
+        //                                     bottom: Val::Px(ui_button_nodes.margin),
+        //                                 },
+        //                                 justify_content: JustifyContent::Center,
+        //                                 align_items: AlignItems::Center,
+        //                                 flex_direction: FlexDirection::Column,
+        //                                 ..default()
+        //                             },
+        //                             background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
+        //                             ..default()
+        //                         }).id()
+        //                     );
+        //                 });
+        //             }
+    
+        //             for placeholder in company_placeholders {
+        //                 commands.entity(placeholder).with_children(|parent| {
+        //                     parent.spawn(ButtonBundle{
+        //                         style: Style {
+        //                             position_type: PositionType::Relative,
+        //                             width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+        //                             height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+        //                             margin: UiRect {
+        //                                 left: Val::Px(ui_button_nodes.margin),
+        //                                 right: Val::Px(ui_button_nodes.margin),
+        //                                 top: Val::Px(ui_button_nodes.margin),
+        //                                 bottom: Val::Px(ui_button_nodes.margin),
+        //                             },
+        //                             justify_content: JustifyContent::Center,
+        //                             align_items: AlignItems::Center,
+        //                             ..default()
+        //                         },
+        //                         background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+        //                         ..default()
+        //                     })
+        //                     .with_children(|button_parent| {
+        //                         button_parent.spawn(TextBundle {
+        //                             text: Text{
+        //                                 sections: vec![TextSection {
+        //                                     value: "Company".to_string(),
+        //                                     style: TextStyle {
+        //                                         font_size: 20.,
+        //                                         ..default()
+        //                                     },
+        //                                     ..default()
+        //                                 }],
+        //                                 justify: JustifyText::Center,
+        //                                 ..default() 
+        //                             },
+        //                             ..default()
+        //                         });
+        //                     });
+        //                 });
+        //             }
+
+        //             let mut counter = 0;
+        //             let platoon_start_index = event.0.0 * 9;
+
+        //             army_settings_nodes.platoon_specialization_dropdown_lists.clear();
+
+        //             for placeholder in platoon_placeholders {
+        //                 if platoon_id.next() {
+        //                     company_id.next();
+        //                 }
+
+        //                 if army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].1 != CompanyTypes::Shock {
+        //                     army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].0 = ("lat".to_string(), "LAT".to_string());
+        //                     army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].1 = CompanyTypes::Shock;
+        //                 }
+
+        //                 let current_platoon_specialization = army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].0.clone();
+
+        //                 commands.entity(placeholder).with_children(|parent| {
+        //                     parent.spawn(ButtonBundle{
+        //                         style: Style {
+        //                             position_type: PositionType::Relative,
+        //                             width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+        //                             height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+        //                             margin: UiRect {
+        //                                 left: Val::Px(ui_button_nodes.margin),
+        //                                 right: Val::Px(ui_button_nodes.margin),
+        //                                 top: Val::Px(ui_button_nodes.margin),
+        //                                 bottom: Val::Px(ui_button_nodes.margin),
+        //                             },
+        //                             justify_content: JustifyContent::Center,
+        //                             align_items: AlignItems::Center,
+        //                             ..default()
+        //                         },
+        //                         background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+        //                         ..default()
+        //                     })
+        //                     .with_children(|button_parent| {
+        //                         button_parent.spawn(TextBundle {
+        //                             text: Text{
+        //                                 sections: vec![TextSection {
+        //                                     value: "Platoon".to_string(),
+        //                                     style: TextStyle {
+        //                                         font_size: 10.,
+        //                                         ..default()
+        //                                     },
+        //                                     ..default()
+        //                                 }],
+        //                                 justify: JustifyText::Center,
+        //                                 ..default() 
+        //                             },
+        //                             ..default()
+        //                         });
+        //                     });
+        //                 });
+
+        //                 commands.entity(placeholder).with_children(|parent| {
+        //                     parent.spawn(ButtonBundle{
+        //                         style: Style {
+        //                             position_type: PositionType::Relative,
+        //                             width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+        //                             height: Val::Px((ui_button_nodes.button_size - ui_button_nodes.margin * 2.) / 4.),
+        //                             margin: UiRect {
+        //                                 left: Val::Px(ui_button_nodes.margin),
+        //                                 right: Val::Px(ui_button_nodes.margin),
+        //                                 top: Val::Px(ui_button_nodes.margin),
+        //                                 bottom: Val::Px(ui_button_nodes.margin),
+        //                             },
+        //                             justify_content: JustifyContent::Center,
+        //                             align_items: AlignItems::Center,
+        //                             ..default()
+        //                         },
+        //                         background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+        //                         ..default()
+        //                     }).insert(ButtonAction{
+        //                         action: Actions::OpenPlatoonSpecializations((
+        //                             counter, (event.0.1.0, event.0.1.1, event.0.1.2, company_id.get_value(), platoon_id.get_value()), CompanyTypes::Shock
+        //                         ))}
+        //                     )
+        //                     .with_children(|button_parent| {
+        //                         army_settings_nodes.platoon_specialization_dropdown_lists.push((
+        //                             button_parent.spawn(TextBundle {
+        //                                 text: Text{
+        //                                     sections: vec![TextSection {
+        //                                         value: current_platoon_specialization.1.clone(),
+        //                                         style: TextStyle {
+        //                                             font_size: 10.,
+        //                                             ..default()
+        //                                         },
+        //                                         ..default()
+        //                                     }],
+        //                                     justify: JustifyText::Center,
+        //                                     ..default()
+                    
+        //                                 },
+        //                                 style: Style {
+        //                                     justify_content: JustifyContent::Center,
+        //                                     align_items: AlignItems::Center,
+        //                                     ..default()
+        //                                 },
+        //                                 ..default()
+        //                             }).id(),
+        //                             current_platoon_specialization.0.clone(),
+        //                             LimitedNumber::new()
+        //                         ));
+        //                     });
+        //                 });
+
+        //                 counter += 1;
+        //             }
+        //         },
+        //         CompanyTypes::Armored => {
+        //             let mut company_placeholders: Vec<Entity> = Vec::new();
+        //             for _i in 0..3 {
+        //                 commands.entity(army_settings_nodes.platoons_row).with_children(|parent| {
+        //                     company_placeholders.push(
+        //                         parent.spawn(NodeBundle{
+        //                             style: Style {
+        //                                 position_type: PositionType::Relative,
+        //                                 width: Val::Px((army_settings_nodes.land_army_settings_node_width / 6) as f32 - ui_button_nodes.margin * 2.),
+        //                                 height: Val::Px((army_settings_nodes.land_army_settings_node_height / 6) as f32 - ui_button_nodes.margin * 2.),
+        //                                 margin: UiRect {
+        //                                     left: Val::Px(ui_button_nodes.margin),
+        //                                     right: Val::Px(ui_button_nodes.margin),
+        //                                     top: Val::Px(ui_button_nodes.margin),
+        //                                     bottom: Val::Px(ui_button_nodes.margin),
+        //                                 },
+        //                                 justify_content: JustifyContent::Center,
+        //                                 align_items: AlignItems::Center,
+        //                                 flex_direction: FlexDirection::Column,
+        //                                 ..default()
+        //                             },
+        //                             background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
+        //                             ..default()
+        //                         }).id()
+        //                     );
+        //                 });
+        //             }
+                
+        //             let mut platoon_placeholders: Vec<Entity> = Vec::new();
+        //             for _i in 0..9 {
+        //                 commands.entity(army_settings_nodes.squads_row).with_children(|parent| {
+        //                     platoon_placeholders.push(
+        //                         parent.spawn(NodeBundle{
+        //                             style: Style {
+        //                                 position_type: PositionType::Relative,
+        //                                 width: Val::Px((army_settings_nodes.land_army_settings_node_width / 18) as f32 - ui_button_nodes.margin * 2.),
+        //                                 height: Val::Px((army_settings_nodes.land_army_settings_node_height / 6) as f32 - ui_button_nodes.margin * 2.),
+        //                                 margin: UiRect {
+        //                                     left: Val::Px(ui_button_nodes.margin),
+        //                                     right: Val::Px(ui_button_nodes.margin),
+        //                                     top: Val::Px(ui_button_nodes.margin),
+        //                                     bottom: Val::Px(ui_button_nodes.margin),
+        //                                 },
+        //                                 justify_content: JustifyContent::Center,
+        //                                 align_items: AlignItems::Center,
+        //                                 flex_direction: FlexDirection::Column,
+        //                                 ..default()
+        //                             },
+        //                             background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
+        //                             ..default()
+        //                         }).id()
+        //                     );
+        //                 });
+        //             }
+    
+        //             for placeholder in company_placeholders {
+        //                 commands.entity(placeholder).with_children(|parent| {
+        //                     parent.spawn(ButtonBundle{
+        //                         style: Style {
+        //                             position_type: PositionType::Relative,
+        //                             width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+        //                             height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+        //                             margin: UiRect {
+        //                                 left: Val::Px(ui_button_nodes.margin),
+        //                                 right: Val::Px(ui_button_nodes.margin),
+        //                                 top: Val::Px(ui_button_nodes.margin),
+        //                                 bottom: Val::Px(ui_button_nodes.margin),
+        //                             },
+        //                             justify_content: JustifyContent::Center,
+        //                             align_items: AlignItems::Center,
+        //                             ..default()
+        //                         },
+        //                         background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+        //                         ..default()
+        //                     })
+        //                     .with_children(|button_parent| {
+        //                         button_parent.spawn(TextBundle {
+        //                             text: Text{
+        //                                 sections: vec![TextSection {
+        //                                     value: "Company".to_string(),
+        //                                     style: TextStyle {
+        //                                         font_size: 20.,
+        //                                         ..default()
+        //                                     },
+        //                                     ..default()
+        //                                 }],
+        //                                 justify: JustifyText::Center,
+        //                                 ..default() 
+        //                             },
+        //                             ..default()
+        //                         });
+        //                     });
+        //                 });
+        //             }
+
+        //             let mut counter = 0;
+        //             let platoon_start_index = event.0.0 * 9;
+
+        //             army_settings_nodes.platoon_specialization_dropdown_lists.clear();
+
+        //             for placeholder in platoon_placeholders {
+        //                 if platoon_id.next() {
+        //                     company_id.next();
+        //                 }
+
+        //                 if army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].1 != CompanyTypes::Armored {
+        //                     army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].0 = ("tank".to_string(), "Tank".to_string());
+        //                     army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].1 = CompanyTypes::Armored;
+        //                 }
+
+        //                 let current_platoon_specialization = army_settings_nodes.platoon_specialization_cache[(platoon_start_index + counter) as usize].0.clone();
+
+        //                 commands.entity(placeholder).with_children(|parent| {
+        //                     parent.spawn(ButtonBundle{
+        //                         style: Style {
+        //                             position_type: PositionType::Relative,
+        //                             width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+        //                             height: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+        //                             margin: UiRect {
+        //                                 left: Val::Px(ui_button_nodes.margin),
+        //                                 right: Val::Px(ui_button_nodes.margin),
+        //                                 top: Val::Px(ui_button_nodes.margin),
+        //                                 bottom: Val::Px(ui_button_nodes.margin),
+        //                             },
+        //                             justify_content: JustifyContent::Center,
+        //                             align_items: AlignItems::Center,
+        //                             ..default()
+        //                         },
+        //                         background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+        //                         ..default()
+        //                     })
+        //                     .with_children(|button_parent| {
+        //                         button_parent.spawn(TextBundle {
+        //                             text: Text{
+        //                                 sections: vec![TextSection {
+        //                                     value: "Platoon".to_string(),
+        //                                     style: TextStyle {
+        //                                         font_size: 10.,
+        //                                         ..default()
+        //                                     },
+        //                                     ..default()
+        //                                 }],
+        //                                 justify: JustifyText::Center,
+        //                                 ..default() 
+        //                             },
+        //                             ..default()
+        //                         });
+        //                     });
+        //                 });
+
+        //                 commands.entity(placeholder).with_children(|parent| {
+        //                     parent.spawn(ButtonBundle{
+        //                         style: Style {
+        //                             position_type: PositionType::Relative,
+        //                             width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+        //                             height: Val::Px((ui_button_nodes.button_size - ui_button_nodes.margin * 2.) / 4.),
+        //                             margin: UiRect {
+        //                                 left: Val::Px(ui_button_nodes.margin),
+        //                                 right: Val::Px(ui_button_nodes.margin),
+        //                                 top: Val::Px(ui_button_nodes.margin),
+        //                                 bottom: Val::Px(ui_button_nodes.margin),
+        //                             },
+        //                             justify_content: JustifyContent::Center,
+        //                             align_items: AlignItems::Center,
+        //                             ..default()
+        //                         },
+        //                         background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+        //                         ..default()
+        //                     }).insert(ButtonAction{
+        //                         action: Actions::OpenPlatoonSpecializations((
+        //                             counter, (event.0.1.0, event.0.1.1, event.0.1.2, company_id.get_value(), platoon_id.get_value()), CompanyTypes::Armored
+        //                         ))}
+        //                     )
+        //                     .with_children(|button_parent| {
+        //                         army_settings_nodes.platoon_specialization_dropdown_lists.push((
+        //                             button_parent.spawn(TextBundle {
+        //                                 text: Text{
+        //                                     sections: vec![TextSection {
+        //                                         value: current_platoon_specialization.1.clone(),
+        //                                         style: TextStyle {
+        //                                             font_size: 10.,
+        //                                             ..default()
+        //                                         },
+        //                                         ..default()
+        //                                     }],
+        //                                     justify: JustifyText::Center,
+        //                                     ..default()
+                    
+        //                                 },
+        //                                 style: Style {
+        //                                     justify_content: JustifyContent::Center,
+        //                                     align_items: AlignItems::Center,
+        //                                     ..default()
+        //                                 },
+        //                                 ..default()
+        //                             }).id(),
+        //                             current_platoon_specialization.0.clone(),
+        //                             LimitedNumber::new()
+        //                         ));
+        //                     });
+        //                 });
+
+        //                 counter += 1;
+        //             }
+        //         },
+        //         _ => {},
+        //     }
+        // }
     }
 }
 
@@ -2869,106 +5278,195 @@ pub fn open_specializations_dropdown_list(
     ui_button_nodes: Res<UiButtonNodes>,
     mut commands: Commands,
     mut army_settings_nodes: ResMut<ArmySettingsNodes>,
-    mut event_reader: EventReader<OpenPlatoonSpecializationsEvent>,
+    mut event_reader: EventReader<OpenSquadSpecializationsEvent>,
     specializations: Res<Specializations>,
+    mut last_opened_squad: Local<i32>,
+    mut dropdown_list_entity: Local<Option<Entity>>,
 ){
     for event in event_reader.read() {
-        if army_settings_nodes.last_platoon_specialization_dropdown_list_index != -1 {
-            let index = army_settings_nodes.last_platoon_specialization_dropdown_list_index as usize;
+        if event.0.0 == *last_opened_squad {
+            *last_opened_squad = -1;
 
-            if event.0.0 != army_settings_nodes.last_platoon_specialization_dropdown_list_index &&
-            army_settings_nodes.platoon_specialization_dropdown_lists[index].2.get_value() == 1 {
-                army_settings_nodes.platoon_specialization_dropdown_lists[index].2.next();
-            }
-        }
-
-        army_settings_nodes.last_platoon_specialization_dropdown_list_index = event.0.0;
-
-        if army_settings_nodes.platoon_specialization_dropdown_lists[event.0.0 as usize].2.next() {
-            commands.entity(army_settings_nodes.platoon_specialization_dropdown_lists[event.0.0 as usize].0).despawn_descendants();
-        }
-        else{
-            for dropdown_list in army_settings_nodes.platoon_specialization_dropdown_lists.clone() {
-                commands.entity(dropdown_list.0).despawn_descendants();
+            if let Some(dropdown_list) = *dropdown_list_entity {
+                if commands.get_entity(dropdown_list).is_some() {
+                    commands.entity(dropdown_list).despawn_recursive();
+                }
             }
 
-            let mut current_specializations: Vec<(String, String)> = Vec::new();
-            match event.0.2 {
-                CompanyTypes::Regular => {
-                    current_specializations = specializations.regular.clone();
-                },
-                CompanyTypes::Shock => {
-                    current_specializations = specializations.shock.clone();
-                },
-                CompanyTypes::Armored => {
-                    current_specializations = specializations.armored.clone();
-                },
-                _ => {},
+            *dropdown_list_entity = None;
+        } else {
+            *last_opened_squad = event.0.0;
+
+            if let Some(dropdown_list) = *dropdown_list_entity {
+                if commands.get_entity(dropdown_list).is_some() {
+                    commands.entity(dropdown_list).despawn_recursive();
+                }
             }
 
-            let mut dropdown_list_node= Entity::PLACEHOLDER;
-            commands.entity(army_settings_nodes.platoon_specialization_dropdown_lists[event.0.0 as usize].0).with_children(|parent| {
-                dropdown_list_node = parent.spawn(NodeBundle{
-                    style: Style {
-                        position_type: PositionType::Absolute,
-                        top: Val::Px(ui_button_nodes.button_size / 4.),
-                        width: Val::Px(ui_button_nodes.button_size),
-                        height: Val::Px(ui_button_nodes.button_size / 4. * (current_specializations.len() as f32 + 2.)),
-                        flex_direction: FlexDirection::Column,
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
-                    ..default()
-                }).id();
-            });
+            *dropdown_list_entity = None;
 
-            for specialization in current_specializations {
-                commands.entity(dropdown_list_node).with_children(|parent| {
-                    parent.spawn(ButtonBundle{
+            let mut dropdown_list = Entity::PLACEHOLDER;
+
+            commands.entity(army_settings_nodes.squad_specialization_dropdown_lists[event.0.0 as usize]).with_children(|parent| {
+                dropdown_list = parent.spawn(
+                NodeBundle {
                         style: Style {
-                            position_type: PositionType::Relative,
-                            width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
-                            height: Val::Px((ui_button_nodes.button_size - ui_button_nodes.margin * 2.) / 4.),
-                            margin: UiRect {
-                                left: Val::Px(ui_button_nodes.margin),
-                                right: Val::Px(ui_button_nodes.margin),
-                                top: Val::Px(ui_button_nodes.margin),
-                                bottom: Val::Px(ui_button_nodes.margin),
-                            },
-                            justify_content: JustifyContent::Center,
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2. * 1.1),
+                            height: Val::Px(ui_button_nodes.button_size * 1.1),
+                            top: Val::Px(ui_button_nodes.button_size * 0.4),
+                            left: Val::Px((ui_button_nodes.button_size * 2. - ui_button_nodes.button_size * 2. * 1.1) / 2.),
+                            align_content: AlignContent::Center,
                             align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
                             ..default()
                         },
-                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 0.25).into(),
                         ..default()
-                    }).insert(ButtonAction{
-                        action: Actions::ChoosePlatoonSpecialization(
-                            (specialization.clone(), (event.0.1.0, event.0.1.1, event.0.1.2, event.0.1.3, event.0.1.4), event.0.0, event.0.2)
-                        ),
-                    })
-                    .with_children(|button_parent| {
-                        button_parent.spawn(TextBundle {
-                            text: Text{
-                                sections: vec![TextSection {
-                                    value: specialization.1.clone(),
-                                    style: TextStyle {
-                                        font_size: 10.,
-                                        ..default()
-                                    },
-                                    ..default()
-                                }],
-                                justify: JustifyText::Center,
+                    }
+                )
+                .with_children(|dropdown_list_parent| {
+                    dropdown_list_parent.spawn(
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(ui_button_nodes.button_size * 2.),
+                                height: Val::Px(ui_button_nodes.button_size * 0.4),
+                                top: Val::Px(ui_button_nodes.button_size / 10.),
+                                left: Val::Px((ui_button_nodes.button_size * 2. * 1.1 - ui_button_nodes.button_size * 2.) / 2.),
+                                align_content: AlignContent::Center,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                justify_items: JustifyItems::Center,
                                 ..default()
-        
                             },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                             ..default()
-                        });
-                    });
-                });
-            }
+                        }
+                    );
+
+                    dropdown_list_parent.spawn(
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(ui_button_nodes.button_size * 2.),
+                                height: Val::Px(ui_button_nodes.button_size * 0.4),
+                                top: Val::Px(ui_button_nodes.button_size / 10. + ui_button_nodes.button_size * 0.4 + ui_button_nodes.button_size / 10.),
+                                left: Val::Px((ui_button_nodes.button_size * 2. * 1.1 - ui_button_nodes.button_size * 2.) / 2.),
+                                align_content: AlignContent::Center,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                justify_items: JustifyItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                            ..default()
+                        }
+                    );
+                })
+                .id();
+            });
+
+            *dropdown_list_entity = Some(dropdown_list);
         }
+
+        // if army_settings_nodes.last_platoon_specialization_dropdown_list_index != -1 {
+        //     let index = army_settings_nodes.last_platoon_specialization_dropdown_list_index as usize;
+
+        //     if event.0.0 != army_settings_nodes.last_platoon_specialization_dropdown_list_index &&
+        //     army_settings_nodes.platoon_specialization_dropdown_lists[index].2.get_value() == 1 {
+        //         army_settings_nodes.platoon_specialization_dropdown_lists[index].2.next();
+        //     }
+        // }
+
+        // army_settings_nodes.last_platoon_specialization_dropdown_list_index = event.0.0;
+
+        // if army_settings_nodes.platoon_specialization_dropdown_lists[event.0.0 as usize].2.next() {
+        //     commands.entity(army_settings_nodes.platoon_specialization_dropdown_lists[event.0.0 as usize].0).despawn_descendants();
+        // }
+        // else{
+        //     for dropdown_list in army_settings_nodes.platoon_specialization_dropdown_lists.clone() {
+        //         commands.entity(dropdown_list.0).despawn_descendants();
+        //     }
+
+        //     let mut current_specializations: Vec<(String, String)> = Vec::new();
+        //     match event.0.2 {
+        //         CompanyTypes::Regular => {
+        //             current_specializations = specializations.regular.clone();
+        //         },
+        //         CompanyTypes::Shock => {
+        //             current_specializations = specializations.shock.clone();
+        //         },
+        //         CompanyTypes::Armored => {
+        //             current_specializations = specializations.armored.clone();
+        //         },
+        //         _ => {},
+        //     }
+
+        //     let mut dropdown_list_node= Entity::PLACEHOLDER;
+        //     commands.entity(army_settings_nodes.platoon_specialization_dropdown_lists[event.0.0 as usize].0).with_children(|parent| {
+        //         dropdown_list_node = parent.spawn(NodeBundle{
+        //             style: Style {
+        //                 position_type: PositionType::Absolute,
+        //                 top: Val::Px(ui_button_nodes.button_size / 4.),
+        //                 width: Val::Px(ui_button_nodes.button_size),
+        //                 height: Val::Px(ui_button_nodes.button_size / 4. * (current_specializations.len() as f32 + 2.)),
+        //                 flex_direction: FlexDirection::Column,
+        //                 justify_content: JustifyContent::Center,
+        //                 align_items: AlignItems::Center,
+        //                 ..default()
+        //             },
+        //             background_color: Color::srgba(0.1, 0.1, 0.1, 0.5).into(),
+        //             ..default()
+        //         }).id();
+        //     });
+
+        //     for specialization in current_specializations {
+        //         commands.entity(dropdown_list_node).with_children(|parent| {
+        //             parent.spawn(ButtonBundle{
+        //                 style: Style {
+        //                     position_type: PositionType::Relative,
+        //                     width: Val::Px(ui_button_nodes.button_size - ui_button_nodes.margin * 2.),
+        //                     height: Val::Px((ui_button_nodes.button_size - ui_button_nodes.margin * 2.) / 4.),
+        //                     margin: UiRect {
+        //                         left: Val::Px(ui_button_nodes.margin),
+        //                         right: Val::Px(ui_button_nodes.margin),
+        //                         top: Val::Px(ui_button_nodes.margin),
+        //                         bottom: Val::Px(ui_button_nodes.margin),
+        //                     },
+        //                     justify_content: JustifyContent::Center,
+        //                     align_items: AlignItems::Center,
+        //                     ..default()
+        //                 },
+        //                 background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+        //                 ..default()
+        //             }).insert(ButtonAction{
+        //                 action: Actions::ChooseSquadSpecialization(
+        //                     (specialization.clone(), (event.0.1.0, event.0.1.1, event.0.1.2, event.0.1.3, event.0.1.4), event.0.0, event.0.2)
+        //                 ),
+        //             })
+        //             .with_children(|button_parent| {
+        //                 button_parent.spawn(TextBundle {
+        //                     text: Text{
+        //                         sections: vec![TextSection {
+        //                             value: specialization.1.clone(),
+        //                             style: TextStyle {
+        //                                 font_size: 10.,
+        //                                 ..default()
+        //                             },
+        //                             ..default()
+        //                         }],
+        //                         justify: JustifyText::Center,
+        //                         ..default()
+        
+        //                     },
+        //                     ..default()
+        //                 });
+        //             });
+        //         });
+        //     }
+        // }
     }
 }
 
@@ -2977,7 +5475,7 @@ pub fn choose_platoon_specialization(
     mut commands: Commands,
     mut army_settings_nodes: ResMut<ArmySettingsNodes>,
     player_data: Res<PlayerData>,
-    mut event_reader: EventReader<ChoosePlatoonSpecializationEvent>,
+    mut event_reader: EventReader<ChooseSquadSpecializationEvent>,
 ){
     for event in event_reader.read() {
         let index = army_settings_nodes.last_platoon_specialization_dropdown_list_index as usize;
@@ -2988,12 +5486,12 @@ pub fn choose_platoon_specialization(
 
         match event.0.3 {
             CompanyTypes::Regular => {
-                if let Some(platoon) = army.0.get_mut(&player_data.team).unwrap().regular_platoons.get_mut(&event.0.1.clone()){
+                if let Some(platoon) = army.0.get_mut(&player_data.team).unwrap().regular_squads.get_mut(&event.0.1.clone()){
                     platoon.1 = event.0.0.0.clone();
                 }
                 else{
-                    army.0.get_mut(&player_data.team).unwrap().regular_platoons
-                    .insert(event.0.1, (RegularPlatoon((LimitedHashSet::new(), LimitedHashSet::new())), event.0.0.0.clone(), Entity::PLACEHOLDER));
+                    army.0.get_mut(&player_data.team).unwrap().regular_squads
+                    .insert(event.0.1, (RegularSquad((LimitedHashSet::new(), LimitedHashSet::new())), event.0.0.0.clone(), Entity::PLACEHOLDER));
                 }
 
                 commands.entity(army_settings_nodes.platoon_specialization_dropdown_lists[event.0.2 as usize].0).despawn_descendants();
@@ -3009,12 +5507,12 @@ pub fn choose_platoon_specialization(
                 army_settings_nodes.platoon_specialization_dropdown_lists[event.0.2 as usize].1 = event.0.0.1.clone();
             },
             CompanyTypes::Shock => {
-                if let Some(platoon) = army.0.get_mut(&player_data.team).unwrap().shock_platoons.get_mut(&event.0.1.clone()){
+                if let Some(platoon) = army.0.get_mut(&player_data.team).unwrap().shock_squads.get_mut(&event.0.1.clone()){
                     platoon.1 = event.0.0.0.clone();
                 }
                 else{
-                    army.0.get_mut(&player_data.team).unwrap().shock_platoons
-                    .insert(event.0.1, (ShockPlatoon((LimitedHashSet::new(), LimitedHashSet::new())), event.0.0.0.clone(), Entity::PLACEHOLDER));
+                    army.0.get_mut(&player_data.team).unwrap().shock_squads
+                    .insert(event.0.1, (ShockSquad((LimitedHashSet::new(), LimitedHashSet::new())), event.0.0.0.clone(), Entity::PLACEHOLDER));
                 }
 
                 commands.entity(army_settings_nodes.platoon_specialization_dropdown_lists[event.0.2 as usize].0).despawn_descendants();
@@ -3030,12 +5528,12 @@ pub fn choose_platoon_specialization(
                 army_settings_nodes.platoon_specialization_dropdown_lists[event.0.2 as usize].1 = event.0.0.1.clone();
             },
             CompanyTypes::Armored => {
-                if let Some(platoon) = army.0.get_mut(&player_data.team).unwrap().armored_platoons.get_mut(&event.0.1.clone()){
+                if let Some(platoon) = army.0.get_mut(&player_data.team).unwrap().armored_squads.get_mut(&event.0.1.clone()){
                     platoon.1 = event.0.0.0.clone();
                 }
                 else{
-                    army.0.get_mut(&player_data.team).unwrap().armored_platoons
-                    .insert(event.0.1, (ArmoredPlatoon(LimitedHashSet::new()), event.0.0.0.clone(), Entity::PLACEHOLDER));
+                    army.0.get_mut(&player_data.team).unwrap().armored_squads
+                    .insert(event.0.1, (ArmoredSquad(LimitedHashSet::new()), event.0.0.0.clone(), Entity::PLACEHOLDER));
                 }
 
                 commands.entity(army_settings_nodes.platoon_specialization_dropdown_lists[event.0.2 as usize].0).despawn_descendants();
@@ -3068,6 +5566,7 @@ pub fn toggle_production(
     network_status: Res<NetworkStatus>,
     mut client: ResMut<QuinnetClient>,
     army: Res<Armies>,
+    entity_maps: Res<EntityMaps>,
     mut player_data: ResMut<PlayerData>,
 ){
     for _event in event_reader.read() {
@@ -3151,78 +5650,113 @@ pub fn toggle_production(
                     },
                     NetworkStatuses::Client => {
                         if let Some(army) = army.0.get(&player_data.team) {
-                            let mut regular_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableRegularPlatoon, String, Entity))> = Vec::new();
-                            let mut shock_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableShockPlatoon, String, Entity))> = Vec::new();
-                            let mut armored_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableArmoredPlatoon, String, Entity))> = Vec::new();
+                            let mut regular_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableRegularSquad, String, Entity))> = Vec::new();
+                            let mut shock_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableShockSquad, String, Entity))> = Vec::new();
+                            let mut armored_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableArmoredSquad, String, Entity))> = Vec::new();
                             let mut artillery_units: (Vec<(i32, ((Option<Entity>, String), Entity))>, Entity) = (Vec::new(), Entity::PLACEHOLDER);
                             let mut engineers: Vec<(i32, ((Option<Entity>, String), Entity))> = Vec::new();
     
-                            for reg_p in army.regular_platoons.iter() {
+                            for reg_p in army.regular_squads.iter() {
                                 let mut soldiers: Vec<Entity> = Vec::new();
                                 let mut specialists: Vec<Entity> = Vec::new();
+                                let mut squad_leader = Entity::PLACEHOLDER;
     
                                 for soldier in reg_p.1.0.0.0.set.iter() {
-                                    soldiers.push(*soldier);
+                                    if let Some(server_entity) = entity_maps.client_to_server.get(soldier) {
+                                        soldiers.push(*server_entity);
+                                    }
                                 }
     
                                 for specialist in reg_p.1.0.0.1.set.iter() {
-                                    specialists.push(*specialist);
+                                    if let Some(server_entity) = entity_maps.client_to_server.get(specialist) {
+                                        specialists.push(*server_entity);
+                                    }
+                                }
+
+                                if let Some(server_entity) = entity_maps.client_to_server.get(&reg_p.1.2) {
+                                    squad_leader = *server_entity;
                                 }
     
                                 regular_platoons.push((*reg_p.0, (
-                                    SerializableRegularPlatoon((
+                                    SerializableRegularSquad((
                                         soldiers,
                                         specialists,
                                     )),
                                     reg_p.1.1.clone(),
-                                    reg_p.1.2,
+                                    squad_leader,
                                 )));
                             }
     
-                            for shock_p in army.shock_platoons.iter() {
+                            for shock_p in army.shock_squads.iter() {
                                 let mut soldiers: Vec<Entity> = Vec::new();
                                 let mut specialists: Vec<Entity> = Vec::new();
+                                let mut squad_leader = Entity::PLACEHOLDER;
     
                                 for soldier in shock_p.1.0.0.0.set.iter() {
-                                    soldiers.push(*soldier);
+                                    if let Some(server_entity) = entity_maps.client_to_server.get(soldier) {
+                                        soldiers.push(*server_entity);
+                                    }
                                 }
     
                                 for specialist in shock_p.1.0.0.1.set.iter() {
-                                    specialists.push(*specialist);
+                                    if let Some(server_entity) = entity_maps.client_to_server.get(specialist) {
+                                        specialists.push(*server_entity);
+                                    }
+                                }
+
+                                if let Some(server_entity) = entity_maps.client_to_server.get(&shock_p.1.2) {
+                                    squad_leader = *server_entity;
                                 }
     
                                 shock_platoons.push((*shock_p.0, (
-                                    SerializableShockPlatoon((
+                                    SerializableShockSquad((
                                         soldiers,
                                         specialists,
                                     )),
                                     shock_p.1.1.clone(),
-                                    shock_p.1.2,
+                                    squad_leader,
                                 )));
                             }
     
-                            for arm_p in army.armored_platoons.iter() {
+                            for arm_p in army.armored_squads.iter() {
                                 let mut vehicles: Vec<Entity> = Vec::new();
+                                let mut squad_leader = Entity::PLACEHOLDER;
     
-                                for soldier in arm_p.1.0.0.set.iter() {
-                                    vehicles.push(*soldier);
+                                for vehicle in arm_p.1.0.0.set.iter() {
+                                    if let Some(server_entity) = entity_maps.client_to_server.get(vehicle) {
+                                        vehicles.push(*server_entity);
+                                    }
+                                }
+
+                                if let Some(server_entity) = entity_maps.client_to_server.get(&arm_p.1.2) {
+                                    squad_leader = *server_entity;
                                 }
     
                                 armored_platoons.push((*arm_p.0, (
-                                    SerializableArmoredPlatoon(
+                                    SerializableArmoredSquad(
                                         vehicles,
                                     ),
                                     arm_p.1.1.clone(),
-                                    arm_p.1.2,
+                                    squad_leader,
                                 )));
                             }
     
                             for art in army.artillery_units.0.iter() {
-                                artillery_units.0.push((*art.0, (art.1.0.clone(), art.1.1)));
+                                let mut art_option = None;
+                                if let Some(some_unit) = art.1.0.0 {
+                                    art_option = Some(some_unit);
+                                }
+
+                                artillery_units.0.push((*art.0, ((art_option, art.1.0.1.clone()), art.1.1)));
                             }
     
                             for eng in army.engineers.iter() {
-                                engineers.push((*eng.0, (eng.1.0.clone(), eng.1.1)));
+                                let mut eng_option = None;
+                                if let Some(some_unit) = eng.1.0.0 {
+                                    eng_option = Some(some_unit);
+                                }
+
+                                engineers.push((*eng.0, ((eng_option, eng.1.0.1.clone()), eng.1.1)));
                             }
 
                             // let regular_platoons_clone = regular_platoons.clone();
@@ -3270,20 +5804,24 @@ pub fn toggle_production(
 pub fn platoon_nodes_positioning_system(
     camera_q: Query<(&Camera, &GlobalTransform, &Transform), Without<SquadLeader>>,
     mut squad_nodes_q: Query<(Entity, &mut Style, &mut SquadSelector, &mut ButtonAction, &SuppliesBarHolder),
-    (Without<PlatoonSelector>, Without<CompanySelector>, Without<BattalionSelector>, Without<RegimentSelector>, Without<BrigadeSelector>, Without<SuppliesBar>)>,
+    (Without<PlatoonSelector>, Without<CompanySelector>, Without<BattalionSelector>, Without<RegimentSelector>, Without<BrigadeSelector>, Without<SuppliesBar>, Without<ArtilleryUnitSelector>)>,
     mut platoon_nodes_q: Query<(Entity, &mut Style, &mut PlatoonSelector, &mut ButtonAction),
-    (Without<SquadSelector>, Without<CompanySelector>, Without<BattalionSelector>, Without<RegimentSelector>, Without<BrigadeSelector>, Without<SuppliesBar>)>,
+    (Without<SquadSelector>, Without<CompanySelector>, Without<BattalionSelector>, Without<RegimentSelector>, Without<BrigadeSelector>, Without<SuppliesBar>, Without<ArtilleryUnitSelector>)>,
     mut company_nodes_q: Query<(Entity, &mut Style, &mut CompanySelector, &mut ButtonAction),
-    (Without<PlatoonSelector>, Without<SquadSelector>, Without<BattalionSelector>, Without<RegimentSelector>, Without<BrigadeSelector>, Without<SuppliesBar>)>,
+    (Without<PlatoonSelector>, Without<SquadSelector>, Without<BattalionSelector>, Without<RegimentSelector>, Without<BrigadeSelector>, Without<SuppliesBar>, Without<ArtilleryUnitSelector>)>,
     mut battalion_nodes_q: Query<(Entity, &mut Style, &mut BattalionSelector, &mut ButtonAction),
-    (Without<PlatoonSelector>, Without<SquadSelector>, Without<CompanySelector>, Without<RegimentSelector>, Without<BrigadeSelector>, Without<SuppliesBar>)>,
+    (Without<PlatoonSelector>, Without<SquadSelector>, Without<CompanySelector>, Without<RegimentSelector>, Without<BrigadeSelector>, Without<SuppliesBar>, Without<ArtilleryUnitSelector>)>,
     mut regiment_nodes_q: Query<(Entity, &mut Style, &mut RegimentSelector, &mut ButtonAction),
-    (Without<PlatoonSelector>, Without<SquadSelector>, Without<CompanySelector>, Without<BattalionSelector>, Without<BrigadeSelector>, Without<SuppliesBar>)>,
+    (Without<PlatoonSelector>, Without<SquadSelector>, Without<CompanySelector>, Without<BattalionSelector>, Without<BrigadeSelector>, Without<SuppliesBar>, Without<ArtilleryUnitSelector>)>,
     mut brigade_nodes_q: Query<(Entity, &mut Style, &mut BrigadeSelector, &mut ButtonAction),
-    (Without<PlatoonSelector>, Without<SquadSelector>, Without<CompanySelector>, Without<RegimentSelector>, Without<BattalionSelector>, Without<SuppliesBar>)>,
+    (Without<PlatoonSelector>, Without<SquadSelector>, Without<CompanySelector>, Without<RegimentSelector>, Without<BattalionSelector>, Without<SuppliesBar>, Without<ArtilleryUnitSelector>)>,
     mut supply_bars_q: Query<(&mut Style, &SuppliesBar),
-    (Without<PlatoonSelector>, Without<SquadSelector>, Without<CompanySelector>, Without<RegimentSelector>, Without<BattalionSelector>, Without<BrigadeSelector>)>,
-    squad_leaders_q: Query<(&Transform, &SquadLeader, &CombatComponent, Option<&SuppliesConsumerComponent>, &Visibility), (With<SquadLeader>, Without<DisabledUnit>)>,
+    (Without<PlatoonSelector>, Without<SquadSelector>, Without<CompanySelector>, Without<RegimentSelector>, Without<BattalionSelector>, Without<BrigadeSelector>, Without<ArtilleryUnitSelector>)>,
+    squad_leaders_q: Query<(&Transform, &SquadLeader, &CombatComponent, Option<&SuppliesConsumerComponent>, &Visibility), (With<SquadLeader>, Without<ArtilleryUnit>, Without<DisabledUnit>)>,
+    artillery_units_q: Query<(&Transform, &CombatComponent, &SuppliesConsumerComponent, &Visibility), (With<ArtilleryUnit>, Without<SquadLeader>, Without<DisabledUnit>)>,
+    mut artillery_nodes_q: Query<(Entity, &mut Style, &mut ArtilleryUnitSelector, &mut ButtonAction, &SuppliesBarHolder),
+    (Without<PlatoonSelector>, Without<CompanySelector>, Without<BattalionSelector>, Without<RegimentSelector>, Without<BrigadeSelector>, Without<SuppliesBar>, Without<SquadSelector>)>,
+    army: Res<Armies>,
     other_assets: Res<OtherAssets>,
     symbols_level: Res<DisplayedTacicalSymbolsLevel>,
     player_data: Res<PlayerData>,
@@ -3834,6 +6372,87 @@ pub fn platoon_nodes_positioning_system(
             }
         } else if node.2.0.1.1 == true {
             node.2.0.1.1 = false;
+            commands.entity(node.0).insert(Visibility::Hidden);
+        }
+    }
+
+    for mut node in artillery_nodes_q.iter_mut() {//artillery selectors
+        if camera.2.translation.y > 100. {
+            if let Some(team_army) = army.0.get(&node.2.0.0) {
+                if let Some(artillery_unit_army_reference) = team_army.artillery_units.0.get(&node.2.0.1) {
+                    if let Some(artillery_unit_entity) = artillery_unit_army_reference.0.0 {
+                        if let Ok(artillery_unit) = artillery_units_q.get(artillery_unit_entity) {
+                            if artillery_unit.3 == Visibility::Hidden {
+                                if node.2.0.2 == true {
+                                    node.2.0.2 = false;
+                                    commands.entity(node.0).insert(Visibility::Hidden);
+                                }
+                                continue;
+                            }
+
+                            if let Some(viewport_point) = camera.0.world_to_viewport(camera.1, artillery_unit.0.translation) {
+                                node.1.left = Val::Px(viewport_point.x);
+                                node.1.top = Val::Px(viewport_point.y);
+
+                                if node.2.0.0 == 1 {
+                                    if node.2.0.2 == false {
+                                        node.2.0.2 = true;
+                                        node.3.action = Actions::ArtilleryUnitSelection((node.2.0.0, node.2.0.1));
+                                        commands.entity(node.0).insert(Visibility::Visible);
+
+                                        commands.entity(node.0).insert(UiImage::new(other_assets.artillery_unit_symbol_blufor.clone()));
+                                    }
+
+                                    if node.2.0.0 == player_data.team {
+                                        if let Ok(mut bar) = supply_bars_q.get_mut(node.4.entity) {
+                                            let modifier: f32 = artillery_unit.2.supplies as f32 / artillery_unit.2.supplies_capacity as f32;
+                                            let width = bar.1.original_width * modifier;
+                                            
+                                            bar.0.width = Val::Px(width);
+                                        }
+                                    } else {
+                                        if let Ok(mut bar) = supply_bars_q.get_mut(node.4.entity) {
+                                            bar.0.width = Val::Px(0.);
+                                        }
+                                    }
+                                } else {
+                                    if node.2.0.2 == false {
+                                        node.2.0.2 = true;
+                                        node.3.action = Actions::ArtilleryUnitSelection((node.2.0.0, node.2.0.1));
+                                        commands.entity(node.0).insert(Visibility::Visible);
+
+                                        commands.entity(node.0).insert(UiImage::new(other_assets.artillery_unit_symbol_opfor.clone()));
+                                    }
+
+                                    if node.2.0.0 == player_data.team {
+                                        if let Ok(mut bar) = supply_bars_q.get_mut(node.4.entity) {
+                                            let modifier: f32 = artillery_unit.2.supplies as f32 / artillery_unit.2.supplies_capacity as f32;
+                                            let width = bar.1.original_width * modifier;
+                                            
+                                            bar.0.width = Val::Px(width);
+                                        }
+                                    } else {
+                                        if let Ok(mut bar) = supply_bars_q.get_mut(node.4.entity) {
+                                            bar.0.width = Val::Px(0.);
+                                        }
+                                    }
+                                }
+                            }
+                            else if node.2.0.2 == true {
+                                node.2.0.2 = false;
+                                commands.entity(node.0).insert(Visibility::Hidden);
+                            }
+                        }
+                        else if node.2.0.2 == true {
+                            node.2.0.2 = false;
+                            commands.entity(node.0).insert(Visibility::Hidden);
+                        }
+                    }
+                }
+            }
+        }
+        else if node.2.0.2 == true {
+            node.2.0.2 = false;
             commands.entity(node.0).insert(Visibility::Hidden);
         }
     }
@@ -5642,15 +8261,22 @@ pub struct MaterialsOverallAmountDisplay;
 #[derive(Component)]
 pub struct HumanResourcesOverallAmountDisplay;
 
-pub fn resources_amount_updating_system (
-    material_producers_q: Query<&MaterialsProductionComponent>,
-    material_consumers_q: Query<&MaterialsStorageComponent>,
+pub fn overall_resources_amount_updating_system (
+    material_producers_q: Query<(&MaterialsProductionComponent, &CombatComponent),
+    (With<MaterialsProductionComponent>, Without<MaterialsStorageComponent>, Without<HumanResourceStorageComponent>)>,
+    material_consumers_q: Query<(&MaterialsStorageComponent, &CombatComponent),
+    (Without<MaterialsProductionComponent>, With<MaterialsStorageComponent>, Without<HumanResourceStorageComponent>)>,
     human_resource_producers_q: Query<&SettlementComponent>,
-    human_resource_consumers_q: Query<&HumanResourceStorageComponent>,
+    human_resource_consumers_q: Query<(&HumanResourceStorageComponent, &CombatComponent),
+    (Without<MaterialsProductionComponent>, Without<MaterialsStorageComponent>, With<HumanResourceStorageComponent>)>,
     mut materials_displays_q: Query<&mut Text, (With<MaterialsOverallAmountDisplay>, Without<HumanResourcesOverallAmountDisplay>)>,
     mut human_resources_displays_q: Query<&mut Text, (With<HumanResourcesOverallAmountDisplay>, Without<MaterialsOverallAmountDisplay>)>,
+    player_data: Res<PlayerData>,
     time: Res<Time>,
     mut elapsed_update_time: Local<u128>,
+    network_status: Res<NetworkStatus>,
+    mut server: ResMut<QuinnetServer>,
+    clients: Res<ClientList>,
 ){
     if !material_producers_q.is_empty() || !human_resource_producers_q.is_empty() {
         *elapsed_update_time += time.delta().as_millis();
@@ -5658,79 +8284,139 @@ pub fn resources_amount_updating_system (
         if *elapsed_update_time >= 1000 {
             *elapsed_update_time = 0;
 
-            let mut materials_amount = 0;
-            let mut materials_capacity = 0;
-            let mut materials_production_per_second = 0.;
+            let mut materials_amount = (0, 0);
+            let mut materials_capacity = (0, 0);
+            let mut materials_production_per_second = (0., 0.);
 
             for material_producer in material_producers_q.iter() {
-                materials_amount += material_producer.available_materials;
-                materials_capacity += material_producer.materials_storage_capacity;
-                materials_production_per_second += material_producer.materials_production_rate as f32 /
-                (material_producer.materials_production_speed as f32 / 1000.);
+                if material_producer.1.team == player_data.team {
+                    materials_amount.0 += material_producer.0.available_materials;
+                    materials_capacity.0 += material_producer.0.materials_storage_capacity;
+                    materials_production_per_second.0 += material_producer.0.materials_production_rate as f32 /
+                    (material_producer.0.materials_production_speed as f32 / 1000.);
+                } else {
+                    materials_amount.1 += material_producer.0.available_materials;
+                    materials_capacity.1 += material_producer.0.materials_storage_capacity;
+                    materials_production_per_second.1 += material_producer.0.materials_production_rate as f32 /
+                    (material_producer.0.materials_production_speed as f32 / 1000.);
+                }
             }
 
-            let mut materials_consumption_per_second = 0.;
+            let mut materials_consumption_per_second = (0., 0.);
 
             for material_consumer in material_consumers_q.iter() {
-                if material_consumer.available_resources >= material_consumer.materials_storage_capacity {continue;}
+                if material_consumer.1.team == player_data.team {
+                    if material_consumer.0.available_resources >= material_consumer.0.materials_storage_capacity {continue;}
 
-                materials_consumption_per_second +=
-                material_consumer.replenishment_amount as f32 / (material_consumer.replenishment_cooldown as f32 / 1000.);
+                    materials_consumption_per_second.0 +=
+                    material_consumer.0.replenishment_amount as f32 / (material_consumer.0.replenishment_cooldown as f32 / 1000.);
+                } else {
+                    if material_consumer.0.available_resources >= material_consumer.0.materials_storage_capacity {continue;}
+
+                    materials_consumption_per_second.1 +=
+                    material_consumer.0.replenishment_amount as f32 / (material_consumer.0.replenishment_cooldown as f32 / 1000.);
+                }
             }
 
-            let mut materials_income = (materials_production_per_second - materials_consumption_per_second) as i32;
+            let mut materials_income = (
+                (materials_production_per_second.0 - materials_consumption_per_second.0) as i32,
+                (materials_production_per_second.1 - materials_consumption_per_second.1) as i32,
+            );
 
-            let mut human_resources_amount = 0;
-            let mut human_resources_capacity = 0;
-            let mut human_resources_production_per_second = 0.;
+            let mut human_resources_amount = (0, 0);
+            let mut human_resources_capacity = (0, 0);
+            let mut human_resources_production_per_second = (0., 0.);
 
             for human_resource_producer in human_resource_producers_q.iter() {
-                human_resources_amount += human_resource_producer.0.available_human_resources;
-                human_resources_capacity += human_resource_producer.0.human_resource_storage_capacity;
-                human_resources_production_per_second += human_resource_producer.0.human_resource_production_rate as f32 /
-                (human_resource_producer.0.human_resource_production_speed as f32 / 1000.);
+                if human_resource_producer.0.team == player_data.team {
+                    human_resources_amount.0 += human_resource_producer.0.available_human_resources;
+                    human_resources_capacity.0 += human_resource_producer.0.human_resource_storage_capacity;
+                    human_resources_production_per_second.0 += human_resource_producer.0.human_resource_production_rate as f32 /
+                    (human_resource_producer.0.human_resource_production_speed as f32 / 1000.);
+                } else {
+                    human_resources_amount.1 += human_resource_producer.0.available_human_resources;
+                    human_resources_capacity.1 += human_resource_producer.0.human_resource_storage_capacity;
+                    human_resources_production_per_second.1 += human_resource_producer.0.human_resource_production_rate as f32 /
+                    (human_resource_producer.0.human_resource_production_speed as f32 / 1000.);
+                }
             }
 
-            let mut human_resources_consumption_per_second = 0.;
+            let mut human_resources_consumption_per_second = (0., 0.);
 
             for human_resource_consumer in human_resource_consumers_q.iter() {
-                if human_resource_consumer.available_human_resources >= human_resource_consumer.human_resource_storage_capacity {continue;}
+                if human_resource_consumer.1.team == player_data.team {
+                    if human_resource_consumer.0.available_human_resources >= human_resource_consumer.0.human_resource_storage_capacity {continue;}
 
-                human_resources_consumption_per_second += human_resource_consumer.replenishment_amount as f32 /
-                (human_resource_consumer.replenishment_cooldown as f32 / 1000.);
+                    human_resources_consumption_per_second.0 += human_resource_consumer.0.replenishment_amount as f32 /
+                    (human_resource_consumer.0.replenishment_cooldown as f32 / 1000.);
+                } else {
+                    if human_resource_consumer.0.available_human_resources >= human_resource_consumer.0.human_resource_storage_capacity {continue;}
+
+                    human_resources_consumption_per_second.1 += human_resource_consumer.0.replenishment_amount as f32 /
+                    (human_resource_consumer.0.replenishment_cooldown as f32 / 1000.);
+                }
             }
 
-            let mut human_resources_income = human_resources_production_per_second - human_resources_consumption_per_second;
+            let mut human_resources_income = (
+                human_resources_production_per_second.0 - human_resources_consumption_per_second.0,
+                human_resources_production_per_second.1 - human_resources_consumption_per_second.1,
+            );
 
-            let mut delimeter = " + ";
+            let mut delimeter = (" + ", "+");
 
-            if materials_income < 0 {
-                delimeter = " - ";
-                materials_income *= -1;
+            if materials_income.0 < 0 {
+                delimeter.0 = " - ";
+                materials_income.0 *= -1;
             }
+            if materials_income.1 < 0 {
+                delimeter.1 = " - ";
+                materials_income.1 *= -1;
+            }
+
+            let team1_materials = materials_amount.0.to_string() + delimeter.0 + &materials_income.0.to_string() + " / " + &materials_capacity.0.to_string();
+            let team2_materials = materials_amount.1.to_string() + delimeter.1 + &materials_income.1.to_string() + " / " + &materials_capacity.1.to_string();
 
             for mut material_display in materials_displays_q.iter_mut() {
-                material_display.sections[0].value =
-                materials_amount.to_string() + delimeter + &materials_income.to_string() + " / " + &materials_capacity.to_string();
+                material_display.sections[0].value = team1_materials.clone();
             }
 
-            delimeter = " + ";
+            delimeter = (" + ", "+");
 
-            if human_resources_income < 0. {
-                delimeter = " - ";
-                human_resources_income *= -1.;
+            if human_resources_income.0 < 0. {
+                delimeter.0 = " - ";
+                human_resources_income.0 *= -1.;
             }
+            if human_resources_income.1 < 0. {
+                delimeter.1 = " - ";
+                human_resources_income.1 *= -1.;
+            }
+
+            let team1_human_resources = human_resources_amount.0.to_string() + delimeter.0 + &format!("{:.2}", human_resources_income.0) + " / " + &human_resources_capacity.0.to_string();
+            let team2_human_resources = human_resources_amount.1.to_string() + delimeter.1 + &format!("{:.2}", human_resources_income.1) + " / " + &human_resources_capacity.1.to_string();
 
             for mut human_resources_display in human_resources_displays_q.iter_mut() {
-                human_resources_display.sections[0].value =
-                human_resources_amount.to_string() + delimeter + &format!("{:.2}", human_resources_income) + " / " + &human_resources_capacity.to_string();
+                human_resources_display.sections[0].value = team1_human_resources.clone();
+            }
+
+            if matches!(network_status.0, NetworkStatuses::Host) {
+                let mut channel_id = 30;
+                while channel_id <= 59 {
+                    if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::ResourceDisplayesUpdated {
+                        materials_display: (team1_materials.clone(), team2_materials.clone()),
+                        human_resource_display: (team1_human_resources.clone(), team2_human_resources.clone()),
+                    }) {
+                        channel_id += 1;
+                    } else {
+                        break;
+                    }
+                }
             }
         }
     }
 }
 
 pub fn switchable_buildings_ui_manager(
-    buildings: Query<&SwitchableBuilding>,
+    buildings: Query<(&SwitchableBuilding, &CombatComponent)>,
     mut ui_button_nodes: ResMut<UiButtonNodes>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     cursor_ray: Res<CursorRay>,
@@ -5740,6 +8426,9 @@ pub fn switchable_buildings_ui_manager(
     mut commands: Commands,
     mut ui_blocker: ResMut<UiBlocker>,
     mut is_menu_opened: Local<bool>,
+    network_status: Res<NetworkStatus>,
+    mut client: ResMut<QuinnetClient>,
+    entity_maps: Res<EntityMaps>,
 ){
     if mouse_buttons.just_pressed(MouseButton::Left) && matches!(game_stage.0, GameStages::GameStarted) {
         if !ui_button_nodes.is_middle_bottom_node_visible {
@@ -5766,7 +8455,7 @@ pub fn switchable_buildings_ui_manager(
                             let color;
                             let text;
 
-                            if building.0 {
+                            if building.0.0 {
                                 color = Color::srgba(0.1, 1., 0.1, 1.);
                                 text = "Off".to_string();
                             } else {

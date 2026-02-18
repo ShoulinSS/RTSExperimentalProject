@@ -7,7 +7,7 @@ use bevy_rapier3d::{na::ComplexField, plugin::RapierContext, prelude::{Character
 use oxidized_navigation_serializable::{colliders, query::{find_polygon_path, perform_string_pulling_on_path}, Area, NavMesh, NavMeshAffector, NavMeshAreaType, NavMeshSettings};
 use rand::Rng;
 use serde::{de, Deserialize, Serialize};
-use crate::{GameStage, GameStages, PlayerData, WORLD_SIZE, components::{asset_manager::{AnimationComponent, BuildingsAssets, ChangeMaterial, CircleData, CircleHolder, ForbiddenBlueprint, InstancedMaterials, LOD, TeamMaterialExtension, Terrain, UnitAssets}, camera::{self, CameraComponent, SelectionBounds, SelectionBox}, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, DisplayedModelHolder, OpenBuildingsListEvent, RebuildApartments, SwitchBuildingState}, unit::{self, AttackAnimationTypes, BusyEngineer, DeleteAfterStart, EngineerActions, InfantryTransport, IsUnitSelectionAllowed, NeedToMove, RemainsCount, StoppedMoving, UnitRemains}}};
+use crate::{GameStage, GameStages, PlayerData, WORLD_SIZE, components::{asset_manager::{AnimationComponent, BuildingsAssets, ChangeMaterial, CircleData, CircleHolder, ForbiddenBlueprint, InstancedMaterials, LOD, TeamMaterialExtension, Terrain, UnitAssets}, camera::{self, CameraComponent, SelectionBounds, SelectionBox}, logistics::LogisticUnitComponent, network::EntityMaps, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, DisplayedModelHolder, OpenBuildingsListEvent, RebuildApartments, SwitchBuildingState}, unit::{self, AttackAnimationTypes, BusyEngineer, DeleteAfterStart, EngineerActions, InfantryTransport, IsUnitSelectionAllowed, NeedToMove, RemainsCount, StoppedMoving, UnitRemains}}};
 
 use super::{asset_manager::{generate_circle_segments, LineData, LineHolder}, logistics::{create_curved_mesh, create_plane_between_points, ResourceZone, RESOURCE_ZONES_COUNT /*RoadComponent, RoadObject*/}, network::{ClientList, ClientMessage, NetworkStatus, NetworkStatuses, ServerMessage}, ui_manager::{Actions, ButtonAction, GameStartedEvent, ProductionStateChanged, UiButtonNodes}, unit::{Armies, ArtilleryUnit, AttackTypes, CompanyTypes, CombatComponent, EngineerComponent, SelectableUnit, SuppliesConsumerComponent, UnitComponent, UnitDeathEvent, UnitNeedsToBeUncovered, UnitTypes, UnitsTileMap, TILE_SIZE}};
 
@@ -456,6 +456,34 @@ pub fn unit_production_system (
                         } else {
                             infantry_producer.4.available_resources -= infantry_producer.1.build_order[0].2.resource_cost;
                             infantry_producer.5.available_human_resources -= infantry_producer.1.build_order[0].2.human_resource_cost;
+
+                            if matches!(network_status.0, NetworkStatuses::Host){
+                                let mut channel_id = 30;
+                                while channel_id <= 59 {
+                                    if let Err(_) = server.endpoint_mut()
+                                    .send_group_message_on(clients.0.keys(), channel_id, ServerMessage::MaterialsDelivered {
+                                        server_entity: infantry_producer.0,
+                                        amount: -infantry_producer.1.build_order[0].2.resource_cost,
+                                    }){
+                                        channel_id += 1;
+                                    } else {
+                                        break;
+                                    }
+                                }
+
+                                channel_id = 30;
+                                while channel_id <= 59 {
+                                    if let Err(_) = server.endpoint_mut()
+                                    .send_group_message_on(clients.0.keys(), channel_id, ServerMessage::HumanResourcesDelivered {
+                                        server_entity: infantry_producer.0,
+                                        amount: -infantry_producer.1.build_order[0].2.human_resource_cost,
+                                    }){
+                                        channel_id += 1;
+                                    } else {
+                                        break;
+                                    }
+                                }
+                            }
                         }
                         
                         infantry_producer.1.elapsed_time = 0;
@@ -665,10 +693,10 @@ pub fn unit_production_system (
 
                                 let material_turret;
 
-                                if let Some(mat) = instanced_materials.team_materials.get(&(b.lod.1.mesh.id(), *team)) {
+                                if let Some(mat) = instanced_materials.team_materials.get(&(b.model_turret.mesh.id(), *team)) {
                                     material_turret = mat.clone();
                                 } else {
-                                    if let Some(original) = materials.get(b.lod.1.material.id()) {
+                                    if let Some(original) = materials.get(b.model_turret.material.id()) {
                                         material_turret = extended_materials.add(ExtendedMaterial {
                                             base: original.clone(),
                                             extension: TeamMaterialExtension {
@@ -686,7 +714,7 @@ pub fn unit_production_system (
                                         });
                                     }
 
-                                    instanced_materials.team_materials.insert((b.lod.1.mesh.id(), *team), material_turret.clone());
+                                    instanced_materials.team_materials.insert((b.model_turret.mesh.id(), *team), material_turret.clone());
                                 }
 
                                 let turret = commands.spawn((
@@ -772,7 +800,7 @@ pub fn unit_production_system (
         
                         match infantry_producer.1.build_order[0].3 {
                             CompanyTypes::Regular => {
-                                if let Some (platoon) = army.0.get_mut(team).unwrap().regular_platoons.get_mut(&(
+                                if let Some (platoon) = army.0.get_mut(team).unwrap().regular_squads.get_mut(&(
                                     infantry_producer.1.build_order[0].4.0,
                                     infantry_producer.1.build_order[0].4.1,
                                     infantry_producer.1.build_order[0].4.2,
@@ -793,7 +821,7 @@ pub fn unit_production_system (
                                 regular_infantry_queue_to_delete.push(infantry_producer.1.build_order[0].4);
                             },
                             CompanyTypes::Shock => {
-                                if let Some (platoon) = army.0.get_mut(team).unwrap().shock_platoons.get_mut(&(
+                                if let Some (platoon) = army.0.get_mut(team).unwrap().shock_squads.get_mut(&(
                                     infantry_producer.1.build_order[0].4.0,
                                     infantry_producer.1.build_order[0].4.1,
                                     infantry_producer.1.build_order[0].4.2,
@@ -814,7 +842,7 @@ pub fn unit_production_system (
                                 shock_infantry_queue_to_delete.push(infantry_producer.1.build_order[0].4);
                             },
                             CompanyTypes::Armored => {
-                                if let Some (platoon) = army.0.get_mut(team).unwrap().armored_platoons.get_mut(&(
+                                if let Some (platoon) = army.0.get_mut(team).unwrap().armored_squads.get_mut(&(
                                     infantry_producer.1.build_order[0].4.0,
                                     infantry_producer.1.build_order[0].4.1,
                                     infantry_producer.1.build_order[0].4.2,
@@ -968,6 +996,34 @@ pub fn unit_production_system (
                         } else {
                             vehicles_producer.4.available_resources -= vehicles_producer.1.build_order[0].2.resource_cost;
                             vehicles_producer.5.available_human_resources -= vehicles_producer.1.build_order[0].2.human_resource_cost;
+
+                            if matches!(network_status.0, NetworkStatuses::Host){
+                                let mut channel_id = 30;
+                                while channel_id <= 59 {
+                                    if let Err(_) = server.endpoint_mut()
+                                    .send_group_message_on(clients.0.keys(), channel_id, ServerMessage::MaterialsDelivered {
+                                        server_entity: vehicles_producer.0,
+                                        amount: -vehicles_producer.1.build_order[0].2.resource_cost,
+                                    }){
+                                        channel_id += 1;
+                                    } else {
+                                        break;
+                                    }
+                                }
+
+                                channel_id = 30;
+                                while channel_id <= 59 {
+                                    if let Err(_) = server.endpoint_mut()
+                                    .send_group_message_on(clients.0.keys(), channel_id, ServerMessage::HumanResourcesDelivered {
+                                        server_entity: vehicles_producer.0,
+                                        amount: -vehicles_producer.1.build_order[0].2.human_resource_cost,
+                                    }){
+                                        channel_id += 1;
+                                    } else {
+                                        break;
+                                    }
+                                }
+                            }
                         }
 
                         vehicles_producer.1.elapsed_time = 0;
@@ -1071,10 +1127,10 @@ pub fn unit_production_system (
 
                                 let material_turret;
 
-                                if let Some(mat) = instanced_materials.team_materials.get(&(b.lod.1.mesh.id(), *team)) {
+                                if let Some(mat) = instanced_materials.team_materials.get(&(b.model_turret.mesh.id(), *team)) {
                                     material_turret = mat.clone();
                                 } else {
-                                    if let Some(original) = materials.get(b.lod.1.material.id()) {
+                                    if let Some(original) = materials.get(b.model_turret.material.id()) {
                                         material_turret = extended_materials.add(ExtendedMaterial {
                                             base: original.clone(),
                                             extension: TeamMaterialExtension {
@@ -1092,7 +1148,7 @@ pub fn unit_production_system (
                                         });
                                     }
 
-                                    instanced_materials.team_materials.insert((b.lod.1.mesh.id(), *team), material_turret.clone());
+                                    instanced_materials.team_materials.insert((b.model_turret.mesh.id(), *team), material_turret.clone());
                                 }
 
                                 let turret = commands.spawn((
@@ -1177,10 +1233,10 @@ pub fn unit_production_system (
 
                                 let material_turret;
 
-                                if let Some(mat) = instanced_materials.team_materials.get(&(b.lod.1.mesh.id(), *team)) {
+                                if let Some(mat) = instanced_materials.team_materials.get(&(b.model_turret.mesh.id(), *team)) {
                                     material_turret = mat.clone();
                                 } else {
-                                    if let Some(original) = materials.get(b.lod.1.material.id()) {
+                                    if let Some(original) = materials.get(b.model_turret.material.id()) {
                                         material_turret = extended_materials.add(ExtendedMaterial {
                                             base: original.clone(),
                                             extension: TeamMaterialExtension {
@@ -1198,7 +1254,7 @@ pub fn unit_production_system (
                                         });
                                     }
 
-                                    instanced_materials.team_materials.insert((b.lod.1.mesh.id(), *team), material_turret.clone());
+                                    instanced_materials.team_materials.insert((b.model_turret.mesh.id(), *team), material_turret.clone());
                                 }
 
                                 let turret = commands.spawn((
@@ -1420,7 +1476,7 @@ pub fn unit_production_system (
         
                         match vehicles_producer.1.build_order[0].3 {
                             CompanyTypes::Regular => {
-                                if let Some (platoon) = army.0.get_mut(team).unwrap().regular_platoons.get_mut(&(
+                                if let Some (platoon) = army.0.get_mut(team).unwrap().regular_squads.get_mut(&(
                                     vehicles_producer.1.build_order[0].4.0,
                                     vehicles_producer.1.build_order[0].4.1,
                                     vehicles_producer.1.build_order[0].4.2,
@@ -1441,7 +1497,7 @@ pub fn unit_production_system (
                                 regular_infantry_queue_to_delete.push(vehicles_producer.1.build_order[0].4);
                             },
                             CompanyTypes::Shock => {
-                                if let Some (platoon) = army.0.get_mut(team).unwrap().shock_platoons.get_mut(&(
+                                if let Some (platoon) = army.0.get_mut(team).unwrap().shock_squads.get_mut(&(
                                     vehicles_producer.1.build_order[0].4.0,
                                     vehicles_producer.1.build_order[0].4.1,
                                     vehicles_producer.1.build_order[0].4.2,
@@ -1462,7 +1518,7 @@ pub fn unit_production_system (
                                 shock_infantry_queue_to_delete.push(vehicles_producer.1.build_order[0].4);
                             },
                             CompanyTypes::Armored => {
-                                if let Some (platoon) = army.0.get_mut(team).unwrap().armored_platoons.get_mut(&(
+                                if let Some (platoon) = army.0.get_mut(team).unwrap().armored_squads.get_mut(&(
                                     vehicles_producer.1.build_order[0].4.0,
                                     vehicles_producer.1.build_order[0].4.1,
                                     vehicles_producer.1.build_order[0].4.2,
@@ -1833,6 +1889,7 @@ pub fn unit_replenishment_system(
                                 event.dead_unit_data.1.0,
                                 event.dead_unit_data.1.1.clone(),
                             ),
+                            should_spawn_corpse: event.dead_unit_data.5,
                         }){
                             channel_id += 1;
                         } else {
@@ -1859,7 +1916,7 @@ pub fn unit_replenishment_system(
                             ),
                         );
         
-                        if let Some (platoon) = army.0.get_mut(&event.dead_unit_data.0).unwrap().regular_platoons.get_mut(&(
+                        if let Some (platoon) = army.0.get_mut(&event.dead_unit_data.0).unwrap().regular_squads.get_mut(&(
                             event.dead_unit_data.1.1.1.0,
                             event.dead_unit_data.1.1.1.1,
                             event.dead_unit_data.1.1.1.2,
@@ -1889,7 +1946,7 @@ pub fn unit_replenishment_system(
                             ),
                         );
         
-                        if let Some (platoon) = army.0.get_mut(&event.dead_unit_data.0).unwrap().shock_platoons.get_mut(&(
+                        if let Some (platoon) = army.0.get_mut(&event.dead_unit_data.0).unwrap().shock_squads.get_mut(&(
                             event.dead_unit_data.1.1.1.0,
                             event.dead_unit_data.1.1.1.1,
                             event.dead_unit_data.1.1.1.2,
@@ -1919,7 +1976,7 @@ pub fn unit_replenishment_system(
                             ),
                         );
         
-                        if let Some (platoon) = army.0.get_mut(&event.dead_unit_data.0).unwrap().armored_platoons.get_mut(&(
+                        if let Some (platoon) = army.0.get_mut(&event.dead_unit_data.0).unwrap().armored_squads.get_mut(&(
                             event.dead_unit_data.1.1.1.0,
                             event.dead_unit_data.1.1.1.1,
                             event.dead_unit_data.1.1.1.2,
@@ -2004,7 +2061,7 @@ pub fn production_manager(
     for event in event_reader.read() {
         if event.is_allowed {
             let mut add_amount;
-            for platoon in army.0.get(&event.team).unwrap().regular_platoons.iter() {
+            for platoon in army.0.get(&event.team).unwrap().regular_squads.iter() {
                 add_amount = platoon.1.0.0.0.capacity() - platoon.1.0.0.0.len();
 
                 for i in 0..add_amount as i32 {
@@ -2044,7 +2101,7 @@ pub fn production_manager(
                 }
             }
 
-            for platoon in army.0.get(&event.team).unwrap().shock_platoons.iter() {
+            for platoon in army.0.get(&event.team).unwrap().shock_squads.iter() {
                 add_amount = platoon.1.0.0.0.capacity() - platoon.1.0.0.0.len();
 
                 for i in 0..add_amount as i32 {
@@ -2084,7 +2141,7 @@ pub fn production_manager(
                 }
             }
 
-            for platoon in army.0.get(&event.team).unwrap().armored_platoons.iter() {
+            for platoon in army.0.get(&event.team).unwrap().armored_squads.iter() {
                 add_amount = platoon.1.0.0.capacity() - platoon.1.0.0.len();
 
                 for i in 0..add_amount as i32 {
@@ -2401,22 +2458,7 @@ pub fn settlements_placement_system (
                                 transform: Transform::from_translation(ray_hit).with_rotation(Quat::from_rotation_y(angle)),
                                 ..default()
                             })
-                            .insert(SettlementComponent(remaining_settlements.0[0].0.clone()))
-                            .insert(CombatComponent{
-                                team: player_data.team,
-                                current_health: 0,
-                                max_health: 0,
-                                unit_type: UnitTypes::None,
-                                attack_type: AttackTypes::None,
-                                attack_animation_type: AttackAnimationTypes::None(Vec3::ZERO),
-                                attack_frequency: 0,
-                                attack_elapsed_time: 0,
-                                detection_range: remaining_settlements.0[0].0.settlement_size,
-                                attack_range: 0.,
-                                enemies: vec![],
-                                is_static: true,
-                                unit_data: ((i32::MAX, i32::MAX), (CompanyTypes::None, (-1, -1, -1, -1, -1, -1, -1), "".to_string())),
-                            });
+                            .insert(SettlementComponent(remaining_settlements.0[0].0.clone()));
 
                             commands.spawn(CircleHolder(vec![
                                 CircleData{
@@ -2503,7 +2545,7 @@ pub fn settlements_placement_system (
                             while channel_id <= 89 {
                                 if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::SettlementPlaced {
                                     settlement: remaining_settlements.0[0].0.clone(),
-                                    position: Vec3::new(ray_hit.x, ray_hit.y + 10., ray_hit.z),
+                                    position: ray_hit,
                                     server_entity: new_settlement,
                                 }){
                                     channel_id += 1;
@@ -2758,7 +2800,7 @@ pub fn apartments_generation_system(
                     placeds.push(position);
 
                     tile_map.tiles.entry(settlement.2.0.team).or_insert_with(HashMap::new).entry(new_apartment_tile)
-                    .or_insert_with(HashMap::new).insert(new_apartment, (position, UnitTypes::Building));
+                    .or_insert_with(HashMap::new).insert(new_apartment, (position, UnitTypes::None));
 
                     if placeds.len() >= settlement.2.0.settlement_size as usize {
                         break;
@@ -3409,6 +3451,8 @@ pub fn settlements_capturing_system (
     mut commands: Commands,
     mut tile_map: ResMut<UnitsTileMap>,
     mut settlements_q: Query<(Entity, &Transform, &mut SettlementComponent), With<SettlementComponent>>,
+    mut apartments_q: Query<&mut CombatComponent, With<ApartmentHouse>>,
+    logistic_units_q: Query<&LogisticUnitComponent>,
     buildings_assets: Res<BuildingsAssets>,
     ui_button_nodes: Res<UiButtonNodes>,
     mut materials: (
@@ -3459,11 +3503,11 @@ pub fn settlements_capturing_system (
             for _row in 0..rows + 1 {
                 for _column in 0..columns + 1 {
                     for team_tile_map in tile_map.tiles.iter_mut() {
-                        for (_unit_entity, (unit_position, unit_type)) in team_tile_map.1.entry(tile_to_scan)
+                        for (unit_entity, (unit_position, unit_type)) in team_tile_map.1.entry(tile_to_scan)
                         .or_insert_with(HashMap::new) {
                             distance_to_target = settlement.1.translation.xz().distance(unit_position.xz());
 
-                            if distance_to_target <= settlement.2.0.settlement_size && !matches!(unit_type, UnitTypes::Building) {
+                            if distance_to_target <= settlement.2.0.settlement_size && !matches!(unit_type, UnitTypes::None | UnitTypes::Building) && !logistic_units_q.get(*unit_entity).is_ok() {
                                 if settlement.2.0.team == *team_tile_map.0 {
                                     ally_count += 1;
                                 } else {
@@ -3539,11 +3583,47 @@ pub fn settlements_capturing_system (
                 
                 settlement.2.0.elapsed_capture_time += 1000;
 
+                if matches!(network_status.0, NetworkStatuses::Host) {
+                    let mut channel_id = 30;
+                    while channel_id <= 59 {
+                        if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::SettlementCaptureStarted {
+                            settlement_server_entity: settlement.0,
+                        }) {
+                            channel_id += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+
                 if settlement.2.0.elapsed_capture_time >= settlement.2.0.time_to_capture {
                     commands.entity(settlement.0).remove::<SettlementCaptureInProgress>();
 
+                    if matches!(network_status.0, NetworkStatuses::Host) {
+                        let mut channel_id = 30;
+                        while channel_id <= 59 {
+                            if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::SettlementCaptureEnded {
+                                settlement_server_entity: settlement.0,
+                            }) {
+                                channel_id += 1;
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+
                     settlement.2.0.team = enemy_team;
                     settlement.2.0.elapsed_capture_time = 0;
+
+                    let mut captured_apartments: Vec<Entity> = Vec::new();
+                    for apartment_entity in settlement.2.0.active_apartments.iter() {
+                        if let Ok(mut apartment) = apartments_q.get_mut(apartment_entity.0) {
+                            captured_apartments.push(apartment_entity.0);
+                            apartment.team = enemy_team;
+                        }
+                        
+                        commands.entity(apartment_entity.0).insert(Visibility::Visible);
+                    }
 
                     let color;
                     if enemy_team == 1 {
@@ -3587,6 +3667,7 @@ pub fn settlements_capturing_system (
                             if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::SettlementCaptured {
                                 server_entity: settlement.0,
                                 team: enemy_team,
+                                captured_apartments: captured_apartments.clone(),
                             }) {
                                 channel_id += 1;
                             } else {
@@ -3598,6 +3679,19 @@ pub fn settlements_capturing_system (
             } else {
                 commands.entity(settlement.0).remove::<SettlementCaptureInProgress>();
                 settlement.2.0.elapsed_capture_time = 0;
+
+                if matches!(network_status.0, NetworkStatuses::Host) {
+                    let mut channel_id = 30;
+                    while channel_id <= 59 {
+                        if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::SettlementCaptureEnded {
+                            settlement_server_entity: settlement.0,
+                        }) {
+                            channel_id += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                }
             }
         }
     }
@@ -3619,9 +3713,10 @@ pub fn resources_amount_displays_processing_system(
     mut material_displays_q: Query<(&MaterialsDisplay, &mut Style, &Parent), (With<MaterialsDisplay>, Without<HumanResourcesDisplay>, Without<Children>)>,
     mut human_resource_displays_q: Query<(&HumanResourcesDisplay, &mut Style, &Parent), (With<HumanResourcesDisplay>, Without<MaterialsDisplay>, Without<Children>)>,
     mut display_bar_holders_q: Query<&mut Style, (With<Children>, Without<MaterialsDisplay>, Without<HumanResourcesDisplay>)>,
-    storages_q: Query<(&Transform, Option<&MaterialsStorageComponent>, Option<&HumanResourceStorageComponent>)>,
+    storages_q: Query<(&Transform, &CombatComponent, Option<&MaterialsStorageComponent>, Option<&HumanResourceStorageComponent>)>,
     camera_q: Query<(&Camera, &GlobalTransform)>,
     ui_button_nodes: Res<UiButtonNodes>,
+    player_data: Res<PlayerData>,
     mut commands: Commands,
 ){
     if material_displays_q.is_empty() && human_resource_displays_q.is_empty() {return;}
@@ -3647,7 +3742,9 @@ pub fn resources_amount_displays_processing_system(
 
     for mut material_display in material_displays_q.iter_mut() {
         if let Ok(storage) = storages_q.get(material_display.0.storage_entity) {
-            if let Some(material_storage) = storage.1 {
+            if storage.1.team != player_data.team {continue;}
+
+            if let Some(material_storage) = storage.2 {
                 if let Some(viewport_point) = camera.0.world_to_viewport(camera.1, storage.0.translation) {
                     if let Ok(mut holder) = display_bar_holders_q.get_mut(**material_display.2) {
                         commands.entity(**material_display.2).insert(Visibility::Visible);
@@ -3671,10 +3768,12 @@ pub fn resources_amount_displays_processing_system(
 
     for mut human_resource_display in human_resource_displays_q.iter_mut() {
         if let Ok(storage) = storages_q.get(human_resource_display.0.storage_entity) {
-            if let Some(human_resource_storage) = storage.2 {
+            if storage.1.team != player_data.team {continue;}
+
+            if let Some(human_resource_storage) = storage.3 {
                 let mut top_offset_add = 0.;
 
-                if let Some(_ms) = storage.1 {
+                if let Some(_ms) = storage.2 {
                     top_offset_add = bar_height;
                 }
 
@@ -3711,10 +3810,11 @@ pub struct ConstructionProgressBar {
 pub fn construction_progress_displays_processing_system(
     mut progress_bars_q: Query<(&ConstructionProgressBar, &mut Style, &Parent), With<ConstructionProgressBar>>,
     mut progress_bar_holders_q: Query<(&mut Style, &Children), Without<ConstructionProgressBar>>,
-    construction_sites_q: Query<(&Transform, &BuildingConstructionSite), (With<BuildingConstructionSite>, Without<DeconstructableBuilding>)>,
-    deconstruction_sites_q: Query<(&Transform, &DeconstructableBuilding), (With<DeconstructableBuilding>, With<ToDeconstruct>, Without<BuildingConstructionSite>)>,
+    construction_sites_q: Query<(&Transform, &BuildingConstructionSite, &CombatComponent), (With<BuildingConstructionSite>, Without<DeconstructableBuilding>)>,
+    deconstruction_sites_q: Query<(&Transform, &DeconstructableBuilding, &CombatComponent), (With<DeconstructableBuilding>, With<ToDeconstruct>, Without<BuildingConstructionSite>)>,
     camera_q: Query<(&Camera, &GlobalTransform)>,
     ui_button_nodes: Res<UiButtonNodes>,
+    player_data: Res<PlayerData>,
     mut commands: Commands,
 ){
     let camera = camera_q.iter().next().unwrap();
@@ -3732,6 +3832,8 @@ pub fn construction_progress_displays_processing_system(
 
     for mut progress_bar in progress_bars_q.iter_mut() {
         if let Ok(site) = construction_sites_q.get(progress_bar.0.constrcution_entity) {
+            if site.2.team != player_data.team {continue;}
+
             if let Some(viewport_point) = camera.0.world_to_viewport(camera.1, site.0.translation) {
                 if let Ok(mut holder) = progress_bar_holders_q.get_mut(**progress_bar.2) {
                     commands.entity(**progress_bar.2).insert(Visibility::Visible);
@@ -3745,6 +3847,8 @@ pub fn construction_progress_displays_processing_system(
                 }
             }
         } else if let Ok(building) = deconstruction_sites_q.get(progress_bar.0.constrcution_entity) {
+            if building.2.team != player_data.team {continue;}
+
             if let Some(viewport_point) = camera.0.world_to_viewport(camera.1, building.0.translation) {
                 if let Ok(mut holder) = progress_bar_holders_q.get_mut(**progress_bar.2) {
                     commands.entity(**progress_bar.2).insert(Visibility::Visible);
@@ -3878,6 +3982,11 @@ pub fn blueprints_deletion_system(
     mut unit_selection: ResMut<IsUnitSelectionAllowed>,
     player_data: Res<PlayerData>,
     mut commands: Commands,
+    network_status: Res<NetworkStatus>,
+    mut server: ResMut<QuinnetServer>,
+    mut client: ResMut<QuinnetClient>,
+    clients: Res<ClientList>,
+    entity_maps: Res<EntityMaps>,
 ){
     if deletion_states.is_blueprints_deletion_active && !selection_bounds.is_ui_hovered {
         if mouse_buttons.just_released(MouseButton::Left) {
@@ -3895,7 +4004,39 @@ pub fn blueprints_deletion_system(
                     if
                     screen_pos.x >= min_x && screen_pos.x <= max_x &&
                     screen_pos.y >= min_y && screen_pos.y <= max_y {
-                        commands.entity(blueprint.0).despawn();
+                        match network_status.0 {
+                            NetworkStatuses::Client => {
+                                if let Some(server_entity) = entity_maps.client_to_server.get(&blueprint.0) {
+                                    let mut channel_id = 30;
+                                    while channel_id <= 59 {
+                                        if let Err(_) = client.connection_mut().send_message_on(channel_id, ClientMessage::DeleteUnspecifiedEntityRequest {
+                                            entity: *server_entity,
+                                        }){
+                                            channel_id += 1;
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                }
+                            },
+                            NetworkStatuses::Host => {
+                                commands.entity(blueprint.0).despawn();
+
+                                let mut channel_id = 30;
+                                while channel_id <= 59 {
+                                    if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnspecifiedEntityRemoved {
+                                        server_entity: blueprint.0,
+                                    }){
+                                        channel_id += 1;
+                                    } else {
+                                        break;
+                                    }
+                                }
+                            }
+                            _ => {
+                                commands.entity(blueprint.0).despawn();
+                            },
+                        }
                     }
                 }
             }
@@ -3936,6 +4077,11 @@ pub fn buildings_deletion_system(
     mut unit_selection: ResMut<IsUnitSelectionAllowed>,
     player_data: Res<PlayerData>,
     mut commands: Commands,
+    network_status: Res<NetworkStatus>,
+    mut server: ResMut<QuinnetServer>,
+    mut client: ResMut<QuinnetClient>,
+    clients: Res<ClientList>,
+    entity_maps: Res<EntityMaps>,
 ){
     if deletion_states.is_buildings_deletion_active {
         if mouse_buttons.just_released(MouseButton::Left) && !selection_bounds.is_ui_hovered  {
@@ -3953,12 +4099,53 @@ pub fn buildings_deletion_system(
                     if
                     screen_pos.x >= min_x && screen_pos.x <= max_x &&
                     screen_pos.y >= min_y && screen_pos.y <= max_y {
-                        commands.entity(construction_site.0).insert(ToDeconstruct{
-                            team: construction_site.2.team,
-                            deconstructor_entity: Entity::PLACEHOLDER,
-                            progress_bar_entity: Entity::PLACEHOLDER,
-                            deconstruction_distance: construction_site.2.build_distance,
-                        });
+                        match network_status.0 {
+                            NetworkStatuses::Client => {
+                                if let Some(server_entity) = entity_maps.client_to_server.get(&construction_site.0) {
+                                    let mut channel_id = 30;
+                                    while channel_id <= 59 {
+                                        if let Err(_) = client.connection_mut().send_message_on(channel_id, ClientMessage::DeconstructionRequest {
+                                            entity: *server_entity,
+                                            team: construction_site.2.team,
+                                            deconstruction_distance: construction_site.2.build_distance,
+                                        }){
+                                            channel_id += 1;
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                }
+                            },
+                            NetworkStatuses::Host => {
+                                let mut channel_id = 30;
+                                while channel_id <= 59 {
+                                    if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::DeconstructionAssigned {
+                                        server_entity: construction_site.0,
+                                        team: construction_site.2.team,
+                                        deconstruction_distance: construction_site.2.build_distance,
+                                    }){
+                                        channel_id += 1;
+                                    } else {
+                                        break;
+                                    }
+                                }
+
+                                commands.entity(construction_site.0).insert(ToDeconstruct{
+                                    team: construction_site.2.team,
+                                    deconstructor_entity: Entity::PLACEHOLDER,
+                                    progress_bar_entity: Entity::PLACEHOLDER,
+                                    deconstruction_distance: construction_site.2.build_distance,
+                                });
+                            },
+                            _ => {
+                                commands.entity(construction_site.0).insert(ToDeconstruct{
+                                    team: construction_site.2.team,
+                                    deconstructor_entity: Entity::PLACEHOLDER,
+                                    progress_bar_entity: Entity::PLACEHOLDER,
+                                    deconstruction_distance: construction_site.2.build_distance,
+                                });
+                            },
+                        }
                     }
                 }
             }
@@ -3970,12 +4157,53 @@ pub fn buildings_deletion_system(
                     if
                     screen_pos.x >= min_x && screen_pos.x <= max_x &&
                     screen_pos.y >= min_y && screen_pos.y <= max_y {
-                        commands.entity(building.0).insert(ToDeconstruct{
-                            team: building.2.team,
-                            deconstructor_entity: Entity::PLACEHOLDER,
-                            progress_bar_entity: Entity::PLACEHOLDER,
-                            deconstruction_distance: building.2.deconstruction_distance,
-                        });
+                        match network_status.0 {
+                            NetworkStatuses::Client => {
+                                if let Some(server_entity) = entity_maps.client_to_server.get(&building.0) {
+                                    let mut channel_id = 30;
+                                    while channel_id <= 59 {
+                                        if let Err(_) = client.connection_mut().send_message_on(channel_id, ClientMessage::DeconstructionRequest {
+                                            entity: *server_entity,
+                                            team: building.2.team,
+                                            deconstruction_distance: building.2.deconstruction_distance,
+                                        }){
+                                            channel_id += 1;
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                }
+                            },
+                            NetworkStatuses::Host => {
+                                let mut channel_id = 30;
+                                while channel_id <= 59 {
+                                    if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::DeconstructionAssigned {
+                                        server_entity: building.0,
+                                        team: building.2.team,
+                                        deconstruction_distance: building.2.deconstruction_distance,
+                                    }){
+                                        channel_id += 1;
+                                    } else {
+                                        break;
+                                    }
+                                }
+
+                                commands.entity(building.0).insert(ToDeconstruct{
+                                    team: building.2.team,
+                                    deconstructor_entity: Entity::PLACEHOLDER,
+                                    progress_bar_entity: Entity::PLACEHOLDER,
+                                    deconstruction_distance: building.2.deconstruction_distance,
+                                });
+                            },
+                            _ => {
+                                commands.entity(building.0).insert(ToDeconstruct{
+                                    team: building.2.team,
+                                    deconstructor_entity: Entity::PLACEHOLDER,
+                                    progress_bar_entity: Entity::PLACEHOLDER,
+                                    deconstruction_distance: building.2.deconstruction_distance,
+                                });
+                            },
+                        }
                     }
                 }
             }
@@ -3998,6 +4226,11 @@ pub fn buildings_deletion_cancelation_system(
     mut unit_selection: ResMut<IsUnitSelectionAllowed>,
     player_data: Res<PlayerData>,
     mut commands: Commands,
+    network_status: Res<NetworkStatus>,
+    mut server: ResMut<QuinnetServer>,
+    mut client: ResMut<QuinnetClient>,
+    clients: Res<ClientList>,
+    entity_maps: Res<EntityMaps>,
 ){
     if deletion_states.is_buildings_deletion_cancelation_active && !selection_bounds.is_ui_hovered  {
         if mouse_buttons.just_released(MouseButton::Left) {
@@ -4015,16 +4248,59 @@ pub fn buildings_deletion_cancelation_system(
                     if
                     screen_pos.x >= min_x && screen_pos.x <= max_x &&
                     screen_pos.y >= min_y && screen_pos.y <= max_y {
-                        commands.entity(deconstruction_site.0).remove::<ToDeconstruct>();
+                        match network_status.0 {
+                            NetworkStatuses::Client => {
+                                if let Some(server_entity) = entity_maps.client_to_server.get(&deconstruction_site.0) {
+                                    let mut channel_id = 30;
+                                    while channel_id <= 59 {
+                                        if let Err(_) = client.connection_mut().send_message_on(channel_id, ClientMessage::DeconstructionCancelationRequest {
+                                            entity: *server_entity,
+                                            position: deconstruction_site.1.translation,
+                                        }){
+                                            channel_id += 1;
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                }
+                            },
+                            NetworkStatuses::Host => {
+                                commands.entity(deconstruction_site.0).remove::<ToDeconstruct>();
 
-                        if let Some(mut building) = deconstruction_site.3 {
-                            building.buildpower_to_deconstruct_remaining = 0;
-                        }
+                                if let Some(mut building) = deconstruction_site.3 {
+                                    building.buildpower_to_deconstruct_remaining = 0;
+                                }
 
-                        if let Some(construction_site) = deconstruction_site.4 {
-                            commands.entity(construction_site.current_builder).insert(BusyEngineer(
-                                EngineerActions::Construction((deconstruction_site.1.translation, deconstruction_site.0, construction_site.build_distance))
-                            ));
+                                if let Some(construction_site) = deconstruction_site.4 {
+                                    commands.entity(construction_site.current_builder).insert(BusyEngineer(
+                                        EngineerActions::Construction((deconstruction_site.1.translation, deconstruction_site.0, construction_site.build_distance))
+                                    ));
+                                }
+
+                                let mut channel_id = 30;
+                                while channel_id <= 59 {
+                                    if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::DeconstructionCanceled {
+                                        server_entity: deconstruction_site.0,
+                                    }){
+                                        channel_id += 1;
+                                    } else {
+                                        break;
+                                    }
+                                }
+                            },
+                            _ => {
+                                commands.entity(deconstruction_site.0).remove::<ToDeconstruct>();
+
+                                if let Some(mut building) = deconstruction_site.3 {
+                                    building.buildpower_to_deconstruct_remaining = 0;
+                                }
+
+                                if let Some(construction_site) = deconstruction_site.4 {
+                                    commands.entity(construction_site.current_builder).insert(BusyEngineer(
+                                        EngineerActions::Construction((deconstruction_site.1.translation, deconstruction_site.0, construction_site.build_distance))
+                                    ));
+                                }
+                            },
                         }
                     }
                 }
@@ -4046,6 +4322,9 @@ pub fn buildings_state_switcher(
     mut buildings_q: Query<(Entity, &mut SwitchableBuilding)>,
     ui_button_nodes: Res<UiButtonNodes>,
     mut commands: Commands,
+    network_status: Res<NetworkStatus>,
+    mut client: ResMut<QuinnetClient>,
+    entity_maps: Res<EntityMaps>,
 ){
     for event in event_reader.read() {
         if let Ok(mut building) = buildings_q.get_mut(event.0) {
@@ -4099,6 +4378,22 @@ pub fn buildings_state_switcher(
                     });
                 });
             });
+
+            if matches!(network_status.0, NetworkStatuses::Client) {
+                if let Some(server_entity) = entity_maps.client_to_server.get(&building.0) {
+                    let mut channel_id = 30;
+                    while channel_id <= 59 {
+                        if let Err(_) = client.connection_mut().send_message_on(channel_id, ClientMessage::BuildingStateSwitchRequest {
+                            entity: *server_entity,
+                            state: building.1.0,
+                        }){
+                            channel_id += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -4109,142 +4404,189 @@ pub struct DontTouch;
 pub fn rebuild_settlement_apartments_system (
     mut event_reader: EventReader<RebuildApartments>,
     mut settlements_q: Query<&mut SettlementComponent>,
-    mut material_producers_q: Query<&mut MaterialsProductionComponent>,
+    mut material_producers_q: Query<(&mut MaterialsProductionComponent, &CombatComponent)>,
     buildings_assets: Res<BuildingsAssets>,
     instanced_materials: Res<InstancedMaterials>,
     mut tile_map: ResMut<UnitsTileMap>,
     ui_button_nodes: Res<UiButtonNodes>,
     mut commands: Commands,
+    network_status: Res<NetworkStatus>,
+    mut server: ResMut<QuinnetServer>,
+    clients: Res<ClientList>,
+    mut client: ResMut<QuinnetClient>,
+    entity_maps: Res<EntityMaps>,
 ){
     for event in event_reader.read() {
-        if let Ok(mut settlement) = settlements_q.get_mut(event.0) {
-            if settlement.0.elapsed_capture_time > 0 {
-                return;
-            }
-
-            let team = settlement.0.team;
-            for apartment in settlement.0.active_apartments.iter_mut() {
-                if commands.get_entity(apartment.0).is_none() {
-                    let mut total_materials = 0;
-
-                    for material_producer in material_producers_q.iter() {
-                        total_materials += material_producer.available_materials;
-                    }
-
-                    if total_materials >= 5000 {
-                        let mut remaining_resource_cost = 5000;
-
-                        for mut material_producer in material_producers_q.iter_mut() {
-                            let current_remains = remaining_resource_cost - material_producer.available_materials;
-
-                            if current_remains <= 0 {
-                                material_producer.available_materials -= remaining_resource_cost;
-
-                                break;
-                            } else {
-                                remaining_resource_cost -= material_producer.available_materials;
-                                material_producer.available_materials = 0;
-                            }
+        match network_status.0 {
+            NetworkStatuses::Client => {
+                if let Some(server_entity) = entity_maps.client_to_server.get(&event.0) {
+                    let mut channel_id = 30;
+                    while channel_id <= 59 {
+                        if let Err(_) = client.connection_mut().send_message_on(channel_id, ClientMessage::ApartmentsRebuildingRequest {
+                            entity: *server_entity,
+                        }){
+                            channel_id += 1;
+                        } else {
+                            break;
                         }
-                        
-                        let new_construction_tile = ((apartment.1.x / TILE_SIZE) as i32, (apartment.1.z / TILE_SIZE) as i32);
-
-                        let new_construction_site = commands.spawn(MaterialMeshBundle{
-                            mesh: buildings_assets.apartment.0.clone(),
-                            material: instanced_materials.blue_transparent.clone(),
-                            transform: Transform::from_translation(apartment.1).with_rotation(Quat::from_rotation_y(apartment.2)),
-                            ..default()
-                        })
-                        .insert(BuildingConstructionSite{
-                            team: team,
-                            building_bundle: BuildingsBundles::None,
-                            build_power_total: 200,
-                            build_power_remaining: 200,
-                            name: "".to_string(),
-                            build_distance: 30.,
-                            current_builder: Entity::PLACEHOLDER,
-                            resource_cost: 0,
-                        }).insert(CombatComponent{
-                            team: team,
-                            current_health: 10,
-                            max_health: 10,
-                            unit_type: UnitTypes::Building,
-                            attack_type: AttackTypes::None,
-                            attack_animation_type: AttackAnimationTypes::None(Vec3::ZERO),
-                            attack_frequency: 0,
-                            attack_elapsed_time: 0,
-                            detection_range: 0.,
-                            attack_range: 0.,
-                            enemies: vec![],
-                            is_static: true,
-                            unit_data: (
-                                new_construction_tile,
-                                (
-                                    CompanyTypes::None,
-                                    (0, 0, 0, 0, 0, 0, 0),
-                                    "".to_string(),
-                                )
-                            ),
-                        })
-                        .insert(DontTouch)
-                        .id();
-
-                        apartment.0 = new_construction_site;
-
-                        tile_map.tiles.entry(team).or_insert_with(HashMap::new).entry(new_construction_tile)
-                        .or_insert_with(HashMap::new).insert(new_construction_site, (apartment.1, UnitTypes::Building));
-
-                        let bar_size = ui_button_nodes.button_size * 0.75;
-
-                        commands.spawn(NodeBundle{
-                            style: Style {
-                                position_type: PositionType::Relative,
-                                width: Val::Px(bar_size),
-                                height: Val::Px(bar_size / 4.),
-                                flex_direction: FlexDirection::Column,
-                                justify_content: JustifyContent::Start,
-                                align_items: AlignItems::Start,
-                                top: Val::Px(bar_size / 2. + bar_size / 4. / 2.),
-                                ..default()
-                            },
-                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
-                            ..default()
-                        })
-                        .insert(Visibility::Hidden)
-                        .with_children(|parent| {
-                            parent.spawn(NodeBundle {
-                                style: Style {
-                                    position_type: PositionType::Relative,
-                                    width: Val::Px(0.),
-                                    height: Val::Px(bar_size / 4.),
-                                    flex_direction: FlexDirection::Column,
-                                    justify_content: JustifyContent::Start,
-                                    align_items: AlignItems::Start,
-                                    ..default()
-                                },
-                                background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
-                                ..default()
-                            })
-                            .insert(ConstructionProgressBar {
-                                constrcution_entity: new_construction_site,
-                                max_width: bar_size,
-                            });
-                        });
                     }
                 }
-            }
+            },
+            _ => {
+                if let Ok(mut settlement) = settlements_q.get_mut(event.0) {
+                    if settlement.0.elapsed_capture_time > 0 {
+                        return;
+                    }
+
+                    let team = settlement.0.team;
+                    for apartment in settlement.0.active_apartments.iter_mut() {
+                        if commands.get_entity(apartment.0).is_none() {
+                            let mut total_materials = 0;
+
+                            for material_producer in material_producers_q.iter() {
+                                if team != material_producer.1.team {continue;}
+
+                                total_materials += material_producer.0.available_materials;
+                            }
+
+                            if total_materials >= 5000 {
+                                let mut remaining_resource_cost = 5000;
+
+                                for mut material_producer in material_producers_q.iter_mut() {
+                                    if team != material_producer.1.team {continue;}
+
+                                    let current_remains = remaining_resource_cost - material_producer.0.available_materials;
+
+                                    if current_remains <= 0 {
+                                        material_producer.0.available_materials -= remaining_resource_cost;
+
+                                        break;
+                                    } else {
+                                        remaining_resource_cost -= material_producer.0.available_materials;
+                                        material_producer.0.available_materials = 0;
+                                    }
+                                }
+                                
+                                let new_construction_tile = ((apartment.1.x / TILE_SIZE) as i32, (apartment.1.z / TILE_SIZE) as i32);
+
+                                let new_construction_site = commands.spawn(MaterialMeshBundle{
+                                    mesh: buildings_assets.apartment.0.clone(),
+                                    material: instanced_materials.blue_transparent.clone(),
+                                    transform: Transform::from_translation(apartment.1).with_rotation(Quat::from_rotation_y(apartment.2)),
+                                    ..default()
+                                })
+                                .insert(BuildingConstructionSite{
+                                    team: team,
+                                    building_bundle: BuildingsBundles::None,
+                                    build_power_total: 200,
+                                    build_power_remaining: 200,
+                                    name: "".to_string(),
+                                    build_distance: 30.,
+                                    current_builder: Entity::PLACEHOLDER,
+                                    resource_cost: 0,
+                                }).insert(CombatComponent{
+                                    team: team,
+                                    current_health: 10,
+                                    max_health: 10,
+                                    unit_type: UnitTypes::Building,
+                                    attack_type: AttackTypes::None,
+                                    attack_animation_type: AttackAnimationTypes::None(Vec3::ZERO),
+                                    attack_frequency: 0,
+                                    attack_elapsed_time: 0,
+                                    detection_range: 0.,
+                                    attack_range: 0.,
+                                    enemies: vec![],
+                                    is_static: true,
+                                    unit_data: (
+                                        new_construction_tile,
+                                        (
+                                            CompanyTypes::None,
+                                            (0, 0, 0, 0, 0, 0, 0),
+                                            "".to_string(),
+                                        )
+                                    ),
+                                })
+                                .insert(DontTouch)
+                                .id();
+
+                                apartment.0 = new_construction_site;
+
+                                tile_map.tiles.entry(team).or_insert_with(HashMap::new).entry(new_construction_tile)
+                                .or_insert_with(HashMap::new).insert(new_construction_site, (apartment.1, UnitTypes::None));
+
+                                let bar_size = ui_button_nodes.button_size * 0.75;
+
+                                commands.spawn(NodeBundle{
+                                    style: Style {
+                                        position_type: PositionType::Relative,
+                                        width: Val::Px(bar_size),
+                                        height: Val::Px(bar_size / 4.),
+                                        flex_direction: FlexDirection::Column,
+                                        justify_content: JustifyContent::Start,
+                                        align_items: AlignItems::Start,
+                                        top: Val::Px(bar_size / 2. + bar_size / 4. / 2.),
+                                        ..default()
+                                    },
+                                    background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                                    ..default()
+                                })
+                                .insert(Visibility::Hidden)
+                                .with_children(|parent| {
+                                    parent.spawn(NodeBundle {
+                                        style: Style {
+                                            position_type: PositionType::Relative,
+                                            width: Val::Px(0.),
+                                            height: Val::Px(bar_size / 4.),
+                                            flex_direction: FlexDirection::Column,
+                                            justify_content: JustifyContent::Start,
+                                            align_items: AlignItems::Start,
+                                            ..default()
+                                        },
+                                        background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
+                                        ..default()
+                                    })
+                                    .insert(ConstructionProgressBar {
+                                        constrcution_entity: new_construction_site,
+                                        max_width: bar_size,
+                                    });
+                                });
+
+                                if matches!(network_status.0, NetworkStatuses::Host) {
+                                    let mut channel_id = 30;
+                                    while channel_id <= 59 {
+                                        if let Err(_) = server
+                                        .endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::ApartmentConstructionSitePlaced {
+                                            server_entity: new_construction_site,
+                                            position: apartment.1,
+                                            angle: apartment.2,
+                                            team: team,
+                                        }){
+                                            channel_id += 1;
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
         }
     }
 }
 
 pub fn apartments_rebuilding_system(
     mut settlements_q: Query<&mut SettlementComponent>,
-    mut construction_sites_q: Query<&mut BuildingConstructionSite>,
+    mut construction_sites_q: Query<(Entity, &mut BuildingConstructionSite)>,
     buildings_assets: Res<BuildingsAssets>,
     mut tile_map: ResMut<UnitsTileMap>,
     mut commands: Commands,
     time: Res<Time>,
     mut elapsed_time: Local<u128>,
+    network_status: Res<NetworkStatus>,
+    mut server: ResMut<QuinnetServer>,
+    clients: Res<ClientList>,
 ){
     *elapsed_time += time.delta().as_millis();
 
@@ -4256,9 +4598,24 @@ pub fn apartments_rebuilding_system(
 
             for apartment in settlement.0.active_apartments.iter_mut() {
                 if let Ok(mut site) = construction_sites_q.get_mut(apartment.0) {
-                    site.build_power_remaining -= 10;
+                    site.1.build_power_remaining -= 10;
 
-                    if site.build_power_remaining <= 0 {
+                    if matches!(network_status.0, NetworkStatuses::Host) {
+                        let mut channel_id = 30;
+                        while channel_id <= 59 {
+                            if let Err(_) = server
+                            .endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::ConstructionProgressChanged {
+                                server_entity: site.0,
+                                current_build_power: site.1.build_power_remaining,
+                            }){
+                                channel_id += 1;
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+
+                    if site.1.build_power_remaining <= 0 {
                         commands.entity(apartment.0).despawn();
 
                         let new_apartment_tile = ((apartment.1.x / TILE_SIZE) as i32, (apartment.1.z / TILE_SIZE) as i32);
@@ -4299,13 +4656,42 @@ pub fn apartments_rebuilding_system(
                         })
                         .id();
 
+                        if matches!(network_status.0, NetworkStatuses::Host) {
+                            let mut channel_id = 30;
+                            while channel_id <= 59 {
+                                if let Err(_) = server
+                                .endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnspecifiedEntityRemoved {
+                                    server_entity: apartment.0,
+                                }){
+                                    channel_id += 1;
+                                } else {
+                                    break;
+                                }
+                            }
+
+                            channel_id = 30;
+                            while channel_id <= 59 {
+                                if let Err(_) = server
+                                .endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::ApartmentGenerated {
+                                    team: team,
+                                    server_entity: new_apartment,
+                                    position: apartment.1,
+                                    angle: apartment.2,
+                                }){
+                                    channel_id += 1;
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+
                         apartment.0 = new_apartment;
 
                         tile_map.tiles.entry(team).or_insert_with(HashMap::new).entry(new_apartment_tile)
                         .or_insert_with(HashMap::new).remove(&apartment.0);
 
                         tile_map.tiles.entry(team).or_insert_with(HashMap::new).entry(new_apartment_tile)
-                        .or_insert_with(HashMap::new).insert(new_apartment, (apartment.1, UnitTypes::Building));
+                        .or_insert_with(HashMap::new).insert(new_apartment, (apartment.1, UnitTypes::None));
                     }
                 }
             }
@@ -4561,7 +4947,7 @@ pub fn roads_generation_system(
                         slide: true,
                         autostep: None,
                         apply_impulse_to_dynamic_bodies: false,
-                        snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                        snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                         filter_groups: Some(CollisionGroups::new(Group::all(), Group::GROUP_10)),
                         ..default()
                     },

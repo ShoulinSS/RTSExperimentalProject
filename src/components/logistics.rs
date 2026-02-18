@@ -186,7 +186,7 @@ pub const LOGISTIC_UNITS_SPEED: f32 = 30.;
 
 pub fn assign_supply_tasks (
     mut supply_participants: (
-        Query<(&mut SuppliesProductionComponent, &Transform, &CombatComponent)>,
+        Query<(&mut SuppliesProductionComponent, &Transform, &CombatComponent, Entity), Without<SuppliesConsumerComponent>>,
         Query<(Entity, &Transform, &mut SuppliesConsumerComponent, &CombatComponent), With<SuppliesConsumerComponent>>,
     ),
     army: Res<Armies>,
@@ -219,7 +219,7 @@ pub fn assign_supply_tasks (
         for team in 1..=2 {
             let mut supply_producers_iter = supply_participants.0.iter_mut();
             
-            for regular_platoon in army.0.get(&team).unwrap().regular_platoons.iter() {
+            for regular_platoon in army.0.get(&team).unwrap().regular_squads.iter() {
                 if !commands.get_entity(regular_platoon.1.2).is_none() {
                     if let Ok (mut supply_consumer) = supply_participants.1.get_mut(regular_platoon.1.2) {
                         supply_consumer.2.elapsed_time += time.delta().as_millis();
@@ -305,7 +305,7 @@ pub fn assign_supply_tasks (
                                         slide: true,
                                         autostep: None,
                                         apply_impulse_to_dynamic_bodies: false,
-                                        snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                                        snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                                         ..default()
                                     }).insert(LOD{
                                         detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
@@ -352,8 +352,9 @@ pub fn assign_supply_tasks (
                                         while channel_id <= 89 {
                                             if let Err(_) = server
                                             .endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::LogisticUnitSpawned {
-                                                position: Vec3::new(supply_producer.1.translation.x, 0.25, supply_producer.1.translation.z),
+                                                position: start_point,
                                                 server_entity: new_logistic_unit,
+                                                team: supply_producer.2.team,
                                             }){
                                                 channel_id += 1;
                                             } else {
@@ -373,7 +374,7 @@ pub fn assign_supply_tasks (
             }
 
             if supply_producers_iter.len() > 0 {
-                for shock_platoon in army.0.get(&team).unwrap().shock_platoons.iter() {
+                for shock_platoon in army.0.get(&team).unwrap().shock_squads.iter() {
                     if !commands.get_entity(shock_platoon.1.2).is_none() {
                         if let Ok (mut supply_consumer) = supply_participants.1.get_mut(shock_platoon.1.2) {
                             supply_consumer.2.elapsed_time += time.delta().as_millis();
@@ -459,7 +460,7 @@ pub fn assign_supply_tasks (
                                             slide: true,
                                             autostep: None,
                                             apply_impulse_to_dynamic_bodies: false,
-                                            snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                                            snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                                             ..default()
                                         }).insert(LOD{
                                             detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
@@ -506,8 +507,9 @@ pub fn assign_supply_tasks (
                                             while channel_id <= 89 {
                                                 if let Err(_) = server.endpoint_mut()
                                                 .send_group_message_on(clients.0.keys(), channel_id, ServerMessage::LogisticUnitSpawned {
-                                                    position: Vec3::new(supply_producer.1.translation.x, 0.25, supply_producer.1.translation.z),
+                                                    position: start_point,
                                                     server_entity: new_logistic_unit,
+                                                    team: supply_producer.2.team,
                                                 }){
                                                     channel_id += 1;
                                                 } else {
@@ -527,7 +529,7 @@ pub fn assign_supply_tasks (
                 }
 
                 if supply_producers_iter.len() > 0 {
-                    for armored_platoon in army.0.get(&team).unwrap().armored_platoons.iter() {
+                    for armored_platoon in army.0.get(&team).unwrap().armored_squads.iter() {
                         if !commands.get_entity(armored_platoon.1.2).is_none() {
                             if let Ok (mut supply_consumer) = supply_participants.1.get_mut(armored_platoon.1.2) {
                                 supply_consumer.2.elapsed_time += time.delta().as_millis();
@@ -596,8 +598,8 @@ pub fn assign_supply_tasks (
                                                 waypoint_radius: 1.,
                                                 elapsed: 0.,
                                                 inv_duration: 0.,
-                                        last_position: Vec3::ZERO,
-                                        stuck_count: 0,
+                                                last_position: Vec3::ZERO,
+                                                stuck_count: 0,
                                             }).insert(LogisticUnitComponent {
                                                 storage_capacity: supplies_needed,
                                                 storage: ResourceTypes::Supplies(supplies_needed),
@@ -613,7 +615,7 @@ pub fn assign_supply_tasks (
                                                 slide: true,
                                                 autostep: None,
                                                 apply_impulse_to_dynamic_bodies: false,
-                                                snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                                                snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                                                 ..default()
                                             }).insert(LOD{
                                                 detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
@@ -660,8 +662,9 @@ pub fn assign_supply_tasks (
                                                 while channel_id <= 89 {
                                                     if let Err(_) = server
                                                     .endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::LogisticUnitSpawned {
-                                                        position: Vec3::new(supply_producer.1.translation.x, 0.25, supply_producer.1.translation.z),
+                                                        position: start_point,
                                                         server_entity: new_logistic_unit,
+                                                        team: supply_producer.2.team,
                                                     }){
                                                         channel_id += 1;
                                                     } else {
@@ -752,8 +755,8 @@ pub fn assign_supply_tasks (
                                                         waypoint_radius: 1.,
                                                         elapsed: 0.,
                                                         inv_duration: 0.,
-                                        last_position: Vec3::ZERO,
-                                        stuck_count: 0,
+                                                        last_position: Vec3::ZERO,
+                                                        stuck_count: 0,
                                                     }).insert(LogisticUnitComponent {
                                                         storage_capacity: supplies_needed,
                                                         storage: ResourceTypes::Supplies(supplies_needed),
@@ -769,7 +772,7 @@ pub fn assign_supply_tasks (
                                                         slide: true,
                                                         autostep: None,
                                                         apply_impulse_to_dynamic_bodies: false,
-                                                        snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                                                        snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                                                         ..default()
                                                     }).insert(LOD{
                                                         detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
@@ -816,8 +819,9 @@ pub fn assign_supply_tasks (
                                                         while channel_id <= 89 {
                                                             if let Err(_) = server.endpoint_mut()
                                                             .send_group_message_on(clients.0.keys(), channel_id, ServerMessage::LogisticUnitSpawned {
-                                                                position: Vec3::new(supply_producer.1.translation.x, 0.25, supply_producer.1.translation.z),
+                                                                position: start_point,
                                                                 server_entity: new_logistic_unit,
+                                                                team: supply_producer.2.team,
                                                             }){
                                                                 channel_id += 1;
                                                             } else {
@@ -845,7 +849,7 @@ pub fn assign_supply_tasks (
 
 pub fn logistic_convoys_processing_system(
     mut logistic_units_q: Query<(Entity, &Transform, &mut LogisticUnitComponent, &mut UnitComponent), (With<LogisticUnitComponent>, Without<SuppliesConsumerComponent>)>,
-    mut supply_consumers_q: Query<(&Transform, &mut SuppliesConsumerComponent, &UnitComponent), (With<SuppliesConsumerComponent>, Without<LogisticUnitComponent>)>,
+    mut supply_consumers_q: Query<(&Transform, &mut SuppliesConsumerComponent, &UnitComponent, &CombatComponent), (With<SuppliesConsumerComponent>, Without<LogisticUnitComponent>)>,
     mut material_consumers_q: Query<&mut MaterialsStorageComponent, With<MaterialsStorageComponent>>,
     mut human_resource_consumers_q: Query<&mut HumanResourceStorageComponent, With<HumanResourceStorageComponent>>,
     nav_mesh: Res<NavMesh>,
@@ -866,10 +870,10 @@ pub fn logistic_convoys_processing_system(
     if timer.0.finished() {
         for mut logistic_unit in logistic_units_q.iter_mut() {
             match logistic_unit.2.storage {
-                ResourceTypes::Materials(count) => {
+                ResourceTypes::Materials(amount) => {
                     if logistic_unit.1.translation.distance(logistic_unit.2.last_destination_point) <= logistic_unit.2.destination_completion_range {
                         if let Ok(mut material_consumer) = material_consumers_q.get_mut(logistic_unit.2.destination.0){
-                            material_consumer.available_resources += count;
+                            material_consumer.available_resources += amount;
 
                             if material_consumer.available_resources > material_consumer.materials_storage_capacity {
                                 material_consumer.available_resources = material_consumer.materials_storage_capacity;
@@ -883,6 +887,19 @@ pub fn logistic_convoys_processing_system(
                                     if let Err(_) = server.endpoint_mut()
                                     .send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnspecifiedEntityRemoved {
                                         server_entity: logistic_unit.0,
+                                    }){
+                                        channel_id += 1;
+                                    } else {
+                                        break;
+                                    }
+                                }
+
+                                channel_id = 30;
+                                while channel_id <= 59 {
+                                    if let Err(_) = server.endpoint_mut()
+                                    .send_group_message_on(clients.0.keys(), channel_id, ServerMessage::MaterialsDelivered {
+                                        server_entity: logistic_unit.2.destination.0,
+                                        amount: amount,
                                     }){
                                         channel_id += 1;
                                     } else {
@@ -951,91 +968,132 @@ pub fn logistic_convoys_processing_system(
         
                         if logistic_unit.1.translation.distance(supply_consumer.0.translation) <= supply_consumer.1.supply_range {
                             let mut supplies = count;
+                            let mut supplied_entities: Vec<(Entity, i32)> = Vec::new();
 
                             if let Some(platoon) = logistic_unit.2.destination.1 {
                                 match platoon.0 {
                                     CompanyTypes::Regular => {
-                                        if let Some(regular_platoon) = army.0.get(&player_data.team).unwrap().regular_platoons.get(&platoon.1) {
-                                            for unit in regular_platoon.0.0.0.set.iter() {
-                                                if let Ok(mut consumer) = supply_consumers_q.get_mut(*unit) {
-                                                    if supplies >= consumer.1.supplies_capacity {
-                                                        supplies -= consumer.1.supplies_capacity;
-                                                        consumer.1.supplies = consumer.1.supplies_capacity;
-                                                    } else {
-                                                        consumer.1.supplies += supplies;
-                                                        supplies = 0;
+                                        for team_army in army.0.iter() {
+                                            if *team_army.0 != supply_consumer.3.team {continue;}
 
-                                                        break;
+                                            if let Some(regular_platoon) = team_army.1.regular_squads.get(&platoon.1) {
+                                                for unit in regular_platoon.0.0.0.set.iter() {
+                                                    if let Ok(mut consumer) = supply_consumers_q.get_mut(*unit) {                                                    
+                                                        if supplies >= consumer.1.supplies_capacity {
+                                                            supplied_entities.push((*unit, consumer.1.supplies_capacity));
+
+                                                            supplies -= consumer.1.supplies_capacity;
+                                                            consumer.1.supplies = consumer.1.supplies_capacity;
+                                                        } else {
+                                                            supplied_entities.push((*unit, supplies));
+
+                                                            consumer.1.supplies += supplies;
+                                                            supplies = 0;
+
+                                                            break;
+                                                        }
                                                     }
                                                 }
-                                            }
 
-                                            for unit in regular_platoon.0.0.1.set.iter() {
-                                                if let Ok(mut consumer) = supply_consumers_q.get_mut(*unit) {
-                                                    if supplies >= consumer.1.supplies_capacity {
-                                                        supplies -= consumer.1.supplies_capacity;
-                                                        consumer.1.supplies = consumer.1.supplies_capacity;
-                                                    } else {
-                                                        consumer.1.supplies += supplies;
-                                                        supplies = 0;
+                                                for unit in regular_platoon.0.0.1.set.iter() {
+                                                    if let Ok(mut consumer) = supply_consumers_q.get_mut(*unit) {
+                                                        if supplies >= consumer.1.supplies_capacity {
+                                                            supplied_entities.push((*unit, consumer.1.supplies_capacity));
 
-                                                        break;
+                                                            supplies -= consumer.1.supplies_capacity;
+                                                            consumer.1.supplies = consumer.1.supplies_capacity;
+                                                        } else {
+                                                            supplied_entities.push((*unit, supplies));
+
+                                                            consumer.1.supplies += supplies;
+                                                            supplies = 0;
+
+                                                            break;
+                                                        }
                                                     }
                                                 }
+
+                                                break;
                                             }
                                         }
                                     },
                                     CompanyTypes::Shock => {
-                                        if let Some(shock_platoon) = army.0.get(&player_data.team).unwrap().shock_platoons.get(&platoon.1) {
-                                            for unit in shock_platoon.0.0.0.set.iter() {
-                                                if let Ok(mut consumer) = supply_consumers_q.get_mut(*unit) {
-                                                    if supplies >= consumer.1.supplies_capacity {
-                                                        supplies -= consumer.1.supplies_capacity;
-                                                        consumer.1.supplies = consumer.1.supplies_capacity;
-                                                    } else {
-                                                        consumer.1.supplies += supplies;
-                                                        supplies = 0;
+                                        for team_army in army.0.iter() {
+                                            if *team_army.0 != supply_consumer.3.team {continue;}
 
-                                                        break;
+                                            if let Some(shock_platoon) = team_army.1.shock_squads.get(&platoon.1) {
+                                                for unit in shock_platoon.0.0.0.set.iter() {
+                                                    if let Ok(mut consumer) = supply_consumers_q.get_mut(*unit) {
+                                                        if supplies >= consumer.1.supplies_capacity {
+                                                            supplied_entities.push((*unit, consumer.1.supplies_capacity));
+
+                                                            supplies -= consumer.1.supplies_capacity;
+                                                            consumer.1.supplies = consumer.1.supplies_capacity;
+                                                        } else {
+                                                            supplied_entities.push((*unit, supplies));
+
+                                                            consumer.1.supplies += supplies;
+                                                            supplies = 0;
+
+                                                            break;
+                                                        }
                                                     }
                                                 }
-                                            }
 
-                                            for unit in shock_platoon.0.0.1.set.iter() {
-                                                if let Ok(mut consumer) = supply_consumers_q.get_mut(*unit) {
-                                                    if supplies >= consumer.1.supplies_capacity {
-                                                        supplies -= consumer.1.supplies_capacity;
-                                                        consumer.1.supplies = consumer.1.supplies_capacity;
-                                                    } else {
-                                                        consumer.1.supplies += supplies;
-                                                        supplies = 0;
+                                                for unit in shock_platoon.0.0.1.set.iter() {
+                                                    if let Ok(mut consumer) = supply_consumers_q.get_mut(*unit) {
+                                                        if supplies >= consumer.1.supplies_capacity {
+                                                            supplied_entities.push((*unit, consumer.1.supplies_capacity));
 
-                                                        break;
+                                                            supplies -= consumer.1.supplies_capacity;
+                                                            consumer.1.supplies = consumer.1.supplies_capacity;
+                                                        } else {
+                                                            supplied_entities.push((*unit, supplies));
+
+                                                            consumer.1.supplies += supplies;
+                                                            supplies = 0;
+
+                                                            break;
+                                                        }
                                                     }
                                                 }
+
+                                                break;
                                             }
                                         }
                                     },
                                     CompanyTypes::Armored => {
-                                        if let Some(armored_platoon) = army.0.get(&player_data.team).unwrap().armored_platoons.get(&platoon.1) {
-                                            for unit in armored_platoon.0.0.set.iter() {
-                                                if let Ok(mut consumer) = supply_consumers_q.get_mut(*unit) {
-                                                    if supplies >= consumer.1.supplies_capacity {
-                                                        supplies -= consumer.1.supplies_capacity;
-                                                        consumer.1.supplies = consumer.1.supplies_capacity;
-                                                    } else {
-                                                        consumer.1.supplies += supplies;
-                                                        supplies = 0;
+                                        for team_army in army.0.iter() {
+                                            if *team_army.0 != supply_consumer.3.team {continue;}
 
-                                                        break;
+                                            if let Some(armored_platoon) = team_army.1.armored_squads.get(&platoon.1) {
+                                                for unit in armored_platoon.0.0.set.iter() {
+                                                    if let Ok(mut consumer) = supply_consumers_q.get_mut(*unit) {
+                                                        if supplies >= consumer.1.supplies_capacity {
+                                                            supplied_entities.push((*unit, consumer.1.supplies_capacity));
+
+                                                            supplies -= consumer.1.supplies_capacity;
+                                                            consumer.1.supplies = consumer.1.supplies_capacity;
+                                                        } else {
+                                                            supplied_entities.push((*unit, supplies));
+
+                                                            consumer.1.supplies += supplies;
+                                                            supplies = 0;
+
+                                                            break;
+                                                        }
                                                     }
                                                 }
+
+                                                break;
                                             }
                                         }
                                     },
                                     _ => {},
                                 }
                             } else {
+                                supplied_entities.push((logistic_unit.2.destination.0, supplies));
+
                                 supply_consumer.1.supplies += supplies;
                                 if supply_consumer.1.supplies > supply_consumer.1.supplies_capacity {
                                     supply_consumer.1.supplies = supply_consumer.1.supplies_capacity;
@@ -1056,6 +1114,18 @@ pub fn logistic_convoys_processing_system(
                                         break;
                                     }
                                 }
+
+                                channel_id = 30;
+                                while channel_id <= 59 {
+                                    if let Err(_) = server.endpoint_mut()
+                                    .send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnitsSupplied {
+                                        server_entities: supplied_entities.clone(),
+                                    }){
+                                        channel_id += 1;
+                                    } else {
+                                        break;
+                                    }
+                                }                                
                             }
                         }
                     }
@@ -1065,21 +1135,21 @@ pub fn logistic_convoys_processing_system(
         
                             match platoon.0 {
                                 CompanyTypes::Regular => {
-                                    if let Some(regular_platoon) = army.0.get(&player_data.team).unwrap().regular_platoons.get(&platoon.1) {
+                                    if let Some(regular_platoon) = army.0.get(&player_data.team).unwrap().regular_squads.get(&platoon.1) {
                                         if commands.get_entity(regular_platoon.2).is_some() {
                                             platoon_leader_entity = regular_platoon.2;
                                         }
                                     }
                                 },
                                 CompanyTypes::Shock => {
-                                    if let Some(shock_platoon) = army.0.get(&player_data.team).unwrap().shock_platoons.get(&platoon.1) {
+                                    if let Some(shock_platoon) = army.0.get(&player_data.team).unwrap().shock_squads.get(&platoon.1) {
                                         if commands.get_entity(shock_platoon.2).is_some() {
                                             platoon_leader_entity = shock_platoon.2;
                                         }
                                     }
                                 },
                                 CompanyTypes::Armored => {
-                                    if let Some(armored_platoon) = army.0.get(&player_data.team).unwrap().armored_platoons.get(&platoon.1) {
+                                    if let Some(armored_platoon) = army.0.get(&player_data.team).unwrap().armored_squads.get(&platoon.1) {
                                         if commands.get_entity(armored_platoon.2).is_some() {
                                             platoon_leader_entity = armored_platoon.2;
                                         }
@@ -1127,10 +1197,10 @@ pub fn logistic_convoys_processing_system(
                         }
                     }
                 },
-                ResourceTypes::HumanResources(count) => {
+                ResourceTypes::HumanResources(amount) => {
                     if logistic_unit.1.translation.distance(logistic_unit.2.last_destination_point) <= logistic_unit.2.destination_completion_range {
                         if let Ok(mut human_resource_consumer) = human_resource_consumers_q.get_mut(logistic_unit.2.destination.0){
-                            human_resource_consumer.available_human_resources += count;
+                            human_resource_consumer.available_human_resources += amount;
 
                             if human_resource_consumer.available_human_resources > human_resource_consumer.human_resource_storage_capacity {
                                 human_resource_consumer.available_human_resources = human_resource_consumer.human_resource_storage_capacity;
@@ -1144,6 +1214,19 @@ pub fn logistic_convoys_processing_system(
                                     if let Err(_) = server.endpoint_mut()
                                     .send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnspecifiedEntityRemoved {
                                         server_entity: logistic_unit.0,
+                                    }){
+                                        channel_id += 1;
+                                    } else {
+                                        break;
+                                    }
+                                }
+
+                                channel_id = 30;
+                                while channel_id <= 59 {
+                                    if let Err(_) = server.endpoint_mut()
+                                    .send_group_message_on(clients.0.keys(), channel_id, ServerMessage::HumanResourcesDelivered {
+                                        server_entity: logistic_unit.2.destination.0,
+                                        amount: amount,
                                     }){
                                         channel_id += 1;
                                     } else {
@@ -1284,7 +1367,7 @@ pub fn material_producers_processing_system(
                                     slide: true,
                                     autostep: None,
                                     apply_impulse_to_dynamic_bodies: false,
-                                    snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                                    snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                                     ..default()
                                 }).insert(LOD{
                                     detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
@@ -1331,8 +1414,9 @@ pub fn material_producers_processing_system(
                                     while channel_id <= 59 {
                                         if let Err(_) = server.endpoint_mut()
                                         .send_group_message_on(clients.0.keys(), 1, ServerMessage::LogisticUnitSpawned {
-                                            position: Vec3::new(material_producer.0.translation.x, 0.25, material_producer.0.translation.z),
+                                            position: start_point,
                                             server_entity: new_logistic_unit,
+                                            team: material_producer.2.team,
                                         }){
                                             channel_id += 1;
                                         } else {
@@ -1456,7 +1540,7 @@ pub fn human_resource_producers_processing_system(
 
                                 let new_logistic_unit = commands.spawn(MaterialMeshBundle {
                                     mesh: units_assets.truck.0.clone(),
-                                    material: units_assets.truck.1.clone(),
+                                    material: material.clone(),
                                     transform: Transform::from_translation(start_point),
                                     ..default()
                                 }).insert(UnitComponent {
@@ -1483,7 +1567,7 @@ pub fn human_resource_producers_processing_system(
                                     slide: true,
                                     autostep: None,
                                     apply_impulse_to_dynamic_bodies: false,
-                                    snap_to_ground: Some(CharacterLength::Absolute(1.)),
+                                    snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                                     ..default()
                                 }).insert(LOD{
                                     detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
@@ -1530,8 +1614,9 @@ pub fn human_resource_producers_processing_system(
                                     while channel_id <= 59 {
                                         if let Err(_) = server
                                         .endpoint_mut().send_group_message_on(clients.0.keys(), 1, ServerMessage::LogisticUnitSpawned {
-                                            position: Vec3::new(human_resource_producer.0.translation.x, 0.25, human_resource_producer.0.translation.z),
+                                            position: start_point,
                                             server_entity: new_logistic_unit,
+                                            team: human_resource_producer.1.0.team,
                                         }){
                                             channel_id += 1;
                                         } else {
@@ -1558,9 +1643,12 @@ pub fn human_resource_producers_processing_system(
 }
 
 pub fn supplies_production_system (
-    mut supplies_producers_q: Query<(&mut SuppliesProductionComponent, &mut MaterialsStorageComponent, &SwitchableBuilding)>,
+    mut supplies_producers_q: Query<(&mut SuppliesProductionComponent, &mut MaterialsStorageComponent, &SwitchableBuilding, Entity)>,
     time: Res<Time>,
     game_stage: Res<GameStage>,
+    network_status: Res<NetworkStatus>,
+    mut server: ResMut<QuinnetServer>,
+    clients: Res<ClientList>,
 ){
     if matches!(game_stage.0, GameStages::GameStarted) {
         for mut supply_producer in supplies_producers_q.iter_mut() {
@@ -1574,6 +1662,7 @@ pub fn supplies_production_system (
                 if supply_producer.0.available_supplies == supply_producer.0.supplies_storage_capacity {continue;}
 
                 if supply_producer.1.available_resources >= supply_producer.0.supplies_production.1.resource_cost {
+                    let mut resources_spent = supply_producer.1.available_resources;
                     supply_producer.1.available_resources -= supply_producer.0.supplies_production.1.resource_cost;
                     
                     supply_producer.0.available_supplies += supply_producer.0.supplies_production.0;
@@ -1588,6 +1677,23 @@ pub fn supplies_production_system (
 
                         if supply_producer.1.available_resources > supply_producer.1.materials_storage_capacity {
                             supply_producer.1.available_resources = supply_producer.1.materials_storage_capacity;
+                        }
+                    }
+
+                    resources_spent -= supply_producer.1.available_resources;
+
+                    if matches!(network_status.0, NetworkStatuses::Host){
+                        let mut channel_id = 30;
+                        while channel_id <= 59 {
+                            if let Err(_) = server.endpoint_mut()
+                            .send_group_message_on(clients.0.keys(), channel_id, ServerMessage::MaterialsDelivered {
+                                server_entity: supply_producer.3,
+                                amount: -resources_spent,
+                            }){
+                                channel_id += 1;
+                            } else {
+                                break;
+                            }
                         }
                     }
                 }

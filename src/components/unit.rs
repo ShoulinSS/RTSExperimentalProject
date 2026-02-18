@@ -11,7 +11,7 @@ use std::hash::Hash;
 use bevy_tasks::TaskPool;
 use serde::{Deserialize, Serialize};
 
-use crate::{FOG_TEXTURE_SIZE, GameStage, GameStages, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, PlayerData, WORLD_SIZE, components::{asset_manager::{AttackVisualisationAssets, ChangeMaterial, ExplosionComponent, InstancedMaterials, LOD, OtherAssets, TeamMaterialExtension, TrailComponent, TrailEmmiterComponent}, building::{CONSTRUCTION_PROGRESS_COLOR, ConstructionProgressBar, DeconstructableBuilding, DontTouch, HumanResourcesDisplay, MaterialsDisplay, MaterialsProductionComponent, SwitchableBuilding, ToDeconstruct}, camera::{self, CameraComponent}, ui_manager::{BattalionSelectionEvent, BrigadeSelectionEvent, CompanySelectionEvent, PlatoonSelectionEvent, RegimentSelectionEvent, TransportDisembarkEvent, UiButtonNodes}}};
+use crate::{FOG_TEXTURE_SIZE, GameStage, GameStages, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, PlayerData, WORLD_SIZE, components::{asset_manager::{AttackVisualisationAssets, ChangeMaterial, ExplosionComponent, InstancedMaterials, LOD, OtherAssets, TeamMaterialExtension, TrailComponent, TrailEmmiterComponent}, building::{CONSTRUCTION_PROGRESS_COLOR, ConstructionProgressBar, DeconstructableBuilding, DontTouch, HumanResourcesDisplay, MaterialsDisplay, MaterialsProductionComponent, SettlementComponent, SwitchableBuilding, ToDeconstruct}, camera::{self, CameraComponent}, ui_manager::{ArtilleryUnitSelectedEvent, BattalionSelectionEvent, BrigadeSelectionEvent, CompanySelectionEvent, PlatoonSelectionEvent, RegimentSelectionEvent, TransportDisembarkEvent, UiBlocker, UiButtonNodes}}};
 
 use super::{building::{ArtilleryBundle, BuildingBlueprint, BuildingConstructionSite, BuildingsBundles, CoverComponent, EngineerBundle, IFVBundle, InfantryBarracksBundle, InfantryProducer, LogisticHubBundle, ProductionQueue, ProductionState, ResourceMinerBundle, SoldierBundle, SuppliesProductionComponent, TankBundle, UnactivatedBlueprints, UnitBundles, UnitProductionBuildingComponent, VehicleFactoryBundle, VehiclesProducer}, camera::MoveOrderEvent, logistics::ResourceZone, network::{self, ClientList, ClientMessage, EntityMaps, NetworkStatus, NetworkStatuses, ServerMessage}, ui_manager::{CancelArtilleryTargets, GameStartedEvent, SquadSelectionEvent, ProductionStateChanged, ToggleArtilleryDesignation}};
 
@@ -180,61 +180,61 @@ pub enum UnitTypes {
     None,
 }
 
-pub const REGULAR_PLATOON_SIZE: usize = 20;
-pub const SPECIALISTS_PER_REGULAR_PLATOON: usize = 2;
-pub struct RegularPlatoon(pub (LimitedHashSet<Entity, REGULAR_PLATOON_SIZE>, LimitedHashSet<Entity, SPECIALISTS_PER_REGULAR_PLATOON>));
+pub const REGULAR_SQUAD_SIZE: usize = 8;
+pub const SPECIALISTS_PER_REGULAR_SQUAD: usize = 1;
+pub struct RegularSquad(pub (LimitedHashSet<Entity, REGULAR_SQUAD_SIZE>, LimitedHashSet<Entity, SPECIALISTS_PER_REGULAR_SQUAD>));
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct SerializableRegularPlatoon(pub (Vec<Entity>, Vec<Entity>));
+pub struct SerializableRegularSquad(pub (Vec<Entity>, Vec<Entity>));
 
-pub const SHOCK_PLATOON_SIZE: usize = 20;
-pub const SPECIALISTS_PER_SHOCK_PLATOON: usize = 2;
-pub struct ShockPlatoon(pub (LimitedHashSet<Entity, SHOCK_PLATOON_SIZE>, LimitedHashSet<Entity, SPECIALISTS_PER_SHOCK_PLATOON>));
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct SerializableShockPlatoon(pub (Vec<Entity>, Vec<Entity>));
-
-pub const ARMORED_PLATOON_SIZE: usize = 3;
-pub struct ArmoredPlatoon(pub LimitedHashSet<Entity, ARMORED_PLATOON_SIZE>);
+pub const SHOCK_SQUAD_SIZE: usize = 8;
+pub const SPECIALISTS_PER_SHOCK_SQUAD: usize = 1;
+pub struct ShockSquad(pub (LimitedHashSet<Entity, SHOCK_SQUAD_SIZE>, LimitedHashSet<Entity, SPECIALISTS_PER_SHOCK_SQUAD>));
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct SerializableArmoredPlatoon(pub Vec<Entity>);
+pub struct SerializableShockSquad(pub (Vec<Entity>, Vec<Entity>));
 
-pub const PLATOON_SIZE: usize = 3;//60 units
+pub const ARMORED_SQUAD_SIZE: usize = 2;
+pub struct ArmoredSquad(pub LimitedHashSet<Entity, ARMORED_SQUAD_SIZE>);
 
-pub const COMPANY_SIZE: usize = 3;//180 units
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SerializableArmoredSquad(pub Vec<Entity>);
 
-pub const BATTALION_SIZE: usize = 3;//520 units
+pub const PLATOON_SIZE: usize = 3;//27 units
 
-pub const REGIMENT_SIZE: usize = 3;//1620 units
+pub const COMPANY_SIZE: usize = 3;//81 units
 
-pub const ARMY_SIZE: usize = 2;//3240 units
+pub const BATTALION_SIZE: usize = 3;//243 units
 
-pub const MAX_PLATOON_COUNT: i32 = 162;//3240 units, 2 full divisions
+pub const REGIMENT_SIZE: usize = 3;//729 units
 
-pub const START_REGULAR_SQUADS_AMOUNT: i32 = 81;  //\
-pub const START_SHOCK_SQUADS_AMOUNT: i32 = 54;    // } must be 162
-pub const START_ARMORED_SQUADS_AMOUNT: i32 = 27;  ///
+pub const ARMY_SIZE: usize = 3;//2187 units
 
-pub const START_ARTILLERY_UNITS_COUNT: i32 = 5;
+pub const MAX_SQUAD_COUNT: i32 = 243;//2187 units
+
+pub const START_REGULAR_SQUADS_AMOUNT: i32 = 81;  // \
+pub const START_SHOCK_SQUADS_AMOUNT: i32 = 81;    //  } must be 243
+pub const START_ARMORED_SQUADS_AMOUNT: i32 = 81;  // /
+
+pub const START_ARTILLERY_UNITS_COUNT: i32 = 6;
 pub const START_ENGINEERS_COUNT: i32 = 10;
 
 #[derive(Resource)]
 pub struct Armies(pub HashMap<i32, ArmyObject>);
 
 pub struct ArmyObject{
-    pub regular_platoons: HashMap<(i32, i32, i32, i32, i32), (RegularPlatoon, String, Entity)>,
-    pub shock_platoons: HashMap<(i32, i32, i32, i32, i32), (ShockPlatoon, String, Entity)>,
-    pub armored_platoons: HashMap<(i32, i32, i32, i32, i32), (ArmoredPlatoon, String, Entity)>,
+    pub regular_squads: HashMap<(i32, i32, i32, i32, i32), (RegularSquad, String, Entity)>,
+    pub shock_squads: HashMap<(i32, i32, i32, i32, i32), (ShockSquad, String, Entity)>,
+    pub armored_squads: HashMap<(i32, i32, i32, i32, i32), (ArmoredSquad, String, Entity)>,
     pub artillery_units: (HashMap<i32, ((Option<Entity>, String), Entity)>, Entity),
     pub engineers: HashMap<i32, ((Option<Entity>, String), Entity)>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SerializableArmyObject{
-    pub regular_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableRegularPlatoon, String, Entity))>,
-    pub shock_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableShockPlatoon, String, Entity))>,
-    pub armored_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableArmoredPlatoon, String, Entity))>,
+    pub regular_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableRegularSquad, String, Entity))>,
+    pub shock_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableShockSquad, String, Entity))>,
+    pub armored_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableArmoredSquad, String, Entity))>,
     pub artillery_units: (Vec<(i32, ((Option<Entity>, String), Entity))>, Entity),
     pub engineers: Vec<(i32, ((Option<Entity>, String), Entity))>,
 }
@@ -287,9 +287,9 @@ pub fn add_selected_units(
     commands: &mut Commands,
     units_q: &Query<(&Transform, Entity, &CombatComponent), (With<SelectableUnit>, Without<DisabledUnit>)>,
 ){
-    for unit_entity in units {
+    for unit_entity in units.iter() {
         if !selected_units.platoons.values().any(|units| units.contains(&unit_entity)) {
-            if let Ok(unit) = units_q.get(unit_entity){
+            if let Ok(unit) = units_q.get(*unit_entity){
 
                 selected_units.platoons.entry(
                     (
@@ -303,6 +303,7 @@ pub fn add_selected_units(
                         )
                     )
                 ).or_insert_with(Vec::new).push(unit.1);
+
                 commands.entity(unit.1).insert(SelectedUnit);
             }
         }
@@ -447,8 +448,8 @@ pub struct CombatComponent{
 
 #[derive(Component)]
 pub struct MovingToCover{
-    cover_entity: Entity,
-    cover_position: Vec3,
+    pub cover_entity: Entity,
+    pub cover_position: Vec3,
 }
 
 #[derive(Component)]
@@ -511,8 +512,12 @@ pub struct ArtilleryUnit {
 #[derive(Component)]
 pub struct BallisticProjectile {
     pub path: Vec<Vec3>,
+    pub start_position: Vec3,
+    pub target_position: Vec3,
     pub speed: f32,
-    pub waypoints_check_factor: f32,
+    pub waypoint_radius: f32,
+    pub elapsed: f32,
+    pub inv_duration: f32,
     pub direct_damage: (i32, DamageTypes),
     pub splash_damage: (f32, i32, DamageTypes),
 }
@@ -1402,6 +1407,8 @@ pub fn find_targets(
 pub fn process_combat (
     mut units_q: Query<(&mut CombatComponent, &mut Transform, Option<&Covered>, Entity, Option<&Children>, &GlobalTransform, Option<&SuppliesConsumerComponent>, Option<&CoverComponent>, Option<&InfantryTransport>),
     (With<CombatComponent>, Without<CameraComponent>, Without<DisabledUnit>)>,
+    disabled_units_q: Query<(&CombatComponent, &mut Transform, Option<&Covered>, Entity, Option<&Children>, &GlobalTransform, Option<&SuppliesConsumerComponent>, Option<&CoverComponent>, Option<&InfantryTransport>),
+    (With<CombatComponent>, Without<CameraComponent>, With<DisabledUnit>)>,
     mut transforms_q: Query<(&mut Transform, &GlobalTransform), (Without<CombatComponent>, Without<CameraComponent>)>,
     camera_q: Query<&Transform, (With<CameraComponent>, Without<CombatComponent>)>,
     mut event_writer:(
@@ -1418,542 +1425,824 @@ pub fn process_combat (
     attack_visualisation_assets: Res<AttackVisualisationAssets>,
     clients: Res<ClientList>,
 ){
-    let camera_pos = camera_q.single().translation;
-    let mut entities_to_rotate: Vec<(Entity, Vec3)> = Vec::new();
+    match network_status.0 {
+        NetworkStatuses::Client => {
+            let mut entities_to_rotate: Vec<(Entity, Vec3)> = Vec::new();
+            let mut attacks_to_simulate: Vec<(Entity, Vec3)> = Vec::new();
 
-    for unit in units_q.iter(){
-        if !matches!(unit.0.attack_type, AttackTypes::None){
-            if unit.0.enemies.is_empty() {
-                if let Some(children) = unit.4 {
-                    for child in children {
-                        if let  Ok(mut transform) = transforms_q.get_mut(*child) {
-                            transform.0.rotation = Quat::IDENTITY;
-                        }
-                    }
-                }
-            } else {
-                if let Some(children) = unit.4 {
-                    if let Ok(enemy) = units_q.get(unit.0.enemies[0].0) {
-                        for child in children.iter() {
-                            if let  Ok(mut transform) = transforms_q.get_mut(*child) {
-                                let child_world_pos = transform.1.translation();
-                                let target_pos = enemy.1.translation;
-
-                                let mut direction = (target_pos - child_world_pos).normalize();
-                                direction.y = 0.;
-
-                                let desired_world_rotation = Quat::from_rotation_arc(Vec3::NEG_Z, direction);
-
-                                let parent_global_transform = unit.5;
-                                let parent_world_rotation = parent_global_transform.compute_transform().rotation;
-
-                                let local_rotation = parent_world_rotation.inverse() * desired_world_rotation;
-
-                                transform.0.rotation = local_rotation;
+            for unit in units_q.iter(){
+                if !matches!(unit.0.attack_type, AttackTypes::None){
+                    if unit.0.enemies.is_empty() {
+                        if let Some(children) = unit.4 {
+                            for child in children {
+                                if let  Ok(mut transform) = transforms_q.get_mut(*child) {
+                                    transform.0.rotation = Quat::IDENTITY;
+                                }
                             }
                         }
-                    }
-                } else {
-                    if let Ok(enemy) = units_q.get(unit.0.enemies[0].0) {
-                        entities_to_rotate.push((unit.3, enemy.1.translation));
-                    }
-                }
-            }
-        }
-    }
+                    } else {
+                        if let Some(children) = unit.4 {
+                            for enemy_entity in unit.0.enemies.iter() {
+                                if let Ok(enemy) = units_q.get(enemy_entity.0) {
+                                    attacks_to_simulate.push((unit.3, enemy.1.translation));
+                                    if enemy.0.current_health > 0 && unit.1.translation.distance(enemy.1.translation) <= unit.0.attack_range {
+                                        for child in children.iter() {
+                                            if let  Ok(mut transform) = transforms_q.get_mut(*child) {
+                                                let child_world_pos = transform.1.translation();
+                                                let target_pos = enemy.1.translation;
 
-    for entity in entities_to_rotate.iter() {
-        if let Ok (mut unit) = units_q.get_mut(entity.0) {
-            let y = unit.1.translation.y;
+                                                let mut direction = (target_pos - child_world_pos).normalize();
+                                                direction.y = 0.;
 
-            unit.1.look_at(
-                Vec3::new(
-                    entity.1.x,
-                    y,
-                    entity.1.z,
-                ), 
-                Vec3::Y,
-            );
-        }
-    }
+                                                let desired_world_rotation = Quat::from_rotation_arc(Vec3::NEG_Z, direction);
 
-    let mut attacker_entities: Vec<Entity> = Vec::new();
+                                                let parent_global_transform = unit.5;
+                                                let parent_world_rotation = parent_global_transform.compute_transform().rotation;
 
-    for mut unit in units_q.iter_mut(){
-        if let Some(consumer) = unit.6 {
-            if consumer.supplies <= 0 {continue;}
-        }
+                                                let local_rotation = parent_world_rotation.inverse() * desired_world_rotation;
 
-        if !matches!(unit.0.attack_type, AttackTypes::None){
-            unit.0.attack_elapsed_time += time.delta().as_millis();
-
-            if unit.0.attack_elapsed_time >= unit.0.attack_frequency {
-                unit.0.attack_elapsed_time = 0;
-
-                attacker_entities.push(unit.3);
-            }
-        }
-    }
-
-    let mut sounds_needs_to_play: HashMap<AttackAnimationTypes, Vec<(Entity, f32)>> = HashMap::new();
-
-    let mut extra_units_to_kill: Vec<Entity> = Vec::new();
-
-    for attacker_entity in attacker_entities.iter() {
-        let mut enemies: Vec<(Entity, f32)> = Vec::new();
-        let mut range: f32 = 0.;
-        let mut attacker_pos: Vec3 = Vec3::ZERO;
-        let mut attack_type = AttackTypes::None;
-        let mut attack_animation_type = AttackAnimationTypes::None(Vec3::ZERO);
-
-        if let Ok(attacker) = units_q.get(*attacker_entity) {
-            if attacker.0.current_health > 0 {
-                enemies = attacker.0.enemies.clone();
-                range = attacker.0.attack_range;
-                attacker_pos = attacker.1.translation;
-                attack_type = attacker.0.attack_type.clone();
-                attack_animation_type = attacker.0.attack_animation_type.clone();
-            } else {
-                continue;
-            }
-        }
-
-        for enemy_entity in enemies.iter() {
-            if let Ok(mut enemy) = units_q.get_mut(enemy_entity.0) {
-                if enemy.0.current_health > 0 && attacker_pos.distance(enemy.1.translation) <= range {
-                    match attack_type {
-                        AttackTypes::Direct(damage, accuracy, damage_type) => {
-                            let mut rng = rand::thread_rng();
-
-                            let mut cover_efficiency = 1.;
-                            let mut cover_entity = None;
-                            if let Some(cover) = enemy.2 {
-                                cover_efficiency = cover.cover_efficiency;
-                                cover_entity = Some(cover.cover_entity);
-                            }
-                
-                            if accuracy.clone() >= rng.gen_range(0.0..1.0) * cover_efficiency {
-                                let mut current_damage = damage.clone();
-            
-                                match damage_type {
-                                    DamageTypes::AntiInfantry => {
-                                        match enemy.0.unit_type {
-                                            UnitTypes::Infantry => {
-                                                current_damage *= 1;
-                                            },
-                                            UnitTypes::LightVehicle => {
-                                                current_damage /= 5;
-                                            },
-                                            UnitTypes::HeavyVehicle => {
-                                                current_damage /= 10;
-                                            },
-                                            UnitTypes::Building => {
-                                                current_damage /= 10;
-                                            },
-                                            UnitTypes::None => {},
+                                                transform.0.rotation = local_rotation;
+                                            }
                                         }
-                                    },
-                                    DamageTypes::AntiTank => {
-                                        match enemy.0.unit_type {
-                                            UnitTypes::Infantry => {
-                                                current_damage *= 1;
-                                            },
-                                            UnitTypes::LightVehicle => {
-                                                current_damage *= 1;
-                                            },
-                                            UnitTypes::HeavyVehicle => {
-                                                current_damage *= 1;
-                                            },
-                                            UnitTypes::Building => {
-                                                current_damage /= 2;
-                                            },
-                                            UnitTypes::None => {},
-                                        }
-                                    },
-                                    DamageTypes::AntiBuilding => {
-                                        match enemy.0.unit_type {
-                                            UnitTypes::Infantry => {
-                                                current_damage *= 1;
-                                            },
-                                            UnitTypes::LightVehicle => {
-                                                current_damage /= 2;
-                                            },
-                                            UnitTypes::HeavyVehicle => {
-                                                current_damage /= 3;
-                                            },
-                                            UnitTypes::Building => {
-                                                current_damage *= 1;
-                                            },
-                                            UnitTypes::None => {},
-                                        }
-                                    },
-                                    DamageTypes::Universal => {},
-                                }
-            
-                                enemy.0.current_health -= current_damage;
-            
-                                if matches!(network_status.0, NetworkStatuses::Host) {
-                                    let mut channel_id = 00;
-                                    while channel_id <= 59 {
-                                        if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnitDamaged {
-                                            server_entity: enemy.3,
-                                            damage: current_damage,
-                                        }){
-                                            channel_id += 1;
-                                        } else {
-                                            break;
-                                        }
-                                    }
-                                }
-            
-                                if enemy.0.current_health <= 0 {
-                                    event_writer.0.send(UnitDeathEvent { dead_unit_data:
-                                        (
-                                            enemy.0.team,
-                                            enemy.0.unit_data.clone(),
-                                            cover_entity,
-                                            enemy.3,
-                                            *enemy.1,
-                                            true,
-                                        )
-                                    });
 
-                                    if let Some(cover) = enemy.7 {
-                                        for unit in cover.units_inside.iter() {
-                                            extra_units_to_kill.push(*unit);
-                                        }
-                                    }
-
-                                    if let Some(transport) = enemy.8 {
-                                        for unit in transport.units_inside.iter() {
-                                            extra_units_to_kill.push(*unit);
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        AttackTypes::BallisticProjectile
-                        (max_height, points_num, speed, check_factor, accuracy, direct_damage, splash_damage, spawn_pos) => {
-                            let mut rng = rand::thread_rng();
-
-                            let mut end_point = enemy.1.translation;
-                            if accuracy != 0. {
-                                end_point.x += rng.gen_range(-accuracy..accuracy);
-                                end_point.z += rng.gen_range(-accuracy..accuracy);
-                            }
-            
-                            let shell_entity;
-                            if points_num > 2 {
-                                shell_entity = commands.spawn(MaterialMeshBundle {
-                                    mesh: attack_visualisation_assets.shell.0.clone(),
-                                    material: attack_visualisation_assets.shell.1.clone(),
-                                    ..default()
-                                })
-                                .insert(Transform::from_translation(attacker_pos + spawn_pos).looking_at(end_point, Vec3::Y))
-                                .insert(TrailEmmiterComponent)
-                                .insert(BallisticProjectile{
-                                    path: generate_parabolic_trajectory(
-                                        attacker_pos,
-                                        end_point,
-                                        max_height,
-                                        points_num),
-                                    speed: speed,
-                                    waypoints_check_factor: check_factor,
-                                    direct_damage: direct_damage,
-                                    splash_damage: splash_damage,
-                                }).id();
-                            } else {
-                                shell_entity = commands.spawn(MaterialMeshBundle {
-                                    mesh: attack_visualisation_assets.shell.0.clone(),
-                                    material: attack_visualisation_assets.shell.1.clone(),
-                                    ..default()
-                                })
-                                .insert(Transform::from_translation(attacker_pos + spawn_pos).looking_at(end_point, Vec3::Y))
-                                .insert(TrailEmmiterComponent)
-                                .insert(BallisticProjectile{
-                                    path: vec![end_point + Vec3::new(0., 1., 0.)],
-                                    speed: speed,
-                                    waypoints_check_factor: check_factor,
-                                    direct_damage: direct_damage,
-                                    splash_damage: splash_damage,
-                                }).id();
-                            }
-
-                            let mesh_handle = meshes.add(Triangle3d{
-                                vertices: [Vec3::ZERO, Vec3::ZERO, Vec3::ZERO],
-                            });
-
-                            commands.spawn(MaterialMeshBundle{
-                                mesh: mesh_handle.clone(),
-                                material: instanced_materials.red_solid.clone(),
-                                transform: Transform::from_translation(attacker_pos + spawn_pos),
-                                ..default()
-                            })
-                            .insert(
-                                TrailComponent{
-                                    positions: vec![],
-                                    length: 10,
-                                    width: 0.05,
-                                    mesh_handle,
-                                    emmiter_entity: shell_entity,
-                                }
-                            );
-            
-                            if matches!(network_status.0, NetworkStatuses::Host) {
-                                let mut channel_id = 60;
-                                while channel_id <= 89 {
-                                    if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::ArtilleryProjectileSpawned {
-                                        position: attacker_pos,
-                                        server_entity: shell_entity,
-                                    }){
-                                        channel_id += 1;
-                                    } else {
                                         break;
                                     }
                                 }
                             }
-                        },
-                        AttackTypes::HomingProjectile
-                        (speed, waypoint_check_factor, max_prediction_iterations, prediction_tolerance, direct_damage, splash_damage, spawn_pos) => {
-                            
-                            let projectile = commands.spawn(MaterialMeshBundle{
-                                mesh: attack_visualisation_assets.shell.0.clone(),
-                                material: attack_visualisation_assets.shell.1.clone(),
-                                ..default()
-                            })
-                            .insert(Transform::from_translation(attacker_pos + spawn_pos).looking_at(enemy.1.translation, Vec3::Y))
-                            .insert(HomingProjectile{
-                                speed: speed,
-                                hit_check_factor: waypoint_check_factor,
-                                target_entity: enemy.3,
-                                targets_last_position: enemy.1.translation,
-                                max_prediction_caluclation_iterations: max_prediction_iterations,
-                                prediction_tolerance: prediction_tolerance,
-                                direct_damage: direct_damage,
-                                splash_damage: splash_damage,
-                            })
-                            .insert(TrailEmmiterComponent)
-                            .id();
+                        } else {
+                            for enemy_entity in unit.0.enemies.iter() {
+                                if let Ok(enemy) = units_q.get(enemy_entity.0) {
+                                    if enemy.0.current_health > 0 && unit.1.translation.distance(enemy.1.translation) <= unit.0.attack_range {
+                                        attacks_to_simulate.push((unit.3, enemy.1.translation));
 
-                            let mesh_handle = meshes.add(Triangle3d{
-                                vertices: [Vec3::ZERO, Vec3::ZERO, Vec3::ZERO],
-                            });
+                                        entities_to_rotate.push((unit.3, enemy.1.translation));
 
-                            commands.spawn(MaterialMeshBundle{
-                                mesh: mesh_handle.clone(),
-                                material: instanced_materials.red_solid.clone(),
-                                transform: Transform::from_translation(attacker_pos + spawn_pos),
-                                ..default()
-                            })
-                            .insert(
-                                TrailComponent{
-                                    positions: vec![],
-                                    length: 10,
-                                    width: 0.05,
-                                    mesh_handle,
-                                    emmiter_entity: projectile,
-                                }
-                            );
-            
-                            if matches!(network_status.0, NetworkStatuses::Host) {
-                                let mut channel_id = 60;
-                                while channel_id <= 89 {
-                                    if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::HomingProjectileSpawned {
-                                        position: attacker_pos,
-                                        server_entity: projectile,
-                                    }){
-                                        channel_id += 1;
-                                    } else {
                                         break;
                                     }
                                 }
                             }
-                        },
-                        AttackTypes::None => {},
+                        }
                     }
+                }
+            }
 
+            for entity in entities_to_rotate.iter() {
+                if let Ok (mut unit) = units_q.get_mut(entity.0) {
+                    let y = unit.1.translation.y;
+
+                    unit.1.look_at(
+                        Vec3::new(
+                            entity.1.x,
+                            y,
+                            entity.1.z,
+                        ), 
+                        Vec3::Y,
+                    );
+                }
+            }
+
+            let camera_pos = camera_q.single().translation;
+
+            let mut sounds_needs_to_play: HashMap<AttackAnimationTypes, Vec<(Entity, f32)>> = HashMap::new();
+
+            for attack_attempt in attacks_to_simulate.iter() {
+                if let Ok(unit) = units_q.get_mut(attack_attempt.0) {
                     let mut rng = rand::thread_rng();
 
-                    if rng.gen_range(1..=3) != 3 {
-                        let displaced_enemy_pos = Vec3::new(
-                            enemy.1.translation.x + rng.gen_range(-1.0..=1.0),
-                            enemy.1.translation.y + rng.gen_range(-1.0..=1.0),
-                            enemy.1.translation.z + rng.gen_range(-1.0..=1.0),
-                        );
+                    let displaced_enemy_pos = Vec3::new(
+                        attack_attempt.1.x + rng.gen_range(-1.0..=1.0),
+                        attack_attempt.1.y + rng.gen_range(-1.0..=1.0),
+                        attack_attempt.1.z + rng.gen_range(-1.0..=1.0),
+                    );
 
-                        let attack_animation_type_clone = attack_animation_type.clone();
+                    let attack_animation_type_clone = unit.0.attack_animation_type.clone();
 
-                        match attack_animation_type {
-                            AttackAnimationTypes::LowCaliber(p) => {
+                    match unit.0.attack_animation_type {
+                        AttackAnimationTypes::LowCaliber(p) => {
+                            if rng.gen_range(1..=3) != 3 {
                                 commands.spawn(attack_visualisation_assets.bullet_low.0.clone())
-                                .insert(Transform::from_translation(attacker_pos + p).looking_at(displaced_enemy_pos, Vec3::Y))
+                                .insert(Transform::from_translation(unit.1.translation + p).looking_at(displaced_enemy_pos, Vec3::Y))
                                 .insert(NotShadowCaster)
                                 .insert(BulletSprite{
                                     lifetime: 2000,
                                     elapsed_time: 0,
                                     speed: 50.,
-                                    direction: (displaced_enemy_pos - attacker_pos).normalize(),
+                                    direction: (displaced_enemy_pos - unit.1.translation).normalize(),
                                 });
 
-                                sounds_needs_to_play.entry(attack_animation_type).or_insert_with(Vec::new);
+                                sounds_needs_to_play.entry(unit.0.attack_animation_type.clone()).or_insert_with(Vec::new);
 
                                 if let Some(sounds) = sounds_needs_to_play.get_mut(&attack_animation_type_clone) {
-                                    sounds.push((*attacker_entity, camera_pos.distance(attacker_pos + p)));
+                                    sounds.push((unit.3, camera_pos.distance(unit.1.translation + p)));
                                 }
-                            },
-                            AttackAnimationTypes::HighCaliber(p) => {
-                                commands.spawn(attack_visualisation_assets.bullet_high.0.clone())
-                                .insert(Transform::from_translation(attacker_pos + p).looking_at(displaced_enemy_pos, Vec3::Y))
-                                .insert(NotShadowCaster)
-                                .insert(BulletSprite{
-                                    lifetime: 2000,
-                                    elapsed_time: 0,
-                                    speed: 50.,
-                                    direction: (displaced_enemy_pos - attacker_pos).normalize(),
-                                });
+                            }
+                        },
+                        AttackAnimationTypes::HighCaliber(p) => {
+                            commands.spawn(attack_visualisation_assets.bullet_high.0.clone())
+                            .insert(Transform::from_translation(unit.1.translation + p).looking_at(displaced_enemy_pos, Vec3::Y))
+                            .insert(NotShadowCaster)
+                            .insert(BulletSprite{
+                                lifetime: 2000,
+                                elapsed_time: 0,
+                                speed: 50.,
+                                direction: (displaced_enemy_pos - unit.1.translation).normalize(),
+                            });
 
-                                sounds_needs_to_play.entry(attack_animation_type).or_insert_with(Vec::new);
+                            sounds_needs_to_play.entry(unit.0.attack_animation_type.clone()).or_insert_with(Vec::new);
 
-                                if let Some(sounds) = sounds_needs_to_play.get_mut(&attack_animation_type_clone) {
-                                    sounds.push((*attacker_entity, camera_pos.distance(attacker_pos + p)));
+                            if let Some(sounds) = sounds_needs_to_play.get_mut(&attack_animation_type_clone) {
+                                sounds.push((unit.3, camera_pos.distance(unit.1.translation + p)));
+                            }
+                        },
+                        AttackAnimationTypes::MissileLaunch(p) => {
+                            sounds_needs_to_play.entry(unit.0.attack_animation_type.clone()).or_insert_with(Vec::new);
+
+                            if let Some(sounds) = sounds_needs_to_play.get_mut(&attack_animation_type_clone) {
+                                sounds.push((unit.3, camera_pos.distance(unit.1.translation + p)));
+                            }
+                        },
+                        AttackAnimationTypes::TankCannon(p) => {
+                            sounds_needs_to_play.entry(unit.0.attack_animation_type.clone()).or_insert_with(Vec::new);
+
+                            if let Some(sounds) = sounds_needs_to_play.get_mut(&attack_animation_type_clone) {
+                                sounds.push((unit.3, camera_pos.distance(unit.1.translation + p)));
+                            }
+                        },
+                        AttackAnimationTypes::None(_p) => {},
+                    }
+                }
+            }
+
+            for sounds_type in sounds_needs_to_play.iter_mut() {
+                let mut counter = 0;
+
+                sounds_type.1.sort_by_key(|&(_source_entity, distance)| distance as i32);
+
+                match sounds_type.0 {
+                    AttackAnimationTypes::LowCaliber(_) => {
+                        for source_entity in sounds_type.1.iter() {
+                            counter += 1;
+
+                            commands.entity(source_entity.0).try_insert(
+                                AudioBundle{
+                                    source: attack_visualisation_assets.bullet_low.1.clone(),
+                                    settings: PlaybackSettings{
+                                        mode: PlaybackMode::Remove,
+                                        volume: Volume::new(100.),
+                                        speed: 1.,
+                                        paused: false,
+                                        spatial: true,
+                                        spatial_scale: None,
+                                    },
                                 }
-                            },
-                            AttackAnimationTypes::MissileLaunch(p) => {
-                                sounds_needs_to_play.entry(attack_animation_type).or_insert_with(Vec::new);
+                            );
 
-                                if let Some(sounds) = sounds_needs_to_play.get_mut(&attack_animation_type_clone) {
-                                    sounds.push((*attacker_entity, camera_pos.distance(attacker_pos + p)));
-                                }
-                            },
-                            AttackAnimationTypes::TankCannon(p) => {
-                                sounds_needs_to_play.entry(attack_animation_type).or_insert_with(Vec::new);
+                            if counter >= 5 {break;}
+                        }
+                    },
+                    AttackAnimationTypes::HighCaliber(_) => {
+                        for source_entity in sounds_type.1.iter() {
+                            counter += 1;
 
-                                if let Some(sounds) = sounds_needs_to_play.get_mut(&attack_animation_type_clone) {
-                                    sounds.push((*attacker_entity, camera_pos.distance(attacker_pos + p)));
+                            commands.entity(source_entity.0).try_insert(
+                                AudioBundle{
+                                    source: attack_visualisation_assets.bullet_high.1.clone(),
+                                    settings: PlaybackSettings{
+                                        mode: PlaybackMode::Remove,
+                                        volume: Volume::new(100.),
+                                        speed: 1.,
+                                        paused: false,
+                                        spatial: true,
+                                        spatial_scale: None,
+                                    },
                                 }
-                            },
-                            AttackAnimationTypes::None(_p) => {},
+                            );
+
+                            if counter >= 5 {break;}
+                        }
+                    },
+                    AttackAnimationTypes::MissileLaunch(p) => {
+                        for source_entity in sounds_type.1.iter() {
+                            counter += 1;
+
+                            commands.entity(source_entity.0).try_insert(
+                                AudioBundle{
+                                    source: attack_visualisation_assets.missile_launch_sound.clone(),
+                                    settings: PlaybackSettings{
+                                        mode: PlaybackMode::Remove,
+                                        volume: Volume::new(100.),
+                                        speed: 1.,
+                                        paused: false,
+                                        spatial: true,
+                                        spatial_scale: None,
+                                    },
+                                }
+                            );
+
+                            if counter >= 5 {break;}
+                        }
+                    },
+                    AttackAnimationTypes::TankCannon(_) => {
+                        for source_entity in sounds_type.1.iter() {
+                            counter += 1;
+
+                            commands.entity(source_entity.0).try_insert(
+                                AudioBundle{
+                                    source: attack_visualisation_assets.tank_shot_sound.clone(),
+                                    settings: PlaybackSettings{
+                                        mode: PlaybackMode::Remove,
+                                        volume: Volume::new(100.),
+                                        speed: 1.,
+                                        paused: false,
+                                        spatial: true,
+                                        spatial_scale: None,
+                                    },
+                                }
+                            );
+
+                            if counter >= 5 {break;}
+                        }
+                    },
+                    AttackAnimationTypes::None(_) => {},
+                }
+            }
+        }
+        _ =>{
+            let camera_pos = camera_q.single().translation;
+            let mut entities_to_rotate: Vec<(Entity, Vec3)> = Vec::new();
+
+            for unit in units_q.iter(){
+                if !matches!(unit.0.attack_type, AttackTypes::None){
+                    if unit.0.enemies.is_empty() {
+                        if let Some(children) = unit.4 {
+                            for child in children {
+                                if let  Ok(mut transform) = transforms_q.get_mut(*child) {
+                                    transform.0.rotation = Quat::IDENTITY;
+                                }
+                            }
+                        }
+                    } else {
+                        if let Some(children) = unit.4 {
+                            for enemy_entity in unit.0.enemies.iter() {
+                                if let Ok(enemy) = units_q.get(enemy_entity.0) {
+                                    if enemy.0.current_health > 0 && unit.1.translation.distance(enemy.1.translation) <= unit.0.attack_range {
+                                        for child in children.iter() {
+                                            if let  Ok(mut transform) = transforms_q.get_mut(*child) {
+                                                let child_world_pos = transform.1.translation();
+                                                let target_pos = enemy.1.translation;
+
+                                                let mut direction = (target_pos - child_world_pos).normalize();
+                                                direction.y = 0.;
+
+                                                let desired_world_rotation = Quat::from_rotation_arc(Vec3::NEG_Z, direction);
+
+                                                let parent_global_transform = unit.5;
+                                                let parent_world_rotation = parent_global_transform.compute_transform().rotation;
+
+                                                let local_rotation = parent_world_rotation.inverse() * desired_world_rotation;
+
+                                                transform.0.rotation = local_rotation;
+                                            }
+                                        }
+
+                                        break;
+                                    }
+                                }
+                            }
+                        } else {
+                            for enemy_entity in unit.0.enemies.iter() {
+                                if let Ok(enemy) = units_q.get(enemy_entity.0) {
+                                    if enemy.0.current_health > 0 && unit.1.translation.distance(enemy.1.translation) <= unit.0.attack_range {
+                                        entities_to_rotate.push((unit.3, enemy.1.translation));
+
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
-
-                    break;
                 }
             }
-        }
-    }
 
-    for sounds_type in sounds_needs_to_play.iter_mut() {
-        let mut counter = 0;
+            for entity in entities_to_rotate.iter() {
+                if let Ok (mut unit) = units_q.get_mut(entity.0) {
+                    let y = unit.1.translation.y;
 
-        sounds_type.1.sort_by_key(|&(_source_entity, distance)| distance as i32);
-
-        match sounds_type.0 {
-            AttackAnimationTypes::LowCaliber(_) => {
-                for source_entity in sounds_type.1.iter() {
-                    counter += 1;
-
-                    commands.entity(source_entity.0).insert(
-                        AudioBundle{
-                            source: attack_visualisation_assets.bullet_low.1.clone(),
-                            settings: PlaybackSettings{
-                                mode: PlaybackMode::Remove,
-                                volume: Volume::new(100.),
-                                speed: 1.,
-                                paused: false,
-                                spatial: true,
-                                spatial_scale: None,
-                            },
-                        }
+                    unit.1.look_at(
+                        Vec3::new(
+                            entity.1.x,
+                            y,
+                            entity.1.z,
+                        ), 
+                        Vec3::Y,
                     );
-
-                    if counter >= 5 {break;}
                 }
-            },
-            AttackAnimationTypes::HighCaliber(_) => {
-                for source_entity in sounds_type.1.iter() {
-                    counter += 1;
-
-                    commands.entity(source_entity.0).insert(
-                        AudioBundle{
-                            source: attack_visualisation_assets.bullet_high.1.clone(),
-                            settings: PlaybackSettings{
-                                mode: PlaybackMode::Remove,
-                                volume: Volume::new(100.),
-                                speed: 1.,
-                                paused: false,
-                                spatial: true,
-                                spatial_scale: None,
-                            },
-                        }
-                    );
-
-                    if counter >= 5 {break;}
-                }
-            },
-            AttackAnimationTypes::MissileLaunch(p) => {
-                for source_entity in sounds_type.1.iter() {
-                    counter += 1;
-
-                    commands.entity(source_entity.0).insert(
-                        AudioBundle{
-                            source: attack_visualisation_assets.missile_launch_sound.clone(),
-                            settings: PlaybackSettings{
-                                mode: PlaybackMode::Remove,
-                                volume: Volume::new(100.),
-                                speed: 1.,
-                                paused: false,
-                                spatial: true,
-                                spatial_scale: None,
-                            },
-                        }
-                    );
-
-                    if counter >= 5 {break;}
-                }
-            },
-            AttackAnimationTypes::TankCannon(_) => {
-                for source_entity in sounds_type.1.iter() {
-                    counter += 1;
-
-                    commands.entity(source_entity.0).insert(
-                        AudioBundle{
-                            source: attack_visualisation_assets.tank_shot_sound.clone(),
-                            settings: PlaybackSettings{
-                                mode: PlaybackMode::Remove,
-                                volume: Volume::new(100.),
-                                speed: 1.,
-                                paused: false,
-                                spatial: true,
-                                spatial_scale: None,
-                            },
-                        }
-                    );
-
-                    if counter >= 5 {break;}
-                }
-            },
-            AttackAnimationTypes::None(_) => {},
-        }
-    }
-
-    for extra_unit_to_kill in extra_units_to_kill.iter() {
-        if let Ok(unit) = units_q.get(*extra_unit_to_kill) {
-            let mut cover_entity: Option<Entity> = None;
-
-            if let Some(cover) = unit.2 {
-                cover_entity = Some(cover.cover_entity);
             }
 
-            event_writer.0.send(UnitDeathEvent { dead_unit_data:
-                (
-                    unit.0.team,
-                    unit.0.unit_data.clone(),
-                    cover_entity,
-                    unit.3,
-                    *unit.1,
-                    true,
-                )
-            });
+            let mut attacker_entities: Vec<Entity> = Vec::new();
+
+            for mut unit in units_q.iter_mut(){
+                if let Some(consumer) = unit.6 {
+                    if consumer.supplies <= 0 {continue;}
+                }
+
+                if !matches!(unit.0.attack_type, AttackTypes::None){
+                    unit.0.attack_elapsed_time += time.delta().as_millis();
+
+                    if unit.0.attack_elapsed_time >= unit.0.attack_frequency {
+                        unit.0.attack_elapsed_time = 0;
+
+                        attacker_entities.push(unit.3);
+                    }
+                }
+            }
+
+            let mut sounds_needs_to_play: HashMap<AttackAnimationTypes, Vec<(Entity, f32)>> = HashMap::new();
+
+            let mut extra_units_to_kill: Vec<Entity> = Vec::new();
+
+            for attacker_entity in attacker_entities.iter() {
+                let mut enemies: Vec<(Entity, f32)> = Vec::new();
+                let mut range: f32 = 0.;
+                let mut attacker_pos: Vec3 = Vec3::ZERO;
+                let mut attack_type = AttackTypes::None;
+                let mut attack_animation_type = AttackAnimationTypes::None(Vec3::ZERO);
+
+                if let Ok(attacker) = units_q.get(*attacker_entity) {
+                    if attacker.0.current_health > 0 {
+                        enemies = attacker.0.enemies.clone();
+                        range = attacker.0.attack_range;
+                        attacker_pos = attacker.1.translation;
+                        attack_type = attacker.0.attack_type.clone();
+                        attack_animation_type = attacker.0.attack_animation_type.clone();
+                    } else {
+                        continue;
+                    }
+                }
+
+                for enemy_entity in enemies.iter() {
+                    if let Ok(mut enemy) = units_q.get_mut(enemy_entity.0) {
+                        if enemy.0.current_health > 0 && attacker_pos.distance(enemy.1.translation) <= range {
+                            match attack_type {
+                                AttackTypes::Direct(damage, accuracy, damage_type) => {
+                                    let mut rng = rand::thread_rng();
+
+                                    let mut cover_efficiency = 1.;
+                                    let mut cover_entity = None;
+                                    if let Some(cover) = enemy.2 {
+                                        cover_efficiency = cover.cover_efficiency;
+                                        cover_entity = Some(cover.cover_entity);
+                                    }
+                        
+                                    if accuracy.clone() >= rng.gen_range(0.0..1.0) * cover_efficiency {
+                                        let mut current_damage = damage.clone();
+                    
+                                        match damage_type {
+                                            DamageTypes::AntiInfantry => {
+                                                match enemy.0.unit_type {
+                                                    UnitTypes::Infantry => {
+                                                        current_damage *= 1;
+                                                    },
+                                                    UnitTypes::LightVehicle => {
+                                                        current_damage /= 5;
+                                                    },
+                                                    UnitTypes::HeavyVehicle => {
+                                                        current_damage /= 10;
+                                                    },
+                                                    UnitTypes::Building => {
+                                                        current_damage /= 10;
+                                                    },
+                                                    UnitTypes::None => {},
+                                                }
+                                            },
+                                            DamageTypes::AntiTank => {
+                                                match enemy.0.unit_type {
+                                                    UnitTypes::Infantry => {
+                                                        current_damage *= 1;
+                                                    },
+                                                    UnitTypes::LightVehicle => {
+                                                        current_damage *= 1;
+                                                    },
+                                                    UnitTypes::HeavyVehicle => {
+                                                        current_damage *= 1;
+                                                    },
+                                                    UnitTypes::Building => {
+                                                        current_damage /= 2;
+                                                    },
+                                                    UnitTypes::None => {},
+                                                }
+                                            },
+                                            DamageTypes::AntiBuilding => {
+                                                match enemy.0.unit_type {
+                                                    UnitTypes::Infantry => {
+                                                        current_damage *= 1;
+                                                    },
+                                                    UnitTypes::LightVehicle => {
+                                                        current_damage /= 2;
+                                                    },
+                                                    UnitTypes::HeavyVehicle => {
+                                                        current_damage /= 3;
+                                                    },
+                                                    UnitTypes::Building => {
+                                                        current_damage *= 1;
+                                                    },
+                                                    UnitTypes::None => {},
+                                                }
+                                            },
+                                            DamageTypes::Universal => {},
+                                        }
+                    
+                                        enemy.0.current_health -= current_damage;
+                    
+                                        if matches!(network_status.0, NetworkStatuses::Host) {
+                                            let mut channel_id = 00;
+                                            while channel_id <= 59 {
+                                                if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnitDamaged {
+                                                    server_entity: enemy.3,
+                                                    damage: current_damage,
+                                                }){
+                                                    channel_id += 1;
+                                                } else {
+                                                    break;
+                                                }
+                                            }
+                                        }
+                    
+                                        if enemy.0.current_health <= 0 {
+                                            event_writer.0.send(UnitDeathEvent { dead_unit_data:
+                                                (
+                                                    enemy.0.team,
+                                                    enemy.0.unit_data.clone(),
+                                                    cover_entity,
+                                                    enemy.3,
+                                                    *enemy.1,
+                                                    true,
+                                                )
+                                            });
+
+                                            if let Some(cover) = enemy.7 {
+                                                for unit in cover.units_inside.iter() {
+                                                    extra_units_to_kill.push(*unit);
+                                                }
+                                            }
+
+                                            if let Some(transport) = enemy.8 {
+                                                for unit in transport.units_inside.iter() {
+                                                    extra_units_to_kill.push(*unit);
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                AttackTypes::BallisticProjectile
+                                (max_height, points_num, speed, check_factor, accuracy, direct_damage, splash_damage, spawn_pos) => {
+                                    let mut rng = rand::thread_rng();
+
+                                    let mut end_point = enemy.1.translation;
+                                    if accuracy != 0. {
+                                        end_point.x += rng.gen_range(-accuracy..accuracy);
+                                        end_point.z += rng.gen_range(-accuracy..accuracy);
+                                    }
+                    
+                                    let shell_entity;
+                                    if points_num > 2 {
+                                        shell_entity = commands.spawn(MaterialMeshBundle {
+                                            mesh: attack_visualisation_assets.shell.0.clone(),
+                                            material: attack_visualisation_assets.shell.1.clone(),
+                                            ..default()
+                                        })
+                                        .insert(Transform::from_translation(attacker_pos + spawn_pos).looking_at(end_point, Vec3::Y))
+                                        .insert(TrailEmmiterComponent)
+                                        .insert(BallisticProjectile{
+                                            path: generate_parabolic_trajectory(
+                                                attacker_pos,
+                                                end_point,
+                                                max_height,
+                                                points_num),
+                                            speed: speed,
+                                            start_position: attacker_pos,
+                                            target_position: end_point,
+                                            waypoint_radius: check_factor,
+                                            elapsed: 0.,
+                                            inv_duration: 0.,
+                                            direct_damage: direct_damage,
+                                            splash_damage: splash_damage,
+                                        }).id();
+                                    } else {
+                                        shell_entity = commands.spawn(MaterialMeshBundle {
+                                            mesh: attack_visualisation_assets.shell.0.clone(),
+                                            material: attack_visualisation_assets.shell.1.clone(),
+                                            ..default()
+                                        })
+                                        .insert(Transform::from_translation(attacker_pos + spawn_pos).looking_at(end_point, Vec3::Y))
+                                        .insert(TrailEmmiterComponent)
+                                        .insert(BallisticProjectile{
+                                            path: vec![end_point + Vec3::new(0., 1., 0.)],
+                                            speed: speed,
+                                            start_position: attacker_pos,
+                                            target_position: end_point,
+                                            waypoint_radius: check_factor,
+                                            elapsed: 0.,
+                                            inv_duration: 0.,
+                                            direct_damage: direct_damage,
+                                            splash_damage: splash_damage,
+                                        }).id();
+                                    }
+
+                                    let mesh_handle = meshes.add(Triangle3d{
+                                        vertices: [Vec3::ZERO, Vec3::ZERO, Vec3::ZERO],
+                                    });
+
+                                    commands.spawn(MaterialMeshBundle{
+                                        mesh: mesh_handle.clone(),
+                                        material: instanced_materials.red_solid.clone(),
+                                        transform: Transform::from_translation(attacker_pos + spawn_pos),
+                                        ..default()
+                                    })
+                                    .insert(
+                                        TrailComponent{
+                                            positions: vec![],
+                                            length: 10,
+                                            width: 0.05,
+                                            mesh_handle,
+                                            emmiter_entity: shell_entity,
+                                        }
+                                    );
+                    
+                                    if matches!(network_status.0, NetworkStatuses::Host) {
+                                        let mut channel_id = 60;
+                                        while channel_id <= 89 {
+                                            if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::ArtilleryProjectileSpawned {
+                                                position: attacker_pos,
+                                                server_entity: shell_entity,
+                                            }){
+                                                channel_id += 1;
+                                            } else {
+                                                break;
+                                            }
+                                        }
+                                    }
+                                },
+                                AttackTypes::HomingProjectile
+                                (speed, waypoint_check_factor, max_prediction_iterations, prediction_tolerance, direct_damage, splash_damage, spawn_pos) => {
+                                    
+                                    let projectile = commands.spawn(MaterialMeshBundle{
+                                        mesh: attack_visualisation_assets.shell.0.clone(),
+                                        material: attack_visualisation_assets.shell.1.clone(),
+                                        ..default()
+                                    })
+                                    .insert(Transform::from_translation(attacker_pos + spawn_pos).looking_at(enemy.1.translation, Vec3::Y))
+                                    .insert(HomingProjectile{
+                                        speed: speed,
+                                        hit_check_factor: waypoint_check_factor,
+                                        target_entity: enemy.3,
+                                        targets_last_position: enemy.1.translation,
+                                        max_prediction_caluclation_iterations: max_prediction_iterations,
+                                        prediction_tolerance: prediction_tolerance,
+                                        direct_damage: direct_damage,
+                                        splash_damage: splash_damage,
+                                    })
+                                    .insert(TrailEmmiterComponent)
+                                    .id();
+
+                                    let mesh_handle = meshes.add(Triangle3d{
+                                        vertices: [Vec3::ZERO, Vec3::ZERO, Vec3::ZERO],
+                                    });
+
+                                    commands.spawn(MaterialMeshBundle{
+                                        mesh: mesh_handle.clone(),
+                                        material: instanced_materials.red_solid.clone(),
+                                        transform: Transform::from_translation(attacker_pos + spawn_pos),
+                                        ..default()
+                                    })
+                                    .insert(
+                                        TrailComponent{
+                                            positions: vec![],
+                                            length: 10,
+                                            width: 0.05,
+                                            mesh_handle,
+                                            emmiter_entity: projectile,
+                                        }
+                                    );
+                    
+                                    if matches!(network_status.0, NetworkStatuses::Host) {
+                                        let mut channel_id = 60;
+                                        while channel_id <= 89 {
+                                            if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::HomingProjectileSpawned {
+                                                position: attacker_pos,
+                                                server_entity: projectile,
+                                            }){
+                                                channel_id += 1;
+                                            } else {
+                                                break;
+                                            }
+                                        }
+                                    }
+                                },
+                                AttackTypes::None => {},
+                            }
+
+                            let mut rng = rand::thread_rng();
+
+                            let displaced_enemy_pos = Vec3::new(
+                                enemy.1.translation.x + rng.gen_range(-1.0..=1.0),
+                                enemy.1.translation.y + rng.gen_range(-1.0..=1.0),
+                                enemy.1.translation.z + rng.gen_range(-1.0..=1.0),
+                            );
+
+                            let attack_animation_type_clone = attack_animation_type.clone();
+
+                            match attack_animation_type {
+                                AttackAnimationTypes::LowCaliber(p) => {
+                                    if rng.gen_range(1..=3) != 3 {
+                                        commands.spawn(attack_visualisation_assets.bullet_low.0.clone())
+                                        .insert(Transform::from_translation(attacker_pos + p).looking_at(displaced_enemy_pos, Vec3::Y))
+                                        .insert(NotShadowCaster)
+                                        .insert(BulletSprite{
+                                            lifetime: 2000,
+                                            elapsed_time: 0,
+                                            speed: 50.,
+                                            direction: (displaced_enemy_pos - attacker_pos).normalize(),
+                                        });
+
+                                        sounds_needs_to_play.entry(attack_animation_type).or_insert_with(Vec::new);
+
+                                        if let Some(sounds) = sounds_needs_to_play.get_mut(&attack_animation_type_clone) {
+                                            sounds.push((*attacker_entity, camera_pos.distance(attacker_pos + p)));
+                                        }
+                                    }
+                                },
+                                AttackAnimationTypes::HighCaliber(p) => {
+                                    commands.spawn(attack_visualisation_assets.bullet_high.0.clone())
+                                    .insert(Transform::from_translation(attacker_pos + p).looking_at(displaced_enemy_pos, Vec3::Y))
+                                    .insert(NotShadowCaster)
+                                    .insert(BulletSprite{
+                                        lifetime: 2000,
+                                        elapsed_time: 0,
+                                        speed: 50.,
+                                        direction: (displaced_enemy_pos - attacker_pos).normalize(),
+                                    });
+
+                                    sounds_needs_to_play.entry(attack_animation_type).or_insert_with(Vec::new);
+
+                                    if let Some(sounds) = sounds_needs_to_play.get_mut(&attack_animation_type_clone) {
+                                        sounds.push((*attacker_entity, camera_pos.distance(attacker_pos + p)));
+                                    }
+                                },
+                                AttackAnimationTypes::MissileLaunch(p) => {
+                                    sounds_needs_to_play.entry(attack_animation_type).or_insert_with(Vec::new);
+
+                                    if let Some(sounds) = sounds_needs_to_play.get_mut(&attack_animation_type_clone) {
+                                        sounds.push((*attacker_entity, camera_pos.distance(attacker_pos + p)));
+                                    }
+                                },
+                                AttackAnimationTypes::TankCannon(p) => {
+                                    sounds_needs_to_play.entry(attack_animation_type).or_insert_with(Vec::new);
+
+                                    if let Some(sounds) = sounds_needs_to_play.get_mut(&attack_animation_type_clone) {
+                                        sounds.push((*attacker_entity, camera_pos.distance(attacker_pos + p)));
+                                    }
+                                },
+                                AttackAnimationTypes::None(_p) => {},
+                            }
+
+                            break;
+                        }
+                    }
+                }
+            }
+
+            for sounds_type in sounds_needs_to_play.iter_mut() {
+                let mut counter = 0;
+
+                sounds_type.1.sort_by_key(|&(_source_entity, distance)| distance as i32);
+
+                match sounds_type.0 {
+                    AttackAnimationTypes::LowCaliber(_) => {
+                        for source_entity in sounds_type.1.iter() {
+                            counter += 1;
+
+                            commands.entity(source_entity.0).insert(
+                                AudioBundle{
+                                    source: attack_visualisation_assets.bullet_low.1.clone(),
+                                    settings: PlaybackSettings{
+                                        mode: PlaybackMode::Remove,
+                                        volume: Volume::new(100.),
+                                        speed: 1.,
+                                        paused: false,
+                                        spatial: true,
+                                        spatial_scale: None,
+                                    },
+                                }
+                            );
+
+                            if counter >= 5 {break;}
+                        }
+                    },
+                    AttackAnimationTypes::HighCaliber(_) => {
+                        for source_entity in sounds_type.1.iter() {
+                            counter += 1;
+
+                            commands.entity(source_entity.0).insert(
+                                AudioBundle{
+                                    source: attack_visualisation_assets.bullet_high.1.clone(),
+                                    settings: PlaybackSettings{
+                                        mode: PlaybackMode::Remove,
+                                        volume: Volume::new(100.),
+                                        speed: 1.,
+                                        paused: false,
+                                        spatial: true,
+                                        spatial_scale: None,
+                                    },
+                                }
+                            );
+
+                            if counter >= 5 {break;}
+                        }
+                    },
+                    AttackAnimationTypes::MissileLaunch(p) => {
+                        for source_entity in sounds_type.1.iter() {
+                            counter += 1;
+
+                            commands.entity(source_entity.0).insert(
+                                AudioBundle{
+                                    source: attack_visualisation_assets.missile_launch_sound.clone(),
+                                    settings: PlaybackSettings{
+                                        mode: PlaybackMode::Remove,
+                                        volume: Volume::new(100.),
+                                        speed: 1.,
+                                        paused: false,
+                                        spatial: true,
+                                        spatial_scale: None,
+                                    },
+                                }
+                            );
+
+                            if counter >= 5 {break;}
+                        }
+                    },
+                    AttackAnimationTypes::TankCannon(_) => {
+                        for source_entity in sounds_type.1.iter() {
+                            counter += 1;
+
+                            commands.entity(source_entity.0).insert(
+                                AudioBundle{
+                                    source: attack_visualisation_assets.tank_shot_sound.clone(),
+                                    settings: PlaybackSettings{
+                                        mode: PlaybackMode::Remove,
+                                        volume: Volume::new(100.),
+                                        speed: 1.,
+                                        paused: false,
+                                        spatial: true,
+                                        spatial_scale: None,
+                                    },
+                                }
+                            );
+
+                            if counter >= 5 {break;}
+                        }
+                    },
+                    AttackAnimationTypes::None(_) => {},
+                }
+            }
+
+            for extra_unit_to_kill in extra_units_to_kill.iter() {
+                if let Ok(unit) = units_q.get(*extra_unit_to_kill) {
+                    let mut cover_entity: Option<Entity> = None;
+
+                    if let Some(cover) = unit.2 {
+                        cover_entity = Some(cover.cover_entity);
+                    }
+
+                    event_writer.0.send(UnitDeathEvent { dead_unit_data:
+                        (
+                            unit.0.team,
+                            unit.0.unit_data.clone(),
+                            cover_entity,
+                            unit.3,
+                            *unit.1,
+                            true,
+                        )
+                    });
+                } else if let Ok(unit) = disabled_units_q.get(*extra_unit_to_kill) {
+                    let mut cover_entity: Option<Entity> = None;
+
+                    if let Some(cover) = unit.2 {
+                        cover_entity = Some(cover.cover_entity);
+                    }
+
+                    event_writer.0.send(UnitDeathEvent { dead_unit_data:
+                        (
+                            unit.0.team,
+                            unit.0.unit_data.clone(),
+                            cover_entity,
+                            unit.3,
+                            *unit.1,
+                            true,
+                        )
+                    });
+                }
+            }
         }
     }
 }
@@ -1965,7 +2254,7 @@ pub fn platoon_leaders_monitoring_system (
 ){
     if timer.0.finished() {
         for team_army in army.0.iter_mut() {
-            for platoon in team_army.1.regular_platoons.iter_mut() {
+            for platoon in team_army.1.regular_squads.iter_mut() {
                 if platoon.1.2 == Entity::PLACEHOLDER || commands.get_entity(platoon.1.2).is_none() {
                     let mut soldiers_iter = platoon.1.0.0.0.set.iter();
                     let mut specialists_iter = platoon.1.0.0.1.set.iter();
@@ -1974,7 +2263,7 @@ pub fn platoon_leaders_monitoring_system (
                         if let Some(single_unit) = soldiers_iter.next() {
                             if commands.get_entity(*single_unit).is_some() {
                                 platoon.1.2 = *single_unit;
-                                commands.entity(platoon.1.2).insert(SquadLeader((
+                                commands.entity(platoon.1.2).try_insert(SquadLeader((
                                     CompanyTypes::Regular,
                                     *platoon.0
                                 )));
@@ -1984,7 +2273,7 @@ pub fn platoon_leaders_monitoring_system (
                         } else if let Some(single_unit) = specialists_iter.next() {
                             if commands.get_entity(*single_unit).is_some() {
                                 platoon.1.2 = *single_unit;
-                                commands.entity(platoon.1.2).insert(SquadLeader((
+                                commands.entity(platoon.1.2).try_insert(SquadLeader((
                                     CompanyTypes::Regular,
                                     *platoon.0
                                 )));
@@ -2002,7 +2291,7 @@ pub fn platoon_leaders_monitoring_system (
                 }
             }
 
-            for platoon in team_army.1.shock_platoons.iter_mut() {
+            for platoon in team_army.1.shock_squads.iter_mut() {
                 if platoon.1.2 == Entity::PLACEHOLDER || commands.get_entity(platoon.1.2).is_none() {
                     let mut soldiers_iter = platoon.1.0.0.0.set.iter();
                     let mut specialists_iter = platoon.1.0.0.0.set.iter();
@@ -2011,7 +2300,7 @@ pub fn platoon_leaders_monitoring_system (
                         if let Some(single_unit) = soldiers_iter.next() {
                             if commands.get_entity(*single_unit).is_some() {
                                 platoon.1.2 = *single_unit;
-                                commands.entity(platoon.1.2).insert(SquadLeader((
+                                commands.entity(platoon.1.2).try_insert(SquadLeader((
                                     CompanyTypes::Shock,
                                     *platoon.0
                                 )));
@@ -2021,7 +2310,7 @@ pub fn platoon_leaders_monitoring_system (
                         } else if let Some(single_unit) = specialists_iter.next() {
                             if commands.get_entity(*single_unit).is_some() {
                                 platoon.1.2 = *single_unit;
-                                commands.entity(platoon.1.2).insert(SquadLeader((
+                                commands.entity(platoon.1.2).try_insert(SquadLeader((
                                     CompanyTypes::Shock,
                                     *platoon.0
                                 )));
@@ -2039,7 +2328,7 @@ pub fn platoon_leaders_monitoring_system (
                 }
             }
 
-            for platoon in team_army.1.armored_platoons.iter_mut() {
+            for platoon in team_army.1.armored_squads.iter_mut() {
                 if platoon.1.2 == Entity::PLACEHOLDER || commands.get_entity(platoon.1.2).is_none() {
                     let mut vehicles_iter = platoon.1.0.0.set.iter();
 
@@ -2047,7 +2336,7 @@ pub fn platoon_leaders_monitoring_system (
                         if let Some(single_unit) = vehicles_iter.next() {
                             if commands.get_entity(*single_unit).is_some() {
                                 platoon.1.2 = *single_unit;
-                                commands.entity(platoon.1.2).insert(SquadLeader((
+                                commands.entity(platoon.1.2).try_insert(SquadLeader((
                                     CompanyTypes::Armored,
                                     *platoon.0
                                 )));
@@ -2098,7 +2387,7 @@ pub fn squad_selection_system (
     for event in event_reader.read() {
         match  event.0.0 {
             CompanyTypes::Regular => {
-                if let Some(platoon) = army.0.get(&player_data.team).unwrap().regular_platoons.get(&event.0.1.clone()){
+                if let Some(platoon) = army.0.get(&player_data.team).unwrap().regular_squads.get(&event.0.1.clone()){
                     let mut units: Vec<Entity> = platoon.0.0.0.set.iter().cloned().collect();
                     let mut specialists: Vec<Entity> = platoon.0.0.1.set.iter().cloned().collect();
                     units.append(&mut specialists);
@@ -2109,7 +2398,7 @@ pub fn squad_selection_system (
                 }
             },
             CompanyTypes::Shock => {
-                if let Some(platoon) = army.0.get(&player_data.team).unwrap().shock_platoons.get(&event.0.1.clone()){
+                if let Some(platoon) = army.0.get(&player_data.team).unwrap().shock_squads.get(&event.0.1.clone()){
                     let mut units: Vec<Entity> = platoon.0.0.0.set.iter().cloned().collect();
                     let mut specialists: Vec<Entity> = platoon.0.0.1.set.iter().cloned().collect();
                     units.append(&mut specialists);
@@ -2120,7 +2409,7 @@ pub fn squad_selection_system (
                 }
             },
             CompanyTypes::Armored => {
-                if let Some(platoon) = army.0.get(&player_data.team).unwrap().armored_platoons.get(&event.0.1.clone()){
+                if let Some(platoon) = army.0.get(&player_data.team).unwrap().armored_squads.get(&event.0.1.clone()){
                     let units: Vec<Entity> = platoon.0.0.set.iter().cloned().collect();
 
                     clear_selected_units(&mut selected_units, &mut commands, &units_q);
@@ -2147,7 +2436,7 @@ pub fn platoon_selection_system (
                 let mut units: Vec<Entity> = Vec::new();
 
                 for squad_id in event.0.1.iter() {
-                    if let Some(squad) = army.0.get(&player_data.team).unwrap().regular_platoons.get(squad_id){
+                    if let Some(squad) = army.0.get(&player_data.team).unwrap().regular_squads.get(squad_id){
                         let mut regular_units: Vec<Entity> = squad.0.0.0.set.iter().cloned().collect();
                         let mut specialists: Vec<Entity> = squad.0.0.1.set.iter().cloned().collect();
                         units.append(&mut regular_units);
@@ -2164,7 +2453,7 @@ pub fn platoon_selection_system (
                 let mut units: Vec<Entity> = Vec::new();
 
                 for squad_id in event.0.1.iter() {
-                    if let Some(squad) = army.0.get(&player_data.team).unwrap().shock_platoons.get(squad_id){
+                    if let Some(squad) = army.0.get(&player_data.team).unwrap().shock_squads.get(squad_id){
                         let mut regular_units: Vec<Entity> = squad.0.0.0.set.iter().cloned().collect();
                         let mut specialists: Vec<Entity> = squad.0.0.1.set.iter().cloned().collect();
                         units.append(&mut regular_units);
@@ -2181,7 +2470,7 @@ pub fn platoon_selection_system (
                 let mut units: Vec<Entity> = Vec::new();
 
                 for squad_id in event.0.1.iter() {
-                    if let Some(squad) = army.0.get(&player_data.team).unwrap().armored_platoons.get(squad_id){
+                    if let Some(squad) = army.0.get(&player_data.team).unwrap().armored_squads.get(squad_id){
                         let mut regular_units: Vec<Entity> = squad.0.0.set.iter().cloned().collect();
                         units.append(&mut regular_units);
                     }
@@ -2211,7 +2500,7 @@ pub fn company_selection_system (
                 let mut units: Vec<Entity> = Vec::new();
 
                 for squad_id in event.0.1.iter() {
-                    if let Some(squad) = army.0.get(&player_data.team).unwrap().regular_platoons.get(squad_id){
+                    if let Some(squad) = army.0.get(&player_data.team).unwrap().regular_squads.get(squad_id){
                         let mut regular_units: Vec<Entity> = squad.0.0.0.set.iter().cloned().collect();
                         let mut specialists: Vec<Entity> = squad.0.0.1.set.iter().cloned().collect();
                         units.append(&mut regular_units);
@@ -2228,7 +2517,7 @@ pub fn company_selection_system (
                 let mut units: Vec<Entity> = Vec::new();
 
                 for squad_id in event.0.1.iter() {
-                    if let Some(squad) = army.0.get(&player_data.team).unwrap().shock_platoons.get(squad_id){
+                    if let Some(squad) = army.0.get(&player_data.team).unwrap().shock_squads.get(squad_id){
                         let mut regular_units: Vec<Entity> = squad.0.0.0.set.iter().cloned().collect();
                         let mut specialists: Vec<Entity> = squad.0.0.1.set.iter().cloned().collect();
                         units.append(&mut regular_units);
@@ -2245,7 +2534,7 @@ pub fn company_selection_system (
                 let mut units: Vec<Entity> = Vec::new();
 
                 for squad_id in event.0.1.iter() {
-                    if let Some(squad) = army.0.get(&player_data.team).unwrap().armored_platoons.get(squad_id){
+                    if let Some(squad) = army.0.get(&player_data.team).unwrap().armored_squads.get(squad_id){
                         let mut regular_units: Vec<Entity> = squad.0.0.set.iter().cloned().collect();
                         units.append(&mut regular_units);
                     }
@@ -2275,7 +2564,7 @@ pub fn battalion_selection_system (
         for squad_id in event.0.iter() {
             match  squad_id.0 {
                 CompanyTypes::Regular => {
-                    if let Some(squad) = army.0.get(&player_data.team).unwrap().regular_platoons.get(&squad_id.1){
+                    if let Some(squad) = army.0.get(&player_data.team).unwrap().regular_squads.get(&squad_id.1){
                         let mut regular_units: Vec<Entity> = squad.0.0.0.set.iter().cloned().collect();
                         let mut specialists: Vec<Entity> = squad.0.0.1.set.iter().cloned().collect();
                         units.append(&mut regular_units);
@@ -2283,7 +2572,7 @@ pub fn battalion_selection_system (
                     }
                 },
                 CompanyTypes::Shock => {
-                    if let Some(squad) = army.0.get(&player_data.team).unwrap().shock_platoons.get(&squad_id.1){
+                    if let Some(squad) = army.0.get(&player_data.team).unwrap().shock_squads.get(&squad_id.1){
                         let mut regular_units: Vec<Entity> = squad.0.0.0.set.iter().cloned().collect();
                         let mut specialists: Vec<Entity> = squad.0.0.1.set.iter().cloned().collect();
                         units.append(&mut regular_units);
@@ -2291,7 +2580,7 @@ pub fn battalion_selection_system (
                     }
                 },
                 CompanyTypes::Armored => {
-                    if let Some(squad) = army.0.get(&player_data.team).unwrap().armored_platoons.get(&squad_id.1){
+                    if let Some(squad) = army.0.get(&player_data.team).unwrap().armored_squads.get(&squad_id.1){
                         let mut regular_units: Vec<Entity> = squad.0.0.set.iter().cloned().collect();
                         units.append(&mut regular_units);
                     }
@@ -2321,7 +2610,7 @@ pub fn regiment_selection_system (
         for squad_id in event.0.iter() {
             match  squad_id.0 {
                 CompanyTypes::Regular => {
-                    if let Some(squad) = army.0.get(&player_data.team).unwrap().regular_platoons.get(&squad_id.1){
+                    if let Some(squad) = army.0.get(&player_data.team).unwrap().regular_squads.get(&squad_id.1){
                         let mut regular_units: Vec<Entity> = squad.0.0.0.set.iter().cloned().collect();
                         let mut specialists: Vec<Entity> = squad.0.0.1.set.iter().cloned().collect();
                         units.append(&mut regular_units);
@@ -2329,7 +2618,7 @@ pub fn regiment_selection_system (
                     }
                 },
                 CompanyTypes::Shock => {
-                    if let Some(squad) = army.0.get(&player_data.team).unwrap().shock_platoons.get(&squad_id.1){
+                    if let Some(squad) = army.0.get(&player_data.team).unwrap().shock_squads.get(&squad_id.1){
                         let mut regular_units: Vec<Entity> = squad.0.0.0.set.iter().cloned().collect();
                         let mut specialists: Vec<Entity> = squad.0.0.1.set.iter().cloned().collect();
                         units.append(&mut regular_units);
@@ -2337,7 +2626,7 @@ pub fn regiment_selection_system (
                     }
                 },
                 CompanyTypes::Armored => {
-                    if let Some(squad) = army.0.get(&player_data.team).unwrap().armored_platoons.get(&squad_id.1){
+                    if let Some(squad) = army.0.get(&player_data.team).unwrap().armored_squads.get(&squad_id.1){
                         let mut regular_units: Vec<Entity> = squad.0.0.set.iter().cloned().collect();
                         units.append(&mut regular_units);
                     }
@@ -2367,7 +2656,7 @@ pub fn brigade_selection_system (
         for squad_id in event.0.iter() {
             match  squad_id.0 {
                 CompanyTypes::Regular => {
-                    if let Some(squad) = army.0.get(&player_data.team).unwrap().regular_platoons.get(&squad_id.1){
+                    if let Some(squad) = army.0.get(&player_data.team).unwrap().regular_squads.get(&squad_id.1){
                         let mut regular_units: Vec<Entity> = squad.0.0.0.set.iter().cloned().collect();
                         let mut specialists: Vec<Entity> = squad.0.0.1.set.iter().cloned().collect();
                         units.append(&mut regular_units);
@@ -2375,7 +2664,7 @@ pub fn brigade_selection_system (
                     }
                 },
                 CompanyTypes::Shock => {
-                    if let Some(squad) = army.0.get(&player_data.team).unwrap().shock_platoons.get(&squad_id.1){
+                    if let Some(squad) = army.0.get(&player_data.team).unwrap().shock_squads.get(&squad_id.1){
                         let mut regular_units: Vec<Entity> = squad.0.0.0.set.iter().cloned().collect();
                         let mut specialists: Vec<Entity> = squad.0.0.1.set.iter().cloned().collect();
                         units.append(&mut regular_units);
@@ -2383,12 +2672,37 @@ pub fn brigade_selection_system (
                     }
                 },
                 CompanyTypes::Armored => {
-                    if let Some(squad) = army.0.get(&player_data.team).unwrap().armored_platoons.get(&squad_id.1){
+                    if let Some(squad) = army.0.get(&player_data.team).unwrap().armored_squads.get(&squad_id.1){
                         let mut regular_units: Vec<Entity> = squad.0.0.set.iter().cloned().collect();
                         units.append(&mut regular_units);
                     }
                 },
                 _ => {},
+            }
+        }
+
+        if units.len() > 0 {
+            clear_selected_units(&mut selected_units, &mut commands, &units_q);
+            add_selected_units(units, &mut selected_units, &mut commands, &units_q);
+        }
+    }
+}
+
+pub fn artillery_unit_selection_system (
+    army: Res<Armies>,
+    mut selected_units: ResMut<SelectedUnits>,
+    mut commands: Commands,
+    units_q: Query<(&Transform, Entity, &CombatComponent), (With<SelectableUnit>, Without<DisabledUnit>)>,
+    mut event_reader: EventReader<ArtilleryUnitSelectedEvent>,
+){
+    for event in event_reader.read() {
+        let mut units: Vec<Entity> = Vec::new();
+
+        if let Some(team_army) = army.0.get(&event.0.0) {
+            if let Some(artillery_unit_army_reference) = team_army.artillery_units.0.get(&event.0.1) {
+                if let Some(artillery_unit_entity) = artillery_unit_army_reference.0.0 {
+                    units.push(artillery_unit_entity);
+                }
             }
         }
 
@@ -2411,6 +2725,9 @@ pub fn cover_assignation_system (
     mut pathfinding_task: ResMut<AsyncPathfindingTasks>,
     async_task_pools: Res<AsyncTaskPools>,
     mut commands: Commands,
+    network_status: Res<NetworkStatus>,
+    mut client: ResMut<QuinnetClient>,
+    entity_maps: Res<EntityMaps>,
 ){
     if mouse_buttons.just_released(MouseButton::Right){
         if !selected_units_q.is_empty() && !covers_q.is_empty() {
@@ -2425,32 +2742,86 @@ pub fn cover_assignation_system (
 
                         let mut selected_units_iter = selected_units_q.iter();
 
-                        let nav_mesh_lock = nav_mesh.get();
+                        match network_status.0 {
+                            NetworkStatuses::Client => {
+                                let mut units_to_cover: Vec<Entity> = Vec::new();
+                                let mut cover_entity = Entity::PLACEHOLDER;
 
-                        for _i in 0..cover.1.points.len() - cover.1.units_inside.len() {
-                            if let Some(unit) = selected_units_iter.next() {
-                                if unit.1.unit_data.1.0 != CompanyTypes::Armored {
-                                    commands.entity(unit.0).insert(MovingToCover{
-                                        cover_entity: cover.0,
-                                        cover_position: cover.2.translation,
-                                    });
-
-                                    let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
-                                        nav_mesh_lock.clone(),
-                                        nav_mesh_settings.clone(),
-                                        unit.2.translation,
-                                        cover.2.translation,
-                                        Some(100.),
-                                        Some(&[1.0, 1.5]),
-                                        unit.0,
-                                    ));
-                    
-                                    pathfinding_task.tasks.push(task);
+                                if let Some(server_cover_entity) = entity_maps.client_to_server.get(&cover.0) {
+                                    cover_entity = *server_cover_entity;
                                 }
-                            }
-                            else {
-                                break;
-                            }
+
+                                let nav_mesh_lock = nav_mesh.get();
+                                
+                                for _i in 0..cover.1.points.len() - cover.1.units_inside.len() {
+                                    if let Some(unit) = selected_units_iter.next() {
+                                        if unit.1.unit_data.1.0 != CompanyTypes::Armored {
+                                            if let Some(server_unit_entity) = entity_maps.client_to_server.get(&unit.0) {
+                                                units_to_cover.push(*server_unit_entity);
+
+                                                let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
+                                                    nav_mesh_lock.clone(),
+                                                    nav_mesh_settings.clone(),
+                                                    unit.2.translation,
+                                                    cover.2.translation,
+                                                    Some(100.),
+                                                    Some(&[1.0, 1.5]),
+                                                    unit.0,
+                                                ));
+                                
+                                                pathfinding_task.tasks.push(task);
+                                            }
+                                        }
+                                    }
+                                    else {
+                                        break;
+                                    }
+                                }
+
+                                if !units_to_cover.is_empty() && cover_entity != Entity::PLACEHOLDER {
+                                    let mut channel_id = 30;
+                                    while channel_id <= 59 {
+                                        if let Err(_) = client.connection_mut().send_message_on(channel_id, ClientMessage::CoverAssignationRequest{
+                                            units: units_to_cover.clone(),
+                                            cover_entity: cover_entity,
+                                            cover_position: cover.2.translation,
+                                        }){
+                                            channel_id += 1;
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                }
+                            },
+                            _ => {
+                                let nav_mesh_lock = nav_mesh.get();
+
+                                for _i in 0..cover.1.points.len() - cover.1.units_inside.len() {
+                                    if let Some(unit) = selected_units_iter.next() {
+                                        if unit.1.unit_data.1.0 != CompanyTypes::Armored {
+                                            commands.entity(unit.0).insert(MovingToCover{
+                                                cover_entity: cover.0,
+                                                cover_position: cover.2.translation,
+                                            });
+
+                                            let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
+                                                nav_mesh_lock.clone(),
+                                                nav_mesh_settings.clone(),
+                                                unit.2.translation,
+                                                cover.2.translation,
+                                                Some(100.),
+                                                Some(&[1.0, 1.5]),
+                                                unit.0,
+                                            ));
+                            
+                                            pathfinding_task.tasks.push(task);
+                                        }
+                                    }
+                                    else {
+                                        break;
+                                    }
+                                }
+                            },
                         }
                     }
                 }
@@ -2463,6 +2834,9 @@ pub fn unit_covering_system (
     mut moving_to_cover_q: Query<(Entity, &mut Transform, &MovingToCover, &mut UnitComponent), With<MovingToCover>>,
     mut covers_q: Query<(Entity, &mut CoverComponent, &Transform), (With<CoverComponent>, Without<MovingToCover>)>,
     mut commands: Commands,
+    network_status: Res<NetworkStatus>,
+    mut server: ResMut<QuinnetServer>,
+    clients: Res<ClientList>,
 ){
     for mut unit in moving_to_cover_q.iter_mut() {
         if unit.1.translation.distance(unit.2.cover_position) < 20. {
@@ -2480,6 +2854,32 @@ pub fn unit_covering_system (
                         cover_entity: cover.0,
                         original_y: original_y,
                     });
+
+                    if matches!(network_status.0, NetworkStatuses::Host) {
+                        let mut channel_id = 30;
+                        while channel_id <= 59 {
+                            if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnspecifiedEntityMoved{
+                                server_entity: unit.0,
+                                new_position: cover.1.points[cover.1.units_inside.len() - 1] + cover.2.translation,
+                            }){
+                                channel_id += 1;
+                            } else {
+                                break;
+                            }
+                        }
+
+                        channel_id = 30;
+                        while channel_id <= 59 {
+                            if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnitCovered{
+                                server_entity: unit.0,
+                                initial_unit_position_y: original_y,
+                            }){
+                                channel_id += 1;
+                            } else {
+                                break;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -2491,20 +2891,48 @@ pub fn cover_disturb_system (
     mut units_q: Query<(Entity, Option<&Covered>, &mut Transform), With<SelectedUnit>>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     mut event_writer: EventWriter<UnitNeedsToBeUncovered>,
+    network_status: Res<NetworkStatus>,
+    mut client: ResMut<QuinnetClient>,
+    entity_maps: Res<EntityMaps>,
 ){
     if mouse_buttons.just_pressed(MouseButton::Right) {
-        for mut unit in units_q.iter_mut() {
-            commands.entity(unit.0).remove::<MovingToCover>();
-    
-            if let Some(cover) = unit.1 {
-                event_writer.send(UnitNeedsToBeUncovered{
-                    cover_entity: cover.cover_entity,
-                    unit_entity: unit.0,
-                });
+        match network_status.0 {
+            NetworkStatuses::Client => {
+                let mut server_entities: Vec<Entity> = Vec::new();
+                for unit in units_q.iter() {
+                    if let Some(server_entity) = entity_maps.client_to_server.get(&unit.0) {
+                        server_entities.push(*server_entity);
+                    }
+                }
 
-                unit.2.translation.y = cover.original_y;
-                commands.entity(unit.0).remove::<Covered>();
-            }
+                if !server_entities.is_empty() {
+                    let mut channel_id = 30;
+                    while channel_id <= 59 {
+                        if let Err(_) = client.connection_mut().send_message_on(channel_id, ClientMessage::UncoveringRequest{
+                            unit_entities: server_entities.clone(),
+                        }){
+                            channel_id += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            },
+            _ => {
+                for mut unit in units_q.iter_mut() {
+                    commands.entity(unit.0).remove::<MovingToCover>();
+            
+                    if let Some(cover) = unit.1 {
+                        event_writer.send(UnitNeedsToBeUncovered{
+                            cover_entity: cover.cover_entity,
+                            unit_entity: unit.0,
+                        });
+
+                        unit.2.translation.y = cover.original_y;
+                        commands.entity(unit.0).remove::<Covered>();
+                    }
+                }
+            },
         }
     }
 }
@@ -2782,7 +3210,7 @@ pub fn engineer_to_blueprint_assignation_system (
 }
 
 pub fn process_busy_engineers (
-    mut engineers_q: Query<(&EngineerComponent, &BusyEngineer, &Transform, Entity, &mut UnitComponent), With<BusyEngineer>>,
+    mut engineers_q: Query<(&EngineerComponent, &BusyEngineer, &Transform, Entity, &mut UnitComponent, &CombatComponent), With<BusyEngineer>>,
     mut buildings_to_interact_q: (
         Query<(Entity, &BuildingBlueprint, &Transform),
         (With<BuildingBlueprint>, Without<BuildingConstructionSite>, Without<DeconstructableBuilding>, Without<ToDeconstruct>)>,
@@ -2797,7 +3225,7 @@ pub fn process_busy_engineers (
     mut unactivated_blueprints: ResMut<UnactivatedBlueprints>,
     mut resource_zones_q: Query<(&mut ResourceZone, &Transform, Entity), With<ResourceZone>>,
     mut producers_q: (
-        Query<&mut MaterialsProductionComponent>,
+        Query<(&mut MaterialsProductionComponent, &CombatComponent), Without<BusyEngineer>>,
         Query<(&GlobalTransform, &UnitProductionBuildingComponent), With<VehiclesProducer>>,
     ),
     mut tile_map: ResMut<UnitsTileMap>,
@@ -2851,22 +3279,26 @@ pub fn process_busy_engineers (
                                         let mut total_materials = 0;
 
                                         for material_producer in producers_q.0.iter() {
-                                            total_materials += material_producer.available_materials;
+                                            if engineer.5.team != material_producer.1.team {continue;}
+
+                                            total_materials += material_producer.0.available_materials;
                                         }
 
                                         if current_blueprint.1.resource_cost <= total_materials {
                                             let mut remaining_resource_cost = current_blueprint.1.resource_cost;
 
                                             for mut material_producer in producers_q.0.iter_mut() {
-                                                let current_remains = remaining_resource_cost - material_producer.available_materials;
+                                                if engineer.5.team != material_producer.1.team {continue;}
+
+                                                let current_remains = remaining_resource_cost - material_producer.0.available_materials;
 
                                                 if current_remains <= 0 {
-                                                    material_producer.available_materials -= remaining_resource_cost;
+                                                    material_producer.0.available_materials -= remaining_resource_cost;
 
                                                     break;
                                                 } else {
-                                                    remaining_resource_cost -= material_producer.available_materials;
-                                                    material_producer.available_materials = 0;
+                                                    remaining_resource_cost -= material_producer.0.available_materials;
+                                                    material_producer.0.available_materials = 0;
                                                 }
                                             }
                                         } else {
@@ -3487,6 +3919,21 @@ pub fn process_busy_engineers (
                                 if let Ok (mut current_construction_site) = buildings_to_interact_q.1.get_mut(action.1) {
                                     if engineer.2.translation.distance(action.0) <= action.2 {
                                         current_construction_site.1.build_power_remaining -= engineer.0.build_power;
+
+                                        if matches!(network_status.0, NetworkStatuses::Host){
+                                            let mut channel_id = 30;
+                                            while channel_id <= 59 {
+                                                if let Err(_) = server
+                                                .endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::ConstructionProgressChanged {
+                                                    server_entity: action.1,
+                                                    current_build_power: current_construction_site.1.build_power_remaining,
+                                                }){
+                                                    channel_id += 1;
+                                                } else {
+                                                    break;
+                                                }
+                                            }
+                                        }
                 
                                         if current_construction_site.1.build_power_remaining <= 0 {
                                             let current_construction_site_tile = (
@@ -4181,22 +4628,53 @@ pub fn process_busy_engineers (
                                 if let Ok(mut current_construction_site) = buildings_to_interact_q.2.get_mut(action.1) {
                                     if engineer.2.translation.distance(action.0) <= action.2 {
                                         if current_construction_site.1.build_power_remaining < current_construction_site.1.build_power_total {
-                                            current_construction_site.1.build_power_remaining += engineer.0.build_power;   
+                                            current_construction_site.1.build_power_remaining += engineer.0.build_power;
+
+                                            if matches!(network_status.0, NetworkStatuses::Host){
+                                                let mut channel_id = 30;
+                                                while channel_id <= 59 {
+                                                    if let Err(_) = server
+                                                    .endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::ConstructionProgressChanged {
+                                                        server_entity: action.1,
+                                                        current_build_power: current_construction_site.1.build_power_remaining,
+                                                    }){
+                                                        channel_id += 1;
+                                                    } else {
+                                                        break;
+                                                    }
+                                                }
+                                            }
                                         } else {
                                             commands.entity(action.1).despawn();
 
                                             let mut materials_to_return_remaining = current_construction_site.1.resource_cost;
 
                                             for mut material_producer in producers_q.0.iter_mut() {
-                                                let free_storage = material_producer.materials_storage_capacity - material_producer.available_materials;
+                                                if engineer.5.team != material_producer.1.team {continue;}
+
+                                                let free_storage = material_producer.0.materials_storage_capacity - material_producer.0.available_materials;
 
                                                 if free_storage < materials_to_return_remaining {
-                                                    material_producer.available_materials = material_producer.materials_storage_capacity;
+                                                    material_producer.0.available_materials = material_producer.0.materials_storage_capacity;
                                                     materials_to_return_remaining -= free_storage;
                                                 } else {
-                                                    material_producer.available_materials += materials_to_return_remaining;
+                                                    material_producer.0.available_materials += materials_to_return_remaining;
 
                                                     break;
+                                                }
+                                            }
+
+                                            if matches!(network_status.0, NetworkStatuses::Host){
+                                                let mut channel_id = 30;
+                                                while channel_id <= 59 {
+                                                    if let Err(_) = server
+                                                    .endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnspecifiedEntityRemoved {
+                                                        server_entity: action.1, 
+                                                    }){
+                                                        channel_id += 1;
+                                                    } else {
+                                                        break;
+                                                    }
                                                 }
                                             }
 
@@ -4272,25 +4750,70 @@ pub fn process_busy_engineers (
                                             }).id();
 
                                             current_building.3.progress_bar_entity = bar;
+
+                                            if matches!(network_status.0, NetworkStatuses::Host){
+                                                let mut channel_id = 30;
+                                                while channel_id <= 59 {
+                                                    if let Err(_) = server
+                                                    .endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::DeconstructionStarted {
+                                                        server_deconstruction_entity: current_building.0,
+                                                    }){
+                                                        channel_id += 1;
+                                                    } else {
+                                                        break;
+                                                    }
+                                                }
+                                            }
                                         }
                                         
                                         if current_building.1.buildpower_to_deconstruct_remaining < current_building.1.buildpower_to_deconstruct_total {
                                             current_building.1.buildpower_to_deconstruct_remaining += engineer.0.build_power;
+
+                                            if matches!(network_status.0, NetworkStatuses::Host){
+                                                let mut channel_id = 30;
+                                                while channel_id <= 59 {
+                                                    if let Err(_) = server
+                                                    .endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::DeconstructionProgressChanged {
+                                                        server_entity: action.1,
+                                                        current_build_power: current_building.1.buildpower_to_deconstruct_remaining,
+                                                    }){
+                                                        channel_id += 1;
+                                                    } else {
+                                                        break;
+                                                    }
+                                                }
+                                            }
                                         } else {
                                             commands.entity(action.1).despawn();
 
                                             let mut materials_to_return_remaining = current_building.1.materials_spent;
 
                                             for mut material_producer in producers_q.0.iter_mut() {
-                                                let free_storage = material_producer.materials_storage_capacity - material_producer.available_materials;
+                                                if engineer.5.team != material_producer.1.team {continue;}
+
+                                                let free_storage = material_producer.0.materials_storage_capacity - material_producer.0.available_materials;
 
                                                 if free_storage < materials_to_return_remaining {
-                                                    material_producer.available_materials = material_producer.materials_storage_capacity;
+                                                    material_producer.0.available_materials = material_producer.0.materials_storage_capacity;
                                                     materials_to_return_remaining -= free_storage;
                                                 } else {
-                                                    material_producer.available_materials += materials_to_return_remaining;
+                                                    material_producer.0.available_materials += materials_to_return_remaining;
 
                                                     break;
+                                                }
+                                            }
+
+                                            if matches!(network_status.0, NetworkStatuses::Host){
+                                                let mut channel_id = 30;
+                                                while channel_id <= 59 {
+                                                    if let Err(_) = server
+                                                    .endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnspecifiedEntityRemoved {
+                                                        server_entity: action.1, 
+                                                    }){
+                                                        channel_id += 1;
+                                                    } else {
+                                                        break;
+                                                    }
                                                 }
                                             }
 
@@ -5014,19 +5537,25 @@ pub fn generate_parabolic_trajectory(
 pub fn toggle_artillery_designation(
     mut artillery_designation: ResMut<IsArtilleryDesignationActive>,
     mut is_unit_deselection_allowed: ResMut<IsUnitDeselectionAllowed>,
+    mut ui_blocker: ResMut<UiBlocker>,
     mut artillery_units_q: Query<(Entity, &mut ArtilleryUnit), (With<ArtilleryUnit>, With<SelectedUnit>)>,
     mut event_reader: (
         EventReader<ToggleArtilleryDesignation>,
         EventReader<CancelArtilleryTargets>,
         EventReader<MoveOrderEvent>,
     ),
-    mut commands: Commands
+    mut commands: Commands,
+    network_status: Res<NetworkStatus>,
+    mut client: ResMut<QuinnetClient>,
+    entity_maps: Res<EntityMaps>,
 ){
     for _event in event_reader.0.read() {
         if !artillery_designation.0 {
             artillery_designation.0 = true;
             is_unit_deselection_allowed.0 = false;
         }
+
+        ui_blocker.is_bottom_left_node_blocked = true;
     }
 
     for _event in event_reader.1.read() {
@@ -5036,6 +5565,21 @@ pub fn toggle_artillery_designation(
         for mut artillery_unit in artillery_units_q.iter_mut() {
             commands.entity(artillery_unit.0).remove::<ArtilleryNeedsToFire>();
             artillery_unit.1.elapsed_reload_time = 0;
+
+            if matches!(network_status.0, NetworkStatuses::Client) {
+                if let Some(server_entity) = entity_maps.client_to_server.get(&artillery_unit.0) {
+                    let mut channel_id = 30;
+                    while channel_id <= 59 {
+                        if let Err(_) = client.connection_mut().send_message_on(channel_id, ClientMessage::CancelArtilleryFire {
+                            artillery_entity: *server_entity,
+                        }){
+                            channel_id += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -5046,6 +5590,21 @@ pub fn toggle_artillery_designation(
         for mut artillery_unit in artillery_units_q.iter_mut() {
             commands.entity(artillery_unit.0).remove::<ArtilleryNeedsToFire>();
             artillery_unit.1.elapsed_reload_time = 0;
+
+            if matches!(network_status.0, NetworkStatuses::Client) {
+                if let Some(server_entity) = entity_maps.client_to_server.get(&artillery_unit.0) {
+                    let mut channel_id = 30;
+                    while channel_id <= 59 {
+                        if let Err(_) = client.connection_mut().send_message_on(channel_id, ClientMessage::CancelArtilleryFire {
+                            artillery_entity: *server_entity,
+                        }){
+                            channel_id += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -5054,6 +5613,7 @@ pub fn artillery_designation_system (
     mut artillery_designation: ResMut<IsArtilleryDesignationActive>,
     is_unit_deselection_allowed: Res<IsUnitDeselectionAllowed>,
     mut artillery_units_q: Query<(Entity, &mut Transform), (With<ArtilleryUnit>, With<SelectedUnit>)>,
+    ui_blocker: Res<UiBlocker>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     cursor_ray: Res<CursorRay>,
     mut raycast: Raycast,
@@ -5068,6 +5628,7 @@ pub fn artillery_designation_system (
 ){
     if artillery_designation.0 && !artillery_units_q.is_empty() {
         if mouse_buttons.just_pressed(MouseButton::Left) {
+            if ui_blocker.is_bottom_left_node_blocked {return;}
             if let Some(cursor_ray) = **cursor_ray {
                 let hits = raycast.cast_ray(cursor_ray, &default());
         
@@ -5199,7 +5760,11 @@ pub fn artillery_firing_system(
                     .insert(BallisticProjectile{
                         path: path,
                         speed: artillery_unit.1.shell_speed,
-                        waypoints_check_factor: artillery_unit.1.projectile_waypoints_check_factor,
+                        start_position: artillery_unit.0.translation,
+                        target_position: end_point,
+                        waypoint_radius: artillery_unit.1.projectile_waypoints_check_factor,
+                        elapsed: 0.,
+                        inv_duration: 0.,
                         direct_damage: artillery_unit.1.direct_damage,
                         splash_damage: artillery_unit.1.splash_damage,
                         
@@ -5233,7 +5798,7 @@ pub fn artillery_firing_system(
                                 source: attack_visualisation_assets.tank_shot_sound.clone(),
                                 settings: PlaybackSettings{
                                     mode: PlaybackMode::Remove,
-                                    volume: Volume::new(500.),
+                                    volume: Volume::new(100.),
                                     speed: 1.,
                                     paused: false,
                                     spatial: true,
@@ -5275,55 +5840,108 @@ pub fn artillery_shells_movement_system(
     clients: Res<ClientList>,
 ){
     for mut artillery_shell in artillery_shells_q.iter_mut(){
-        if artillery_shell.2.path.len() > 1{
-            let next_point = artillery_shell.2.path[0];
-            let direction = (next_point - artillery_shell.1.translation).normalize();
+        if !artillery_shell.2.path.is_empty(){
+            let unit_position = artillery_shell.1.translation;
+            let target_position = artillery_shell.2.path[0];
 
-            artillery_shell.1.translation += direction * artillery_shell.2.speed * time.delta_seconds();
-            artillery_shell.1.look_to(direction, Vec3::Y);
+            if artillery_shell.2.elapsed == 0. {
+                artillery_shell.1.look_at(
+                    target_position,
+                    Vec3::Y,
+                );
+                
+                artillery_shell.2.start_position = unit_position;
+                let distance = artillery_shell.2.start_position.xz().distance(target_position.xz());
 
-            if artillery_shell.1.translation.distance(next_point) < artillery_shell.2.waypoints_check_factor {
+                if distance <= artillery_shell.2.waypoint_radius {
+                    artillery_shell.2.path.remove(0);
+                } else {
+                    let duration = distance / artillery_shell.2.speed;
+                    artillery_shell.2.inv_duration = 1. / duration;
 
-                artillery_shell.2.path.remove(0);
-            }
-        }
-        else{
-            let next_point = artillery_shell.2.path[0];
-            let direction = (next_point - artillery_shell.1.translation).normalize();
+                    artillery_shell.2.elapsed += time.delta_seconds();
+                    let t = artillery_shell.2.elapsed * artillery_shell.2.inv_duration;
 
-            artillery_shell.1.translation += direction * artillery_shell.2.speed * time.delta_seconds();
-            artillery_shell.1.look_to(direction, Vec3::Y);
+                    let new_pos = if t >= 1. {
+                        target_position
+                    } else {
+                        artillery_shell.2.start_position.lerp(target_position, t)
+                    };
 
-            if artillery_shell.1.translation.distance(next_point) < artillery_shell.2.waypoints_check_factor {
+                    artillery_shell.1.translation = new_pos;
 
-                commands.entity(artillery_shell.0).despawn();
-                event_writer.0.send(ExplosionEvent((artillery_shell.2.path[0], artillery_shell.2.direct_damage, artillery_shell.2.splash_damage)));
+                    if matches!(network_status.0, NetworkStatuses::Host) {
+                        let mut channel_id = 0;
+                        while channel_id <= 29 {
+                            if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnspecifiedEntityMoved{
+                                server_entity: artillery_shell.0,
+                                new_position: new_pos,
+                            }){
+                                channel_id += 1;
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                }
+            } else {
+                if unit_position.xz().distance(target_position.xz()) <= artillery_shell.2.waypoint_radius {
+                    artillery_shell.2.path.remove(0);
+                    artillery_shell.2.elapsed = 0.;
+                } else {
+                    artillery_shell.2.elapsed += time.delta_seconds();
+                    let t = artillery_shell.2.elapsed * artillery_shell.2.inv_duration;
 
-                if matches!(network_status.0, NetworkStatuses::Host){
-                    let mut channel_id = 00;
-                    while channel_id <= 59 {
-                        if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnspecifiedEntityRemoved {
-                            server_entity: artillery_shell.0,
-                        }){
-                            channel_id += 1;
-                        } else {
-                            break;
+                    let new_pos = if t >= 1.0 {
+                        target_position
+                    } else {
+                        artillery_shell.2.start_position.lerp(target_position, t)
+                    };
+
+                    artillery_shell.1.translation = new_pos;
+
+                    if matches!(network_status.0, NetworkStatuses::Host) {
+                        let mut channel_id = 0;
+                        while channel_id <= 29 {
+                            if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnspecifiedEntityMoved{
+                                server_entity: artillery_shell.0,
+                                new_position: new_pos,
+                            }){
+                                channel_id += 1;
+                            } else {
+                                break;
+                            }
                         }
                     }
                 }
             }
-        }
+        } else {
+            commands.entity(artillery_shell.0).despawn();
 
-        if matches!(network_status.0, NetworkStatuses::Host) {
-            let mut channel_id = 0;
-            while channel_id <= 29 {
-                if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnspecifiedEntityMoved{
-                    server_entity: artillery_shell.0,
-                    new_position: artillery_shell.1.translation,
-                }){
-                    channel_id += 1;
-                } else {
-                    break;
+            event_writer.0.send(ExplosionEvent((artillery_shell.2.target_position, artillery_shell.2.direct_damage, artillery_shell.2.splash_damage)));
+
+            if matches!(network_status.0, NetworkStatuses::Host) {
+                let mut channel_id = 60;
+                while channel_id <= 89 {
+                    if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnspecifiedEntityRemoved {
+                        server_entity: artillery_shell.0,
+                    }){
+                        channel_id += 1;
+                    } else {
+                        break;
+                    }
+                }
+
+                channel_id = 30;
+
+                while channel_id <= 59 {
+                    if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::ExplosionOccured {
+                        position: artillery_shell.2.target_position,
+                    }){
+                        channel_id += 1;
+                    } else {
+                        break;
+                    }
                 }
             }
         }
@@ -5699,7 +6317,7 @@ pub fn game_starting_system (
                                 },
                             }
         
-                            if let Some(platoon) = armies.0.get_mut(team_queue.0).unwrap().regular_platoons.get_mut(&(
+                            if let Some(platoon) = armies.0.get_mut(team_queue.0).unwrap().regular_squads.get_mut(&(
                                 unit_to_produce.0.0,
                                 unit_to_produce.0.1,
                                 unit_to_produce.0.2,
@@ -6072,7 +6690,7 @@ pub fn game_starting_system (
                                 },
                             }
         
-                            if let Some(platoon) = armies.0.get_mut(team_queue.0).unwrap().shock_platoons.get_mut(&(
+                            if let Some(platoon) = armies.0.get_mut(team_queue.0).unwrap().shock_squads.get_mut(&(
                                 unit_to_produce.0.0,
                                 unit_to_produce.0.1,
                                 unit_to_produce.0.2,
@@ -6445,7 +7063,7 @@ pub fn game_starting_system (
                                 },
                             }
         
-                            if let Some(platoon) = armies.0.get_mut(team_queue.0).unwrap().armored_platoons.get_mut(&(
+                            if let Some(platoon) = armies.0.get_mut(team_queue.0).unwrap().armored_squads.get_mut(&(
                                 unit_to_produce.0.0,
                                 unit_to_produce.0.1,
                                 unit_to_produce.0.2,
@@ -6815,6 +7433,18 @@ pub fn homing_projectiles_moving_system(
                             break;
                         }
                     }
+
+                    channel_id = 30;
+
+                    while channel_id <= 59 {
+                        if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::ExplosionOccured {
+                            position: unit.translation,
+                        }){
+                            channel_id += 1;
+                        } else {
+                            break;
+                        }
+                    }
                 }
             }
 
@@ -6887,7 +7517,7 @@ pub fn explosion_processing_system (
             ..default()
         })
         .insert(ExplosionComponent((0, 0)))
-        .insert(AudioBundle{
+        .try_insert(AudioBundle{
             source: assets.explosion_small_sound.clone(),
             settings: PlaybackSettings{
                 mode: PlaybackMode::Remove,
@@ -6898,6 +7528,8 @@ pub fn explosion_processing_system (
                 spatial_scale: None,
             },
         });
+
+        if matches!(network_status.0, NetworkStatuses::Client) {continue;}
 
         let top_right_tile = (
             ((event.0.0.x + event.0.2.0) / TILE_SIZE) as i32,
@@ -7183,7 +7815,7 @@ pub struct FogOfWarTexture {
 pub fn update_fog_of_war(
     mut images: ResMut<Assets<Image>>,
     fog_texture: Res<FogOfWarTexture>,
-    units_q: Query<(Entity, &Transform, &CombatComponent), With<CombatComponent>>,
+    units_q: Query<(Entity, &Transform, Option<&CombatComponent>, Option<&SettlementComponent>), Or<(With<CombatComponent>, With<SettlementComponent>)>>,
     player_data: Res<PlayerData>,
     mut commands: Commands,
     game_stage: Res<GameStage>,
@@ -7209,26 +7841,41 @@ pub fn update_fog_of_war(
     let half_map = WORLD_SIZE * 0.5;
 
     for unit in units_q.iter() {
-        if unit.2.team != player_data.team || unit.2.detection_range == 0. {
-            continue;
-        }
-        
-        let pos = unit.1.translation;
-        let x = ((pos.x + half_map) * world_to_texel) as i32;
-        let y = ((pos.z + half_map) * world_to_texel) as i32;
-        let radius = (unit.2.detection_range * world_to_texel) as i32;
+        if let Some(combat_component) = unit.2 {
+            if combat_component.team != player_data.team || combat_component.detection_range == 0. {
+                continue;
+            }
+            
+            let pos = unit.1.translation;
+            let x = ((pos.x + half_map) * world_to_texel) as i32;
+            let y = ((pos.z + half_map) * world_to_texel) as i32;
+            let radius = (combat_component.detection_range * world_to_texel) as i32;
 
-        draw_circle_on_texture(&mut data, texture_size as u32, x, y, radius, 255);
+            draw_circle_on_texture(&mut data, texture_size as u32, x, y, radius, 255);
+        } else if let Some(settlement) = unit.3 {
+            if settlement.0.team != player_data.team {
+                continue;
+            }
+            
+            let pos = unit.1.translation;
+            let x = ((pos.x + half_map) * world_to_texel) as i32;
+            let y = ((pos.z + half_map) * world_to_texel) as i32;
+            let radius = (settlement.0.settlement_size * 1.25 * world_to_texel) as i32;
+
+            draw_circle_on_texture(&mut data, texture_size as u32, x, y, radius, 255);
+        }
     }
     for unit in units_q.iter() {
-        if unit.2.team == player_data.team {
-            continue;
-        }
+        if let Some(combat_component) = unit.2 {
+            if combat_component.team == player_data.team {
+                continue;
+            }
 
-        if is_position_visible(unit.1.translation, &data, texture_size as u32, WORLD_SIZE) {
-            commands.entity(unit.0).try_insert(Visibility::Visible);
-        } else {
-            commands.entity(unit.0).try_insert(Visibility::Hidden);
+            if is_position_visible(unit.1.translation, &data, texture_size as u32, WORLD_SIZE) {
+                commands.entity(unit.0).try_insert(Visibility::Visible);
+            } else {
+                commands.entity(unit.0).try_insert(Visibility::Hidden);
+            }
         }
     }
 
@@ -7338,16 +7985,18 @@ pub fn visual_projectiles_processing_system (
 pub fn supplies_consumption_system (
     mut supplies_consumers_q: Query<&mut SuppliesConsumerComponent>,
     time: Res<Time>,
-    mut tick_rate: Local<u128>,
+    mut time_elapsed: Local<u128>,
 ){
-    *tick_rate += time.delta().as_millis();
+    *time_elapsed += time.delta().as_millis();
 
-    if *tick_rate >= 3000 {
-        *tick_rate = 0;
+    if *time_elapsed >= 3000 {
+        *time_elapsed = 0;
         
         for mut consumer in supplies_consumers_q.iter_mut() {
-            if consumer.supplies > 0 {
-                consumer.supplies -= consumer.consume_rate;
+            consumer.supplies -= consumer.consume_rate;
+
+            if consumer.supplies < 0 {
+                consumer.supplies = 0;
             }
         }
     }
@@ -7385,6 +8034,9 @@ pub fn transport_assignation_system(
     mut pathfinding_task: ResMut<AsyncPathfindingTasks>,
     async_task_pools: Res<AsyncTaskPools>,
     mut commands: Commands,
+    network_status: Res<NetworkStatus>,
+    mut client: ResMut<QuinnetClient>,
+    entity_maps: Res<EntityMaps>,
 ){
     if mouse_buttons.just_released(MouseButton::Right){
         if !selected_units_q.is_empty() && !transports_q.is_empty() {
@@ -7401,29 +8053,73 @@ pub fn transport_assignation_system(
 
                         let nav_mesh_lock = nav_mesh.get();
 
+                        let mut assigned_units: Vec<Entity> = Vec::new();
                         for _i in 0..transport.1.max_units - transport.1.units_inside.len() {
                             if let Some(unit) = selected_units_iter.next() {
                                 if unit.1.unit_data.1.0 != CompanyTypes::Armored {
-                                    commands.entity(unit.0).insert(MovingToTransport{
-                                        transport_entity: transport.0,
-                                        transport_position: transport.2.translation,
-                                    });
+                                    match network_status.0 {
+                                        NetworkStatuses::Client => {
+                                            commands.entity(unit.0).insert(MovingToTransport{
+                                                transport_entity: transport.0,
+                                                transport_position: transport.2.translation,
+                                            });
 
-                                    let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
-                                        nav_mesh_lock.clone(),
-                                        nav_mesh_settings.clone(),
-                                        unit.2.translation,
-                                        transport.2.translation,
-                                        Some(100.),
-                                        Some(&[1.0, 1.5]),
-                                        unit.0,
-                                    ));
-                    
-                                    pathfinding_task.tasks.push(task);
+                                            let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
+                                                nav_mesh_lock.clone(),
+                                                nav_mesh_settings.clone(),
+                                                unit.2.translation,
+                                                transport.2.translation,
+                                                Some(100.),
+                                                Some(&[1.0, 1.5]),
+                                                unit.0,
+                                            ));
+                            
+                                            pathfinding_task.tasks.push(task);
+
+                                            if let Some(server_entity) = entity_maps.client_to_server.get(&unit.0) {
+                                                assigned_units.push(*server_entity);
+                                            }
+                                        }
+                                        _ => {
+                                            commands.entity(unit.0).insert(MovingToTransport{
+                                                transport_entity: transport.0,
+                                                transport_position: transport.2.translation,
+                                            });
+
+                                            let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
+                                                nav_mesh_lock.clone(),
+                                                nav_mesh_settings.clone(),
+                                                unit.2.translation,
+                                                transport.2.translation,
+                                                Some(100.),
+                                                Some(&[1.0, 1.5]),
+                                                unit.0,
+                                            ));
+                            
+                                            pathfinding_task.tasks.push(task);
+                                        }
+                                    }
                                 }
                             }
                             else {
                                 break;
+                            }
+                        }
+
+                        if matches!(network_status.0, NetworkStatuses::Client) {
+                            if let Some(server_entity) = entity_maps.client_to_server.get(&transport.0) {
+                                let mut channel_id = 30;
+                                while channel_id <= 59 {
+                                    if let Err(_) = client.connection_mut().send_message_on(channel_id, ClientMessage::TransportAssignationRequest {
+                                        units: assigned_units.clone(),
+                                        transport_entity: *server_entity,
+                                        transport_position: transport.2.translation,
+                                    }){
+                                        channel_id += 1;
+                                    } else {
+                                        break;
+                                    }
+                                }
                             }
                         }
                     }
@@ -7438,43 +8134,99 @@ pub fn transport_disturb_system(
     transports_q: Query<Entity, (With<InfantryTransport>, Without<MovingToTransport>, Added<NeedToMove>)>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     mut commands: Commands,
+    network_status: Res<NetworkStatus>,
+    mut client: ResMut<QuinnetClient>,
+    entity_maps: Res<EntityMaps>,
+    mut server: ResMut<QuinnetServer>,
+    clients: Res<ClientList>,
 ) {
     if mouse_buttons.just_pressed(MouseButton::Right) {
+        let mut canceled_units: Vec<Entity> = Vec::new();
         for unit in units_q.iter() {
             commands.entity(unit.0).remove::<MovingToTransport>();
             commands.entity(unit.0).remove::<NeedToMove>();
+
+            if matches!(network_status.0, NetworkStatuses::Client) {
+                if let Some(client_entity) = entity_maps.client_to_server.get(&unit.0) {
+                    canceled_units.push(*client_entity);
+                }
+            }
+        }
+
+        if !canceled_units.is_empty() {
+            if matches!(network_status.0, NetworkStatuses::Client) {
+                let mut channel_id = 30;
+                while channel_id <= 59 {
+                    if let Err(_) = client.connection_mut().send_message_on(channel_id, ClientMessage::TransportAssignationCancelRequest {
+                        units: canceled_units.clone(),
+                    }){
+                        channel_id += 1;
+                    } else {
+                        break;
+                    }
+                }
+            }
         }
     }
 
+    let mut canceled_units: Vec<Entity> = Vec::new();
     for transport in transports_q.iter() {
         for unit in units_q.iter() {
             if unit.1.transport_entity == transport {
                 commands.entity(unit.0).remove::<MovingToTransport>();
                 commands.entity(unit.0).remove::<NeedToMove>();
+
+                if matches!(network_status.0, NetworkStatuses::Host) {
+                    canceled_units.push(unit.0);
+                }
+            }
+        }
+    }
+
+    if !canceled_units.is_empty() {
+        if matches!(network_status.0, NetworkStatuses::Host) {
+            let mut channel_id = 30;
+            while channel_id <= 59 {
+                if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::TransportAssignationCanceled {
+                    server_entities: canceled_units.clone(),
+                }){
+                    channel_id += 1;
+                } else {
+                    break;
+                }
             }
         }
     }
 }
 
 pub fn transport_embark_system (
-    mut units_q: Query<(Entity, &mut Transform, &MovingToTransport, &CombatComponent), (With<SelectedUnit>, With<MovingToTransport>)>,
+    mut units_q: Query<(Entity, &mut Transform, &MovingToTransport, &CombatComponent), With<MovingToTransport>>,
     mut transports_q: Query<(Entity, &Transform, &mut InfantryTransport), (With<InfantryTransport>, Without<MovingToTransport>)>,
     mut tile_map: ResMut<UnitsTileMap>,
     mut commands: Commands,
     time: Res<Time>,
     mut elapsed_time: Local<u128>,
+    network_status: Res<NetworkStatus>,
+    mut server: ResMut<QuinnetServer>,
+    clients: Res<ClientList>,
 ) {
     *elapsed_time += time.delta().as_millis();
 
     if *elapsed_time > 100 {
         *elapsed_time = 0;
 
+        let mut canceled_units: Vec<Entity> = Vec::new();
+        let mut embarked_units: Vec<(Entity, (i32, i32))> = Vec::new();
+        let mut transport_entity = Entity::PLACEHOLDER;
+        let mut team = 1;
         for mut unit in units_q.iter_mut() {
             if let Ok(mut transport) = transports_q.get_mut(unit.2.transport_entity) {
                 if unit.1.translation.distance(unit.2.transport_position) < 10. {
                     if transport.2.max_units < transport.2.units_inside.len() {
                         commands.entity(unit.0).remove::<MovingToTransport>();
                         commands.entity(unit.0).remove::<NeedToMove>();
+
+                        canceled_units.push(unit.0);
                     } else if transport.1.translation == unit.2.transport_position {
                         commands.entity(unit.0).remove::<MovingToTransport>();
                         commands.entity(unit.0).remove::<NeedToMove>();
@@ -7492,9 +8244,47 @@ pub fn transport_embark_system (
                         unit.1.translation = Vec3::new(0., 10000., 0.);
 
                         transport.2.units_inside.insert(unit.0);
+
+                        embarked_units.push((unit.0, unit.3.unit_data.0));
+                        transport_entity = transport.0;
+                        team = unit.3.team;
                     } else {
                         commands.entity(unit.0).remove::<MovingToTransport>();
                         commands.entity(unit.0).remove::<NeedToMove>();
+
+                        canceled_units.push(unit.0);
+                    }
+                }
+            }
+        }
+
+        if !canceled_units.is_empty() {
+            if matches!(network_status.0, NetworkStatuses::Host) {
+                let mut channel_id = 30;
+                while channel_id <= 59 {
+                    if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::TransportAssignationCanceled {
+                        server_entities: canceled_units.clone(),
+                    }){
+                        channel_id += 1;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+
+        if !embarked_units.is_empty() {
+            if matches!(network_status.0, NetworkStatuses::Host) {
+                let mut channel_id = 30;
+                while channel_id <= 59 {
+                    if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnitsEmbarked {
+                        server_entities: embarked_units.clone(),
+                        transport_server_entity: transport_entity,
+                        team: team,
+                    }){
+                        channel_id += 1;
+                    } else {
+                        break;
                     }
                 }
             }
@@ -7504,109 +8294,153 @@ pub fn transport_embark_system (
 
 pub fn transport_disembark_system(
     mut event_reader: EventReader<TransportDisembarkEvent>,
-    mut transports_q: Query<(&Transform, &mut InfantryTransport), (With<InfantryTransport>, With<SelectedUnit>)>,
+    mut transports_q: Query<(&Transform, &mut InfantryTransport, Entity), (With<InfantryTransport>, With<SelectedUnit>)>,
     mut units_q: Query<(&mut Transform, &mut UnitComponent), (With<InTransport>, Without<InfantryTransport>)>,
     nav_mesh: Res<NavMesh>,
     nav_mesh_settings: Res<NavMeshSettings>,
     mut pathfinding_task: ResMut<AsyncPathfindingTasks>,
     async_task_pools: Res<AsyncTaskPools>,
     mut commands: Commands,
+    network_status: Res<NetworkStatus>,
+    mut server: ResMut<QuinnetServer>,
+    clients: Res<ClientList>,
+    mut client: ResMut<QuinnetClient>,
+    entity_maps: Res<EntityMaps>,
 ){
     for _event in event_reader.read() {
-        let nav_mesh_lock = nav_mesh.get();
+        match network_status.0 {
+            NetworkStatuses::Client => {
+                let mut transports: Vec<Entity> = Vec::new();
 
-        for mut transport in transports_q.iter_mut() {
-            let mut disembarked_units: Vec<Entity> = Vec::new();
-
-            for unit_entity in transport.1.units_inside.iter() {
-                if let Ok(mut unit) = units_q.get_mut(*unit_entity) {
-                    commands.entity(*unit_entity).remove::<DisabledUnit>();
-                    commands.entity(*unit_entity).remove::<InTransport>();
-
-                    unit.0.translation = transport.0.translation + Vec3::new(0., 0., 0.);
-
-                    disembarked_units.push(*unit_entity);
+                for transport in transports_q.iter() {
+                    if let Some(server_entity) = entity_maps.client_to_server.get(&transport.2) {
+                        transports.push(*server_entity);
+                    }
                 }
-            }
+                
+                let mut channel_id = 30;
+                while channel_id <= 59 {
+                    if let Err(_) = client.connection_mut().send_message_on(channel_id, ClientMessage::DisembarkRequest {
+                        transports: transports.clone(),
+                    }){
+                        channel_id += 1;
+                    } else {
+                        break;
+                    }
+                }
+            },
+            _ => {
+                let nav_mesh_lock = nav_mesh.get();
 
-            transport.1.units_inside.clear();
+                for mut transport in transports_q.iter_mut() {
+                    let mut disembarked_units: Vec<Entity> = Vec::new();
 
-            let mut origin_position = -transport.0.forward() * 20. + transport.0.translation;
+                    for unit_entity in transport.1.units_inside.iter() {
+                        if let Ok(mut unit) = units_q.get_mut(*unit_entity) {
+                            commands.entity(*unit_entity).remove::<DisabledUnit>();
+                            commands.entity(*unit_entity).remove::<InTransport>();
 
-            let mut counter = 0;
-            let mut operation_counter = 0;
-            let mut operation_number = 1;   //\/
-            let mut z_minus = 2;            //1
-            let mut x_minus = 2;            //2
-            let mut z_plus = 3;             //3
-            let mut x_plus = 3;             //4
-            let offset = 5.;
+                            unit.0.translation = transport.0.translation + Vec3::new(0., 0., 0.);
 
-            for unit_entity in disembarked_units.iter(){
-                if let Ok(mut unit) = units_q.get_mut(*unit_entity){
-                    match counter {
-                        0 => {}
-                        1 => origin_position.z += offset,
-                        2 => origin_position.x += offset,
-                        _ =>
-                        match operation_number {
-                            1 => {
-                                origin_position.z -= offset;
-                                operation_counter += 1;
-                                if operation_counter == z_minus {
-                                    operation_counter = 0;
-                                    z_minus += 2;
-                                    operation_number = 2;
-                                }
-                            },
-                            2 => {
-                                origin_position.x -= offset;
-                                operation_counter += 1;
-                                if operation_counter == x_minus {
-                                    operation_counter = 0;
-                                    x_minus += 2;
-                                    operation_number = 3;
-                                }
-                            }
-                            3 => {
-                                origin_position.z += offset;
-                                operation_counter += 1;
-                                if operation_counter == z_plus {
-                                    operation_counter = 0;
-                                    z_plus += 2;
-                                    operation_number = 4;
-                                }
-                            }
-                            4 => {
-                                origin_position.x += offset;
-                                operation_counter += 1;
-                                if operation_counter == x_plus {
-                                    operation_counter = 0;
-                                    x_plus += 2;
-                                    operation_number = 1;
-                                }
-                            }
-                            _ => {},
+                            disembarked_units.push(*unit_entity);
                         }
                     }
 
-                    unit.1.path = Vec::new();
+                    transport.1.units_inside.clear();
 
-                    let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
-                        nav_mesh_lock.clone(),
-                        nav_mesh_settings.clone(),
-                        unit.0.translation,
-                        origin_position,
-                        Some(100.),
-                        Some(&[1.0, 1.5]),
-                        *unit_entity,
-                    ));
-        
-                    pathfinding_task.tasks.push(task);
-    
-                    counter += 1;
+                    if matches!(network_status.0, NetworkStatuses::Host) {
+                        let mut channel_id = 30;
+                        while channel_id <= 59 {
+                            if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnitsDisembarked {
+                                server_entities: disembarked_units.clone(),
+                                transport_server_entity: transport.2,
+                                transport_position: transport.0.translation,
+                            }){
+                                channel_id += 1;
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+
+                    let mut origin_position = -transport.0.forward() * 20. + transport.0.translation;
+
+                    let mut counter = 0;
+                    let mut operation_counter = 0;
+                    let mut operation_number = 1;   //\/
+                    let mut z_minus = 2;            //1
+                    let mut x_minus = 2;            //2
+                    let mut z_plus = 3;             //3
+                    let mut x_plus = 3;             //4
+                    let offset = 5.;
+
+                    for unit_entity in disembarked_units.iter(){
+                        if let Ok(mut unit) = units_q.get_mut(*unit_entity){
+                            match counter {
+                                0 => {}
+                                1 => origin_position.z += offset,
+                                2 => origin_position.x += offset,
+                                _ =>
+                                match operation_number {
+                                    1 => {
+                                        origin_position.z -= offset;
+                                        operation_counter += 1;
+                                        if operation_counter == z_minus {
+                                            operation_counter = 0;
+                                            z_minus += 2;
+                                            operation_number = 2;
+                                        }
+                                    },
+                                    2 => {
+                                        origin_position.x -= offset;
+                                        operation_counter += 1;
+                                        if operation_counter == x_minus {
+                                            operation_counter = 0;
+                                            x_minus += 2;
+                                            operation_number = 3;
+                                        }
+                                    }
+                                    3 => {
+                                        origin_position.z += offset;
+                                        operation_counter += 1;
+                                        if operation_counter == z_plus {
+                                            operation_counter = 0;
+                                            z_plus += 2;
+                                            operation_number = 4;
+                                        }
+                                    }
+                                    4 => {
+                                        origin_position.x += offset;
+                                        operation_counter += 1;
+                                        if operation_counter == x_plus {
+                                            operation_counter = 0;
+                                            x_plus += 2;
+                                            operation_number = 1;
+                                        }
+                                    }
+                                    _ => {},
+                                }
+                            }
+
+                            unit.1.path = Vec::new();
+
+                            let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
+                                nav_mesh_lock.clone(),
+                                nav_mesh_settings.clone(),
+                                unit.0.translation,
+                                origin_position,
+                                Some(100.),
+                                Some(&[1.0, 1.5]),
+                                *unit_entity,
+                            ));
+                
+                            pathfinding_task.tasks.push(task);
+            
+                            counter += 1;
+                        }
+                    }
                 }
-            }
+            },
         }
     }
 }

@@ -203,15 +203,15 @@ pub fn handle_mouse_buttons(
                 }
             }
         }
-    }
 
-    if buttons_keys.0.just_released(MouseButton::Left){
         if !buttons_keys.1.pressed(KeyCode::ControlLeft) && !selection_bounds.is_ui_hovered && selection_modifiers.0.0 {
             clear_selected_units(&mut selected_units, &mut commands, &selectables.0);
 
             clear_selected_buildings(&mut selected_buildings, &mut commands, &selectables.1);
         }
+    }
 
+    if buttons_keys.0.just_released(MouseButton::Left){
         if selection_bounds.is_selection_active {
             // if let Some(cursor_ray) = **cursor_ray {
             //     let hits = raycast.cast_ray(cursor_ray, &default());
