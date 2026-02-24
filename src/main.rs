@@ -238,7 +238,7 @@ fn main() {
         squads_row: Entity::PLACEHOLDER,
         land_army_settings_node_height: 0,
         land_army_settings_node_width: 0,
-        company_buttons: Vec::new(),
+        company_buttons: (-1, Entity::PLACEHOLDER, Vec::new()),
         platoon_specialization_dropdown_lists: Vec::new(),
         platoon_specialization_cache: Vec::new(),
         toggle_production_button: (Entity::PLACEHOLDER, LimitedNumber::new()),
@@ -246,7 +246,8 @@ fn main() {
         last_battalion_type_dropdown_list_index: -1,
         last_platoon_specialization_dropdown_list_index: -1,
         current_regiment: LimitedNumber::new(),
-        squad_specialization_dropdown_lists: Vec::new(),
+        squad_specialization_dropdown_lists: (-1, Vec::new()),
+        company_type_dropdown_lists: (-1, Vec::new()),
     })
     .insert_resource(Specializations{
         regular: Vec::new(),
@@ -2283,7 +2284,7 @@ impl Plugin for SingleplayerPlugin {
             components::ui_manager::choose_company_type,
             components::ui_manager::setup_company,
             components::ui_manager::open_specializations_dropdown_list,
-            components::ui_manager::choose_platoon_specialization,
+            components::ui_manager::choose_squad_specialization,
             components::building::unit_production_system,
             components::ui_manager::toggle_production,
         ).run_if(in_state(GameState::Singleplayer)));
@@ -2442,7 +2443,7 @@ impl Plugin for GameServerPlugin {
             components::ui_manager::choose_company_type,
             components::ui_manager::setup_company,
             components::ui_manager::open_specializations_dropdown_list,
-            components::ui_manager::choose_platoon_specialization,
+            components::ui_manager::choose_squad_specialization,
             components::building::unit_production_system,
             components::ui_manager::toggle_production,
         ).run_if(in_state(GameState::MultiplayerAsHost)));
@@ -2572,7 +2573,7 @@ impl Plugin for GameClientPlugin {
             components::ui_manager::choose_company_type,
             components::ui_manager::setup_company,
             components::ui_manager::open_specializations_dropdown_list,
-            components::ui_manager::choose_platoon_specialization,
+            components::ui_manager::choose_squad_specialization,
             components::ui_manager::toggle_production,
         ).run_if(in_state(GameState::MultiplayerAsClient)));
         app.add_systems(Update, (
