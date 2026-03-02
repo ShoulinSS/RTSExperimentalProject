@@ -1,6 +1,6 @@
 use std::{fs::File, io::Write, hash::Hash, panic, time::{SystemTime, UNIX_EPOCH}};
 
-use bevy::{core_pipeline::tonemapping::Tonemapping, diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin}, ecs::batching::BatchingStrategy, math::VectorSpace, pbr::{CascadeShadowConfigBuilder, ExtendedMaterial, NotShadowCaster, OpaqueRendererMethod}, prelude::*, render::{camera::RenderTarget, render_asset::RenderAssetUsages, render_resource::{Extent3d, Face, TextureDimension, TextureFormat, TextureUsages}, renderer::RenderDevice, view::{RenderLayers, ViewDepthTexture}}, tasks::AsyncComputeTaskPool, utils::{hashbrown::{HashMap, HashSet}}, window::{self, PrimaryWindow}};
+use bevy::{core_pipeline::tonemapping::Tonemapping, diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin}, ecs::batching::BatchingStrategy, math::VectorSpace, pbr::{CascadeShadowConfigBuilder, ExtendedMaterial, NotShadowCaster, OpaqueRendererMethod}, prelude::*, render::{camera::RenderTarget, render_asset::RenderAssetUsages, render_resource::{Extent3d, Face, TextureDimension, TextureFormat, TextureUsages}, renderer::RenderDevice, view::{RenderLayers, ViewDepthTexture}}, tasks::AsyncComputeTaskPool, utils::hashbrown::{HashMap, HashSet}, window::{self, PrimaryWindow, WindowMode}};
 use bevy_egui::{EguiPlugin, EguiSet};
 use bevy_quinnet::{client::QuinnetClientPlugin, server::QuinnetServerPlugin};
 use bevy_rapier3d::{math::{Rot, Vect}, plugin::{RapierConfiguration, TimestepMode}, prelude::{CharacterLength, Collider, ComputedColliderShape, KinematicCharacterController, NoUserData, RapierPhysicsPlugin, RigidBody}, rapier::prelude::{LockedAxes, RigidBodyBuilder, RigidBodySet, RigidBodyType}, render::RapierDebugRenderPlugin};
@@ -12,7 +12,7 @@ use oxidized_navigation_serializable::{
 use bevy_tasks::{TaskPool, TaskPoolBuilder};
 use bevy_egui::{egui::{self, Color32, Context, Stroke}, EguiContext};
 
-use crate::components::{asset_manager::{AnimationComponent, BuildingsAssets, InstancedAnimations, InstancedMaterials, TeamMaterialExtension, UnitAssets}, building::{BuildingStageCache, BuildingsDeletionStates, PillboxBundle}, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, ArtilleryUnitSelectedEvent, BattalionSelectionEvent, BrigadeSelectionEvent, BuildingButtonHovered, BuildingHints, ChangeTacticalSymbolsLevel, CompanySelectionEvent, DisplayedTacicalSymbolsLevel, OpenTacticalSymbolsLevels, PlatoonSelectionEvent, RebuildApartments, RegimentSelectionEvent, SwitchBuildingState, TransportDisembarkEvent, UiBlocker}, unit::{AttackAnimationTypes, FogOfWarTexture, InfantryTransport, IsUnitSelectionAllowed, RemainsCount, TILE_SIZE, UnitsTileMap}};
+use crate::components::{asset_manager::{AnimationComponent, BuildingsAssets, InstancedAnimations, InstancedMaterials, TeamMaterialExtension, UnitAssets}, building::{BuildingStageCache, BuildingsDeletionStates, PillboxBundle, Settlements}, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, ArtilleryUnitSelectedEvent, BattalionSelectionEvent, BrigadeSelectionEvent, BuildingButtonHovered, BuildingHints, ChangeTacticalSymbolsLevel, CompanySelectionEvent, DisplayedTacicalSymbolsLevel, OpenTacticalSymbolsLevels, PlatoonSelectionEvent, RebuildApartments, RegimentSelectionEvent, RegimentSwipeEvent, SwitchBuildingState, TransportDisembarkEvent, UiBlocker}, unit::{AttackAnimationTypes, FogOfWarTexture, InfantryTransport, IsUnitSelectionAllowed, RemainsCount, TILE_SIZE, UnitsTileMap, UnstartedPathfindingTasksPool}};
 
 mod components;
 
@@ -74,22 +74,32 @@ fn main() {
     App::new()
     // .add_plugins(FrameTimeDiagnosticsPlugin::default())
     // .add_plugins(LogDiagnosticsPlugin::default())
-    .add_plugins(DefaultPlugins.set(bevy_mod_raycast::low_latency_window_plugin()))
+    .add_plugins(DefaultPlugins
+        .set(bevy_mod_raycast::low_latency_window_plugin())
+        .set(WindowPlugin {
+            primary_window: Some(Window {
+                mode: WindowMode::BorderlessFullscreen,
+                title: "RTSP".into(),
+                ..default()
+            }),
+            ..default()
+        })
+    )
     .add_plugins(EguiPlugin)
     .add_plugins(CursorRayPlugin)
     .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
-       .insert_resource(RapierConfiguration {
-            gravity: Vect::Y * -9.81 * 1.,
-            physics_pipeline_active: true,
-            query_pipeline_active: true,
-            timestep_mode: TimestepMode::Variable {
-                max_dt: 1.0 / 30.0,
-                time_scale: 1.0,
-                substeps: 1,
-            },
-            scaled_shape_subdivision: 10,
-            force_update_from_transform_changes: false,
-   })
+    .insert_resource(RapierConfiguration {
+        gravity: Vect::Y * -9.81 * 1.,
+        physics_pipeline_active: true,
+        query_pipeline_active: true,
+        timestep_mode: TimestepMode::Variable {
+            max_dt: 1.0 / 30.0,
+            time_scale: 1.0,
+            substeps: 1,
+        },
+        scaled_shape_subdivision: 10,
+        force_update_from_transform_changes: false,
+    })
     //.add_plugins(RapierDebugRenderPlugin::default())
     .add_plugins(OxidizedNavigationDebugDrawPlugin)
     // .add_plugins(OxidizedNavigationPlugin::<Collider>::new(NavMeshSettings::from_agent_and_bounds(
@@ -122,6 +132,7 @@ fn main() {
     .add_plugins(LobbyClientPlugin)
     .add_plugins(GameServerPlugin)
     .add_plugins(GameClientPlugin)
+    .add_plugins(GameEndPlugin)
     .add_plugins(MaterialPlugin::<ExtendedMaterial<StandardMaterial, TerrainMaterialExtension>>::default())
     .add_plugins(MaterialPlugin::<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>::default())
     .init_state::<GameState>()
@@ -172,6 +183,7 @@ fn main() {
     .add_event::<BuildingButtonHovered>()
     .add_event::<TransportDisembarkEvent>()
     .add_event::<ArtilleryUnitSelectedEvent>()
+    .add_event::<RegimentSwipeEvent>()
     .insert_resource(PlayerData{
         team: 1,
         is_all_settlements_placed: false,
@@ -236,6 +248,9 @@ fn main() {
         batallion_type_dropdown_lists: Vec::new(),
         platoons_row: Entity::PLACEHOLDER,
         squads_row: Entity::PLACEHOLDER,
+        regiments_row: Entity::PLACEHOLDER,
+        battalions_row: Entity::PLACEHOLDER,
+        companies_row: Entity::PLACEHOLDER,
         land_army_settings_node_height: 0,
         land_army_settings_node_width: 0,
         company_buttons: (-1, Entity::PLACEHOLDER, Vec::new()),
@@ -245,7 +260,7 @@ fn main() {
         last_battalion_button_index: -1,
         last_battalion_type_dropdown_list_index: -1,
         last_platoon_specialization_dropdown_list_index: -1,
-        current_regiment: LimitedNumber::new(),
+        current_regiment: 1,
         squad_specialization_dropdown_lists: (-1, Vec::new()),
         company_type_dropdown_lists: (-1, Vec::new()),
     })
@@ -325,6 +340,7 @@ fn main() {
         running_animations: HashMap::new(),
     })
     .insert_resource(RemainsCount(0))
+    .insert_resource(UnstartedPathfindingTasksPool(Vec::new()))
     .run();
 }
 
@@ -741,6 +757,7 @@ fn setup(
             unit_component: UnitComponent {
                 path: Vec::new(),
                 start_position: Vec3::ZERO,
+                quantized_destination: None,
                 speed: 10.,
                 waypoint_radius: 0.5,
                 elapsed: 0.,
@@ -758,8 +775,8 @@ fn setup(
                 attack_frequency: 250,
                 attack_elapsed_time: 250,
                 enemies: Vec::new(),
-                detection_range: 50.,
-                attack_range: 50.,
+                detection_range: 100.,
+                attack_range: 90.,
                 is_static: false,
                 unit_data: (
                     (0, 0),
@@ -806,6 +823,7 @@ fn setup(
             unit_component: UnitComponent {
                 path: Vec::new(),
                 start_position: Vec3::ZERO,
+                quantized_destination: None,
                 speed: 10.,
                 waypoint_radius: 0.5,
                 elapsed: 0.,
@@ -824,7 +842,7 @@ fn setup(
                 attack_elapsed_time: 5000,
                 enemies: Vec::new(),
                 detection_range: 100.,
-                attack_range: 100.,
+                attack_range: 90.,
                 is_static: false,
                 unit_data: (
                     (0, 0),
@@ -871,6 +889,7 @@ fn setup(
             unit_component: UnitComponent {
                 path: Vec::new(),
                 start_position: Vec3::ZERO,
+                quantized_destination: None,
                 speed: 10.,
                 waypoint_radius: 0.5,
                 elapsed: 0.,
@@ -888,8 +907,8 @@ fn setup(
                 attack_frequency: 250,
                 attack_elapsed_time: 250,
                 enemies: Vec::new(),
-                detection_range: 50.,
-                attack_range: 50.,
+                detection_range: 100.,
+                attack_range: 90.,
                 is_static: false,
                 unit_data: (
                     (0, 0),
@@ -936,6 +955,7 @@ fn setup(
             unit_component: UnitComponent {
                 path: Vec::new(),
                 start_position: Vec3::ZERO,
+                quantized_destination: None,
                 speed: 10.,
                 waypoint_radius: 0.5,
                 elapsed: 0.,
@@ -953,8 +973,8 @@ fn setup(
                 attack_frequency: 5000,
                 attack_elapsed_time: 5000,
                 enemies: Vec::new(),
-                detection_range: 50.,
-                attack_range: 50.,
+                detection_range: 100.,
+                attack_range: 90.,
                 is_static: false,
                 unit_data: (
                     (0, 0),
@@ -1002,6 +1022,7 @@ fn setup(
             unit_component: UnitComponent {
                 path: Vec::new(),
                 start_position: Vec3::ZERO,
+                quantized_destination: None,
                 speed: 10.,
                 waypoint_radius: 0.5,
                 elapsed: 0.,
@@ -1019,8 +1040,8 @@ fn setup(
                 attack_frequency: 3000,
                 attack_elapsed_time: 3000,
                 enemies: Vec::new(),
-                detection_range: 100.,
-                attack_range: 100.,
+                detection_range: 150.,
+                attack_range: 125.,
                 is_static: false,
                 unit_data: (
                     (0, 0),
@@ -1068,6 +1089,7 @@ fn setup(
             unit_component: UnitComponent {
                 path: Vec::new(),
                 start_position: Vec3::ZERO,
+                quantized_destination: None,
                 speed: 10.,
                 waypoint_radius: 0.5,
                 elapsed: 0.,
@@ -1085,8 +1107,8 @@ fn setup(
                 attack_frequency: 3000,
                 attack_elapsed_time: 3000,
                 enemies: Vec::new(),
-                detection_range: 100.,
-                attack_range: 100.,
+                detection_range: 150.,
+                attack_range: 125.,
                 is_static: false,
                 unit_data: (
                     (0, 0),
@@ -1210,6 +1232,7 @@ fn setup(
             unit_component: UnitComponent {
                 path: Vec::new(),
                 start_position: Vec3::ZERO,
+                quantized_destination: None,
                 speed: 15.,
                 waypoint_radius: 0.5,
                 elapsed: 0.,
@@ -1222,13 +1245,13 @@ fn setup(
                 current_health: 1000,
                 max_health: 1000,
                 unit_type: UnitTypes::HeavyVehicle,
-                attack_type: AttackTypes::BallisticProjectile(5., 2, 20., 5., 0., (1000, DamageTypes::AntiTank), (5., 500, DamageTypes::AntiInfantry), Vec3::new(0., 1., 0.)),
+                attack_type: AttackTypes::BallisticProjectile(5., 2, 50., 5., 0., (1000, DamageTypes::AntiTank), (5., 500, DamageTypes::AntiInfantry), Vec3::new(0., 1., 0.)),
                 attack_animation_type: AttackAnimationTypes::TankCannon(Vec3::new(0., 1., 0.)),
                 attack_frequency: 5000,
                 attack_elapsed_time: 5000,
                 enemies: Vec::new(),
-                detection_range: 90.,
-                attack_range: 90.,
+                detection_range: 150.,
+                attack_range: 125.,
                 is_static: false,
                 unit_data: (
                     (0, 0),
@@ -1283,6 +1306,7 @@ fn setup(
             unit_component: UnitComponent {
                 path: Vec::new(),
                 start_position: Vec3::ZERO,
+                quantized_destination: None,
                 speed: 15.,
                 waypoint_radius: 0.5,
                 elapsed: 0.,
@@ -1300,8 +1324,8 @@ fn setup(
                 attack_frequency: 1000,
                 attack_elapsed_time: 1000,
                 enemies: Vec::new(),
-                detection_range: 70.,
-                attack_range: 70.,
+                detection_range: 120.,
+                attack_range: 100.,
                 is_static: false,
                 unit_data: (
                     (0, 0),
@@ -1355,6 +1379,7 @@ fn setup(
             unit_component: UnitComponent {
                 path: Vec::new(),
                 start_position: Vec3::ZERO,
+                quantized_destination: None,
                 speed: 15.,
                 waypoint_radius: 0.5,
                 elapsed: 0.,
@@ -1435,6 +1460,7 @@ fn setup(
             unit_component: UnitComponent {
                 path: Vec::new(),
                 start_position: Vec3::ZERO,
+                quantized_destination: None,
                 speed: 15.,
                 waypoint_radius: 0.5,
                 elapsed: 0.,
@@ -1699,7 +1725,7 @@ fn setup(
             building_component: MaterialsProductionComponent{
                 materials_storage_capacity: 100000,
                 available_materials: 0,
-                materials_production_rate: 4000,
+                materials_production_rate: 6000,
                 materials_production_speed: 10000,
                 production_local_point: Vec3::new(30., 0., 0.),
                 elapsed_time: 0,
@@ -1746,17 +1772,6 @@ fn setup(
             building_component: CoverComponent {
                 cover_efficiency: 0.5,
                 points: vec![
-                    Vec3::new(0., 0., 0.),
-                    Vec3::new(0., 0., 0.),
-                    Vec3::new(0., 0., 0.),
-                    Vec3::new(0., 0., 0.),
-                    Vec3::new(0., 0., 0.),
-                    Vec3::new(0., 0., 0.),
-                    Vec3::new(0., 0., 0.),
-                    Vec3::new(0., 0., 0.),
-                    Vec3::new(0., 0., 0.),
-                    Vec3::new(0., 0., 0.),
-                    Vec3::new(0., 0., 0.),
                     Vec3::new(0., 0., 0.),
                     Vec3::new(0., 0., 0.),
                     Vec3::new(0., 0., 0.),
@@ -1816,31 +1831,31 @@ fn setup(
                 number = 4;
                 is_req = true;
 
-                hint = "Infantry barracks | cost: 100000 materials\nProduces infantry units.".to_string();
+                hint = "Infantry barracks | cost: 100 000 materials\nProduces infantry units.".to_string();
             },
             "VehF" => {
                 number = 4;
                 is_req = true;
 
-                hint = "Vehicle Factory | cost: 100000 materials\nProduces armored vehicles.".to_string();
+                hint = "Vehicle Factory | cost: 100 000 materials\nProduces armored vehicles.".to_string();
             },
             "LogH" => {
-                number = 6;
+                number = 9;
                 is_req = true;
 
-                hint = "Logistic Hub | cost: 10000 materials\nProvides supplies to the units. You need to have at least 6 of these, having more is not necessary.".to_string();
+                hint = "Logistic Hub | cost: 10 000 materials\nProvides supplies to the units. You need to have at least 9 of these, having more is not necessary.".to_string();
             },
             "ResM" => {
                 number = 6;
                 is_req = true;
 
-                hint = "Materials extractor | cost: 10000 materials\nProduces materials. Materials are spent on the production of units and the construction of buildings.".to_string();
+                hint = "Materials extractor | cost: 10 000 materials\nProduces materials. Materials are spent on the production of units and the construction of buildings.\nCan only be placed inside green circled zones!".to_string();
             },
             "PillB" => {
                 number = 20;
                 is_req = false;
 
-                hint = "Pillbox | cost: 10000 materials\nDefensive structure. You can place a squad here.".to_string();
+                hint = "Pillbox | cost: 10 000 materials\nDefensive structure. You can place a squad here.".to_string();
             },
             _ => {
                 number = 0;
@@ -2006,13 +2021,13 @@ fn setup(
     //     nearest_road_point: (Vec3::new(25., 0., 50.), first_road_entity),
     // });
 
-    let city_size = 100.;
-    let city_buffer_zone = 300.;
-    let city_road_connection_distance = 500.;
+    let city_size = 150.;
+    let city_buffer_zone = 500.;
+    let city_road_connection_distance = 800.;
 
-    let village_size = 50.;
-    let village_buffer_zone = 200.;
-    let village_road_connection_distance = 300.;
+    let village_size = 100.;
+    let village_buffer_zone = 300.;
+    let village_road_connection_distance = 600.;
 
     for _i in 0..CITIES_COUNT {
         settlements.0.push((
@@ -2252,9 +2267,22 @@ impl Plugin for MainMenuPlugin {
         app.add_systems(Startup,(
             components::asset_manager::load_assets,
         ));
+        app.add_systems(OnEnter(GameState::MainMenu),
+            components::asset_manager::entity_cleaning_system,
+        );
         app.add_systems(Update, (
-            components::ui_manager::main_menu_ui_system
+            components::ui_manager::main_menu_ui_system,
         ).run_if(in_state(GameState::MainMenu)));
+    }
+}
+
+pub struct GameEndPlugin;
+
+impl Plugin for GameEndPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Update, (
+            components::ui_manager::game_end_ui_system,
+        ).run_if(in_state(GameState::GameEnd)));
     }
 }
 
@@ -2272,7 +2300,7 @@ impl Plugin for SingleplayerPlugin {
             components::unit::artillery_designation_system,
             components::camera::handle_mouse_buttons,
             components::camera::update_selection_box,
-            components::unit::process_pathfinding,
+            components::unit::process_manual_pathfinding,
             components::unit::poll_pathfinding_tasks_system,
             components::unit::process_agents_movement,
             components::unit::check_tiles,
@@ -2377,6 +2405,9 @@ impl Plugin for SingleplayerPlugin {
         ).run_if(in_state(GameState::Singleplayer)));
         app.add_systems(Update, (
             components::logistics::logistic_units_unstuck_system,
+            components::unit::pathfinding_tasks_starter,
+            components::ui_manager::regiment_swipe_system,
+            components::ui_manager::esc_menu_ui_system,
             components::ui_manager::ui_nodes_unlocker,//keep last
         ).run_if(in_state(GameState::Singleplayer)));
     }
@@ -2431,7 +2462,7 @@ impl Plugin for GameServerPlugin {
             components::unit::artillery_designation_system,
             components::camera::handle_mouse_buttons,
             components::camera::update_selection_box,
-            components::unit::process_pathfinding,
+            components::unit::process_manual_pathfinding,
             components::unit::poll_pathfinding_tasks_system,
             components::unit::process_agents_movement,
             components::unit::check_tiles,
@@ -2536,6 +2567,8 @@ impl Plugin for GameServerPlugin {
         ).run_if(in_state(GameState::MultiplayerAsHost)));
         app.add_systems(Update, (
             components::unit::artillery_unit_selection_system,
+            components::ui_manager::regiment_swipe_system,
+            components::ui_manager::esc_menu_ui_system,
             components::ui_manager::ui_nodes_unlocker,//keep last
         ).run_if(in_state(GameState::MultiplayerAsHost)));
     }
@@ -2561,7 +2594,7 @@ impl Plugin for GameClientPlugin {
             components::unit::artillery_designation_system,
             components::camera::handle_mouse_buttons,
             components::camera::update_selection_box,
-            components::unit::process_pathfinding,
+            components::unit::process_manual_pathfinding,
             components::unit::poll_pathfinding_tasks_system,
             components::unit::process_agents_movement,
             components::unit::check_tiles,
@@ -2641,6 +2674,8 @@ impl Plugin for GameClientPlugin {
             components::asset_manager::explosion_effects_handler,
             components::unit::remains_processing_system,
             components::unit::artillery_unit_selection_system,
+            components::ui_manager::regiment_swipe_system,
+            components::ui_manager::esc_menu_ui_system,
             components::ui_manager::ui_nodes_unlocker,//keep last
         ).run_if(in_state(GameState::MultiplayerAsClient)));
     }
@@ -2655,4 +2690,5 @@ pub enum GameState{
     LobbyAsClient,
     MultiplayerAsHost,
     MultiplayerAsClient,
+    GameEnd,
 }

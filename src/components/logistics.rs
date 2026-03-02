@@ -7,7 +7,7 @@ use bevy_rapier3d::{na::distance, prelude::{CharacterLength, Collider, Kinematic
 use oxidized_navigation_serializable::{NavMesh, NavMeshSettings};
 use rand::distributions::DistMap;
 
-use crate::{GameStage, GameStages, PlayerData, components::{asset_manager::{InstancedMaterials, LOD, TeamMaterialExtension, UnitAssets}, building::SwitchableBuilding, unit::{AttackAnimationTypes, AttackTypes, UnitTypes}}};
+use crate::{GameStage, GameStages, PlayerData, components::{asset_manager::{InstancedMaterials, LOD, TeamMaterialExtension, UnitAssets}, building::SwitchableBuilding, unit::{AttackAnimationTypes, AttackTypes, QUANTIZATION_THRESHOLD, TaskPoolTypes, UnitDeathEvent, UnitTypes, UnstartedPathfindingTasksPool}}};
 
 use super::{building::{HumanResourceStorageComponent, MaterialsProductionComponent, MaterialsStorageComponent, SettlementComponent, SuppliesProductionComponent, SuppliesStorageComponent}, camera, network::{ClientList, NetworkStatus, NetworkStatuses, ServerMessage}, unit::{async_path_find, Armies, AsyncPathfindingTasks, AsyncTaskPools, CompanyTypes, CombatComponent, NeedToMove, SuppliesConsumerComponent, UnitComponent}};
 
@@ -40,6 +40,8 @@ pub struct LogisticUnitComponent {
     pub path_recalculation_cooldown: u128,
     pub path_recalculation_elapsed: u128,
     pub destination_completion_range: f32,
+    pub last_pos: Vec3,
+    pub stuck_time: u128,
 }
 
 pub enum ResourceTypes {
@@ -192,10 +194,7 @@ pub fn assign_supply_tasks (
     army: Res<Armies>,
     mut commands: Commands,
     units_assets: Res<UnitAssets>,
-    nav_mesh: Res<NavMesh>,
-    nav_mesh_settings: Res<NavMeshSettings>,
-    mut pathfinding_task: ResMut<AsyncPathfindingTasks>,
-    async_task_pools: Res<AsyncTaskPools>,
+    mut unstarted_tasks: ResMut<UnstartedPathfindingTasksPool>,
     game_stage: Res<GameStage>,
     //player_data: Res<PlayerData>,
     mut materials: (
@@ -275,6 +274,14 @@ pub fn assign_supply_tasks (
 
                                         materials.2.team_materials.insert((units_assets.truck.0.id(), supply_producer.2.team), material.clone());
                                     }
+
+                                    let mut destination = supply_consumer.1.translation;
+                                    let mut quantized_destination = None;
+
+                                    // if start_point.distance(supply_consumer.1.translation) > QUANTIZATION_THRESHOLD * 2. {
+                                    //     destination = start_point + (supply_consumer.1.translation - start_point).normalize() * QUANTIZATION_THRESHOLD;
+                                    //     quantized_destination = Some(supply_consumer.1.translation);
+                                    // }
         
                                     let new_logistic_unit = commands.spawn(MaterialMeshBundle {
                                         mesh: units_assets.truck.0.clone(),
@@ -282,8 +289,9 @@ pub fn assign_supply_tasks (
                                         transform: Transform::from_translation(start_point),
                                         ..default()
                                     }).insert(UnitComponent {
-                                        path: Vec::new(),
+                                        path: vec![start_point],
                                         start_position: Vec3::ZERO,
+                                        quantized_destination: quantized_destination,
                                         speed: LOGISTIC_UNITS_SPEED,
                                         waypoint_radius: 1.,
                                         elapsed: 0.,
@@ -298,6 +306,8 @@ pub fn assign_supply_tasks (
                                         path_recalculation_cooldown: 5000,
                                         path_recalculation_elapsed: 0,
                                         destination_completion_range: supply_consumer.2.supply_range,
+                                        last_pos: start_point,
+                                        stuck_time: 0,
                                     }).insert(KinematicCharacterController{
                                         custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
                                         up: Vec3::Y,
@@ -332,20 +342,16 @@ pub fn assign_supply_tasks (
                                             ),
                                         ),
                                     }).id();
-            
-                                    let nav_mesh_lock = nav_mesh.get();
-                    
-                                    let task = async_task_pools.logistic_pathfinding_pool.spawn(async_path_find(
-                                        nav_mesh_lock.clone(),
-                                        nav_mesh_settings.clone(),
-                                        start_point,
-                                        supply_consumer.1.translation,
-                                        Some(100.),
-                                        Some(&[10.0, 0.1]),
-                                        new_logistic_unit,
+
+                                    unstarted_tasks.0.push((
+                                        TaskPoolTypes::Logistic,
+                                        (
+                                            start_point,
+                                            destination,
+                                            Some(100.),
+                                            new_logistic_unit,
+                                        ),
                                     ));
-                    
-                                    pathfinding_task.tasks.push(task);
 
                                     if matches!(network_status.0, NetworkStatuses::Host){
                                         let mut channel_id = 60;
@@ -430,6 +436,14 @@ pub fn assign_supply_tasks (
 
                                             materials.2.team_materials.insert((units_assets.truck.0.id(), supply_producer.2.team), material.clone());
                                         }
+
+                                        let mut destination = supply_consumer.1.translation;
+                                        let mut quantized_destination = None;
+
+                                        // if start_point.distance(supply_consumer.1.translation) > QUANTIZATION_THRESHOLD * 2. {
+                                        //     destination = start_point + (supply_consumer.1.translation - start_point).normalize() * QUANTIZATION_THRESHOLD;
+                                        //     quantized_destination = Some(supply_consumer.1.translation);
+                                        // }
             
                                         let new_logistic_unit = commands.spawn(MaterialMeshBundle {
                                             mesh: units_assets.truck.0.clone(),
@@ -437,8 +451,9 @@ pub fn assign_supply_tasks (
                                             transform: Transform::from_translation(start_point),
                                             ..default()
                                         }).insert(UnitComponent {
-                                            path: Vec::new(),
+                                            path: vec![start_point],
                                             start_position: Vec3::ZERO,
+                                            quantized_destination: quantized_destination,
                                             speed: LOGISTIC_UNITS_SPEED,
                                             waypoint_radius: 1.,
                                             elapsed: 0.,
@@ -453,6 +468,8 @@ pub fn assign_supply_tasks (
                                             path_recalculation_cooldown: 5000,
                                             path_recalculation_elapsed: 0,
                                             destination_completion_range: supply_consumer.2.supply_range,
+                                            last_pos: start_point,
+                                            stuck_time: 0,
                                         }).insert(KinematicCharacterController{
                                             custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
                                             up: Vec3::Y,
@@ -488,19 +505,15 @@ pub fn assign_supply_tasks (
                                             ),
                                         }).id();
 
-                                        let nav_mesh_lock = nav_mesh.get();
-                        
-                                        let task = async_task_pools.logistic_pathfinding_pool.spawn(async_path_find(
-                                            nav_mesh_lock.clone(),
-                                            nav_mesh_settings.clone(),
-                                            start_point,
-                                            supply_consumer.1.translation,
-                                            Some(100.),
-                                            Some(&[10.0, 0.1]),
-                                            new_logistic_unit,
+                                        unstarted_tasks.0.push((
+                                            TaskPoolTypes::Logistic,
+                                            (
+                                                start_point,
+                                                destination,
+                                                Some(100.),
+                                                new_logistic_unit,
+                                            ),
                                         ));
-                        
-                                        pathfinding_task.tasks.push(task);
 
                                         if matches!(network_status.0, NetworkStatuses::Host){
                                             let mut channel_id = 60;
@@ -585,6 +598,14 @@ pub fn assign_supply_tasks (
 
                                                 materials.2.team_materials.insert((units_assets.truck.0.id(), supply_producer.2.team), material.clone());
                                             }
+
+                                            let mut destination = supply_consumer.1.translation;
+                                            let mut quantized_destination = None;
+
+                                            // if start_point.distance(supply_consumer.1.translation) > QUANTIZATION_THRESHOLD * 2. {
+                                            //     destination = start_point + (supply_consumer.1.translation - start_point).normalize() * QUANTIZATION_THRESHOLD;
+                                            //     quantized_destination = Some(supply_consumer.1.translation);
+                                            // }
                 
                                             let new_logistic_unit = commands.spawn(MaterialMeshBundle {
                                                 mesh: units_assets.truck.0.clone(),
@@ -592,8 +613,9 @@ pub fn assign_supply_tasks (
                                                 transform: Transform::from_translation(start_point),
                                                 ..default()
                                             }).insert(UnitComponent {
-                                                path: Vec::new(),
+                                                path: vec![start_point],
                                                 start_position: Vec3::ZERO,
+                                                quantized_destination: quantized_destination,
                                                 speed: LOGISTIC_UNITS_SPEED,
                                                 waypoint_radius: 1.,
                                                 elapsed: 0.,
@@ -608,6 +630,8 @@ pub fn assign_supply_tasks (
                                                 path_recalculation_cooldown: 5000,
                                                 path_recalculation_elapsed: 0,
                                                 destination_completion_range: supply_consumer.2.supply_range,
+                                                last_pos: start_point,
+                                                stuck_time: 0,
                                             }).insert(KinematicCharacterController{
                                                 custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
                                                 up: Vec3::Y,
@@ -643,19 +667,15 @@ pub fn assign_supply_tasks (
                                                 ),
                                             }).id();
                     
-                                            let nav_mesh_lock = nav_mesh.get();
-                            
-                                            let task = async_task_pools.logistic_pathfinding_pool.spawn(async_path_find(
-                                                nav_mesh_lock.clone(),
-                                                nav_mesh_settings.clone(),
-                                                start_point,
-                                                supply_consumer.1.translation,
-                                                Some(100.),
-                                                Some(&[10.0, 0.1]),
-                                                new_logistic_unit,
+                                            unstarted_tasks.0.push((
+                                                TaskPoolTypes::Logistic,
+                                                (
+                                                    start_point,
+                                                    destination,
+                                                    Some(100.),
+                                                    new_logistic_unit,
+                                                ),
                                             ));
-                            
-                                            pathfinding_task.tasks.push(task);
 
                                             if matches!(network_status.0, NetworkStatuses::Host){
                                                 let mut channel_id = 60;
@@ -743,14 +763,23 @@ pub fn assign_supply_tasks (
                                                         materials.2.team_materials.insert((units_assets.truck.0.id(), supply_producer.2.team), material.clone());
                                                     }
 
+                                                    let mut destination = supply_consumer.1.translation;
+                                                    let mut quantized_destination = None;
+
+                                                    // if start_point.distance(supply_consumer.1.translation) > QUANTIZATION_THRESHOLD * 2. {
+                                                    //     destination = start_point + (supply_consumer.1.translation - start_point).normalize() * QUANTIZATION_THRESHOLD;
+                                                    //     quantized_destination = Some(supply_consumer.1.translation);
+                                                    // }
+
                                                     let new_logistic_unit = commands.spawn(MaterialMeshBundle {
                                                         mesh: units_assets.truck.0.clone(),
                                                         material: material.clone(),
                                                         transform: Transform::from_translation(start_point),
                                                         ..default()
                                                     }).insert(UnitComponent {
-                                                        path: Vec::new(),
+                                                        path: vec![start_point],
                                                         start_position: Vec3::ZERO,
+                                                        quantized_destination: quantized_destination,
                                                         speed: LOGISTIC_UNITS_SPEED,
                                                         waypoint_radius: 1.,
                                                         elapsed: 0.,
@@ -765,6 +794,8 @@ pub fn assign_supply_tasks (
                                                         path_recalculation_cooldown: 5000,
                                                         path_recalculation_elapsed: 0,
                                                         destination_completion_range: supply_consumer.2.supply_range,
+                                                        last_pos: start_point,
+                                                        stuck_time: 0,
                                                     }).insert(KinematicCharacterController{
                                                         custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
                                                         up: Vec3::Y,
@@ -800,19 +831,15 @@ pub fn assign_supply_tasks (
                                                         ),
                                                     }).id();
                             
-                                                    let nav_mesh_lock = nav_mesh.get();
-                                    
-                                                    let task = async_task_pools.logistic_pathfinding_pool.spawn(async_path_find(
-                                                        nav_mesh_lock.clone(),
-                                                        nav_mesh_settings.clone(),
-                                                        start_point,
-                                                        supply_consumer.1.translation,
-                                                        Some(100.),
-                                                        Some(&[10.0, 0.1]),
-                                                        new_logistic_unit,
+                                                    unstarted_tasks.0.push((
+                                                        TaskPoolTypes::Logistic,
+                                                        (
+                                                            start_point,
+                                                            destination,
+                                                            Some(100.),
+                                                            new_logistic_unit,
+                                                        ),
                                                     ));
-                                    
-                                                    pathfinding_task.tasks.push(task);
 
                                                     if matches!(network_status.0, NetworkStatuses::Host){
                                                         let mut channel_id = 60;
@@ -868,6 +895,8 @@ pub fn logistic_convoys_processing_system(
     // ),
 ){
     if timer.0.finished() {
+        let mut path_recalculation_count = 0;
+
         for mut logistic_unit in logistic_units_q.iter_mut() {
             match logistic_unit.2.storage {
                 ResourceTypes::Materials(amount) => {
@@ -917,23 +946,37 @@ pub fn logistic_convoys_processing_system(
                                 logistic_unit.2.path_recalculation_elapsed += 500;
     
                                 if logistic_unit.2.path_recalculation_elapsed >= logistic_unit.2.path_recalculation_cooldown {
+                                    // path_recalculation_count += 1;
+
+                                    // if path_recalculation_count > 10 {
+                                    //     continue;
+                                    // }
+
                                     logistic_unit.2.path_recalculation_elapsed = 0;
-    
-                                    let nav_mesh_lock = nav_mesh.get();
 
                                     logistic_unit.3.path = Vec::new();
-                
-                                    let task = async_task_pools.extra_pathfinding_pool.spawn(async_path_find(
-                                        nav_mesh_lock.clone(),
-                                        nav_mesh_settings.clone(),
-                                        logistic_unit.1.translation,
-                                        supply_consumer.0.translation,
-                                        Some(100.),
-                                        Some(&[10.0, 0.1]),
-                                        logistic_unit.0,
-                                    ));
-                    
-                                    pathfinding_task.tasks.push(task);
+
+                                    let mut destination = supply_consumer.0.translation;
+                                    let mut quantized_destination = None;
+
+                                    // if logistic_unit.1.translation.distance(supply_consumer.0.translation) > QUANTIZATION_THRESHOLD * 2. {
+                                    //     destination = logistic_unit.1.translation + (supply_consumer.0.translation - logistic_unit.1.translation).normalize() * QUANTIZATION_THRESHOLD;
+                                    //     quantized_destination = Some(supply_consumer.0.translation);
+                                    // }
+
+                                    // let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
+                                    //     nav_mesh_lock.clone(),
+                                    //     nav_mesh_settings.clone(),
+                                    //     logistic_unit.1.translation,
+                                    //     destination,
+                                    //     Some(100.),
+                                    //     Some(&[10.0, 0.1]),
+                                    //     logistic_unit.0,
+                                    // ));
+
+                                    // pathfinding_task.tasks.push(task);
+
+                                    logistic_unit.3.quantized_destination = quantized_destination;
         
                                     logistic_unit.2.last_destination_point = supply_consumer.0.translation;
                                 }
@@ -943,23 +986,39 @@ pub fn logistic_convoys_processing_system(
                                 logistic_unit.2.path_recalculation_elapsed += 500;
     
                                 if logistic_unit.2.path_recalculation_elapsed >= logistic_unit.2.path_recalculation_cooldown {
+                                    // path_recalculation_count += 1;
+
+                                    // if path_recalculation_count > 10 {
+                                    //     continue;
+                                    // }
+
                                     logistic_unit.2.path_recalculation_elapsed = 0;
-    
-                                    let nav_mesh_lock = nav_mesh.get();
 
                                     logistic_unit.3.path = Vec::new();
-                
-                                    let task = async_task_pools.extra_pathfinding_pool.spawn(async_path_find(
-                                        nav_mesh_lock.clone(),
-                                        nav_mesh_settings.clone(),
-                                        logistic_unit.1.translation,
-                                        supply_consumer.2.path[supply_consumer.2.path.len() - 1],
-                                        Some(100.),
-                                        Some(&[10.0, 0.1]),
-                                        logistic_unit.0,
-                                    ));
-                    
-                                    pathfinding_task.tasks.push(task);
+
+                                    let mut destination = supply_consumer.2.path[supply_consumer.2.path.len() - 1];
+                                    let mut quantized_destination = None;
+
+                                    // if logistic_unit.1.translation.distance(supply_consumer.2.path[supply_consumer.2.path.len() - 1]) > QUANTIZATION_THRESHOLD {
+                                    //     destination = logistic_unit.1.translation +
+                                    //     (supply_consumer.2.path[supply_consumer.2.path.len() - 1] - logistic_unit.1.translation).normalize()
+                                    //     * QUANTIZATION_THRESHOLD;
+                                    //     quantized_destination = Some(supply_consumer.2.path[supply_consumer.2.path.len() - 1]);
+                                    // }
+
+                                    // let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
+                                    //     nav_mesh_lock.clone(),
+                                    //     nav_mesh_settings.clone(),
+                                    //     logistic_unit.1.translation,
+                                    //     destination,
+                                    //     Some(100.),
+                                    //     Some(&[10.0, 0.1]),
+                                    //     logistic_unit.0,
+                                    // ));
+
+                                    // pathfinding_task.tasks.push(task);
+
+                                    logistic_unit.3.quantized_destination = quantized_destination;
         
                                     logistic_unit.2.last_destination_point = supply_consumer.2.path[supply_consumer.2.path.len() - 1];
                                 }
@@ -1246,10 +1305,7 @@ pub fn material_producers_processing_system(
     mut material_producers_q: Query<(&Transform, &mut MaterialsProductionComponent, &CombatComponent), With<MaterialsProductionComponent>>,
     mut material_consumers_q: Query<(Entity, &Transform, &mut MaterialsStorageComponent, &CombatComponent), With<MaterialsStorageComponent>>,
     units_assets: Res<UnitAssets>,
-    nav_mesh: Res<NavMesh>,
-    nav_mesh_settings: Res<NavMeshSettings>,
-    mut pathfinding_task: ResMut<AsyncPathfindingTasks>,
-    async_task_pools: Res<AsyncTaskPools>,
+    mut unstarted_tasks: ResMut<UnstartedPathfindingTasksPool>,
     mut commands: Commands,
     game_stage: Res<GameStage>,
     mut materials: (
@@ -1338,14 +1394,23 @@ pub fn material_producers_processing_system(
                                     materials.2.team_materials.insert((units_assets.truck.0.id(), material_producer.2.team), material.clone());
                                 }
 
+                                let mut destination = destination_point;
+                                let mut quantized_destination = None;
+
+                                // if start_point.distance(destination_point) > QUANTIZATION_THRESHOLD * 2. {
+                                //     destination = start_point + (destination_point - start_point).normalize() * QUANTIZATION_THRESHOLD;
+                                //     quantized_destination = Some(destination_point);
+                                // }
+
                                 let new_logistic_unit = commands.spawn(MaterialMeshBundle {
                                     mesh: units_assets.truck.0.clone(),
                                     material: material.clone(),
                                     transform: Transform::from_translation(start_point),
                                     ..default()
                                 }).insert(UnitComponent {
-                                    path: Vec::new(),
+                                    path: vec![start_point],
                                     start_position: Vec3::ZERO,
+                                    quantized_destination: quantized_destination,
                                     speed: LOGISTIC_UNITS_SPEED,
                                     waypoint_radius: 1.,
                                     elapsed: 0.,
@@ -1360,6 +1425,8 @@ pub fn material_producers_processing_system(
                                     path_recalculation_cooldown: 5000,
                                     path_recalculation_elapsed: 0,
                                     destination_completion_range: material_consumer.2.replenishment_range,
+                                    last_pos: start_point,
+                                    stuck_time: 0,
                                 }).insert(KinematicCharacterController{
                                     custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
                                     up: Vec3::Y,
@@ -1395,19 +1462,15 @@ pub fn material_producers_processing_system(
                                     ),
                                 }).id();
 
-                                let nav_mesh_lock = nav_mesh.get();
-                
-                                let task = async_task_pools.logistic_pathfinding_pool.spawn(async_path_find(
-                                    nav_mesh_lock.clone(),
-                                    nav_mesh_settings.clone(),
-                                    start_point,
-                                    destination_point,
-                                    Some(100.),
-                                    Some(&[10.0, 0.1]),
-                                    new_logistic_unit,
+                                unstarted_tasks.0.push((
+                                    TaskPoolTypes::Logistic,
+                                    (
+                                        start_point,
+                                        destination,
+                                        Some(100.),
+                                        new_logistic_unit,
+                                    ),
                                 ));
-                
-                                pathfinding_task.tasks.push(task);
 
                                 if matches!(network_status.0, NetworkStatuses::Host){
                                     let mut channel_id = 30;
@@ -1446,10 +1509,7 @@ pub fn human_resource_producers_processing_system(
     mut human_resource_producers_q: Query<(&Transform, &mut SettlementComponent), With<SettlementComponent>>,
     mut human_resource_consumers_q: Query<(Entity, &Transform, &mut HumanResourceStorageComponent, &CombatComponent), With<HumanResourceStorageComponent>>,
     units_assets: Res<UnitAssets>,
-    nav_mesh: Res<NavMesh>,
-    nav_mesh_settings: Res<NavMeshSettings>,
-    mut pathfinding_task: ResMut<AsyncPathfindingTasks>,
-    async_task_pools: Res<AsyncTaskPools>,
+    mut unstarted_tasks: ResMut<UnstartedPathfindingTasksPool>,
     mut commands: Commands,
     game_stage: Res<GameStage>,
     mut materials: (
@@ -1538,14 +1598,23 @@ pub fn human_resource_producers_processing_system(
                                     materials.2.team_materials.insert((units_assets.truck.0.id(), human_resource_producer.1.0.team), material.clone());
                                 }
 
+                                let mut destination = destination_point;
+                                let mut quantized_destination = None;
+
+                                // if start_point.distance(destination_point) > QUANTIZATION_THRESHOLD * 2. {
+                                //     destination = start_point + (destination_point - start_point).normalize() * QUANTIZATION_THRESHOLD;
+                                //     quantized_destination = Some(destination_point);
+                                // }
+
                                 let new_logistic_unit = commands.spawn(MaterialMeshBundle {
                                     mesh: units_assets.truck.0.clone(),
                                     material: material.clone(),
                                     transform: Transform::from_translation(start_point),
                                     ..default()
                                 }).insert(UnitComponent {
-                                    path: Vec::new(),
+                                    path: vec![start_point],
                                     start_position: Vec3::ZERO,
+                                    quantized_destination: quantized_destination,
                                     speed: LOGISTIC_UNITS_SPEED,
                                     waypoint_radius: 1.,
                                     elapsed: 0.,
@@ -1560,6 +1629,8 @@ pub fn human_resource_producers_processing_system(
                                     path_recalculation_cooldown: 5000,
                                     path_recalculation_elapsed: 0,
                                     destination_completion_range: human_resource_consumer.2.replenishment_range,
+                                    last_pos: start_point,
+                                    stuck_time: 0,
                                 }).insert(KinematicCharacterController{
                                     custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
                                     up: Vec3::Y,
@@ -1595,19 +1666,15 @@ pub fn human_resource_producers_processing_system(
                                     ),
                                 }).id();
 
-                                let nav_mesh_lock = nav_mesh.get();
-                
-                                let task = async_task_pools.logistic_pathfinding_pool.spawn(async_path_find(
-                                    nav_mesh_lock.clone(),
-                                    nav_mesh_settings.clone(),
-                                    start_point,
-                                    destination_point,
-                                    Some(100.),
-                                    Some(&[10.0, 0.1]),
-                                    new_logistic_unit,
+                                unstarted_tasks.0.push((
+                                    TaskPoolTypes::Logistic,
+                                    (
+                                        start_point,
+                                        destination,
+                                        Some(100.),
+                                        new_logistic_unit,
+                                    ),
                                 ));
-                
-                                pathfinding_task.tasks.push(task);
 
                                 if matches!(network_status.0, NetworkStatuses::Host){
                                     let mut channel_id = 30;
@@ -1703,32 +1770,61 @@ pub fn supplies_production_system (
 }
 
 pub fn logistic_units_unstuck_system(
-    mut static_logistic_units_q: Query<(Entity, &Transform, &LogisticUnitComponent, &mut UnitComponent), (With<LogisticUnitComponent>, Without<NeedToMove>)>,
-    nav_mesh: Res<NavMesh>,
-    nav_mesh_settings: Res<NavMeshSettings>,
-    mut pathfinding_task: ResMut<AsyncPathfindingTasks>,
-    async_task_pools: Res<AsyncTaskPools>,
+    mut static_logistic_units_q: Query<(Entity, &Transform, &mut LogisticUnitComponent, &mut UnitComponent), (With<LogisticUnitComponent>, Without<NeedToMove>)>,
+    mut unstarted_tasks: ResMut<UnstartedPathfindingTasksPool>,
+    time: Res<Time>,
+    mut event_writer: EventWriter<UnitDeathEvent>,
 ){
     for mut unit in static_logistic_units_q.iter_mut() {
+        if unit.2.last_destination_point.xz().distance(unit.1.translation.xz()) <= 2. {
+            continue;
+        }
+
+        if unit.2.last_pos == unit.1.translation {
+            unit.2.stuck_time += time.delta().as_millis();
+
+            if unit.2.stuck_time > 10000 && unit.2.last_destination_point.xz().distance(unit.1.translation.xz()) > 2. {
+                event_writer.send(UnitDeathEvent{
+                    dead_unit_data: (
+                        1,
+                        (
+                            (0, 0),
+                            (
+                                CompanyTypes::None,
+                                (-1, -1, -1, -1, -1, -1, -1),
+                                "".to_string(),
+                            ),
+                        ),
+                        None,
+                        unit.0,
+                        *unit.1,
+                        false,
+                    ),
+                });
+
+                continue;
+            }
+        } else {
+            unit.2.stuck_time = 0;
+        }
+
+        unit.2.last_pos = unit.1.translation;
+
         if !unit.3.path.is_empty() {
             continue;
         }
 
         unit.3.path = vec![unit.1.translation];
-
-        let nav_mesh_lock = nav_mesh.get();
-
-        let task = async_task_pools.logistic_pathfinding_pool.spawn(async_path_find(
-            nav_mesh_lock.clone(),
-            nav_mesh_settings.clone(),
-            unit.1.translation,
-            unit.2.last_destination_point,
-            Some(100.),
-            Some(&[10.0, 0.1]),
-            unit.0,
+        
+        unstarted_tasks.0.push((
+            TaskPoolTypes::Logistic,
+            (
+                unit.1.translation,
+                unit.2.last_destination_point,
+                Some(100.),
+                unit.0,
+            ),
         ));
-
-        pathfinding_task.tasks.push(task);
     }
 }
 

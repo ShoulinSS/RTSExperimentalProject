@@ -1,12 +1,13 @@
 use std::{clone, default, f32::consts::E, string, thread::current};
 use bevy::{log::tracing_subscriber::fmt::format, math::VectorSpace, pbr::{ExtendedMaterial, NotShadowCaster}, prelude::*, transform::commands, ui::{self, AvailableSpace}, utils::hashbrown::{HashMap, HashSet}, window::PrimaryWindow};
-use bevy_egui::{egui::{self, Color32, Context, FontId, Stroke}, EguiContext, EguiContexts};
+use bevy_egui::{EguiContext, EguiContexts, EguiRenderToTextureHandle, EguiUserTextures, egui::{self, Color32, Context, FontId, Stroke}};
 use bevy_mod_raycast::{cursor::{self, CursorRay}, prelude::{Raycast, RaycastSettings}};
 use bevy_quinnet::{client::QuinnetClient, server::QuinnetServer};
 use bevy_rapier3d::{plugin::RapierContext, prelude::{Collider, QueryFilter}, rapier::crossbeam::epoch::CompareAndSetOrdering};
+use bevy_tasks::TaskPool;
 use oxidized_navigation_serializable::NavMeshAffector;
 
-use crate::{GameStage, GameStages, GameState, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, PlayerData, SUPPLIES_COLOR, components::{asset_manager::{CircleData, CircleHolder, ForbiddenBlueprint, InstancedMaterials, OtherAssets, TeamMaterialExtension, Terrain}, building::{BuildingStageCache, BuildingsDeletionStates, HumanResourceStorageComponent, MaterialsProductionComponent, MaterialsStorageComponent, SettlementComponent, SwitchableBuilding}, camera::SelectionBox, network::EntityMaps, unit::{ARMY_SIZE, BATTALION_SIZE, COMPANY_SIZE, DisabledUnit, InfantryTransport, IsUnitSelectionAllowed, PLATOON_SIZE, REGIMENT_SIZE, START_ARTILLERY_UNITS_COUNT, SuppliesConsumerComponent}}};
+use crate::{GameStage, GameStages, GameState, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, PlayerData, SUPPLIES_COLOR, components::{self, asset_manager::{CircleData, CircleHolder, ForbiddenBlueprint, InstancedAnimations, InstancedMaterials, OtherAssets, TeamMaterialExtension, Terrain}, building::{BuildingStageCache, BuildingsDeletionStates, HumanResourceStorageComponent, MaterialsProductionComponent, MaterialsStorageComponent, ProducableUnits, SettlementComponent, Settlements, SettlementsLeft, SwitchableBuilding, VILLAGES_COUNT}, camera::SelectionBox, network::{EntityMaps, UnitsToDamage, UnitsToInsertPath, UnspecifiedEntitiesToMove}, unit::{ARMY_SIZE, AsyncTaskPools, BATTALION_SIZE, COMPANY_SIZE, DisabledUnit, InfantryTransport, IsUnitDeselectionAllowed, IsUnitSelectionAllowed, PLATOON_SIZE, REGIMENT_SIZE, RemainsCount, START_ARTILLERY_UNITS_COUNT, SuppliesConsumerComponent}}};
 
 use super::{asset_manager::{generate_circle_segments, LineData, LineHolder}, building::{AllSettlementsPlaced, BuildingBlueprint, BuildingsBundles, BuildingsList, InfantryBarracksBundle, ProductionButtonPressed, ProductionQueue, ProductionState, SoldierBundle, UnactivatedBlueprints, UnitBundles, VehicleFactoryBundle, ALLOWED_DISTANCE_FROM_BORDERS, CITIES_COUNT}, camera::{CameraComponent, SelectionBounds}, logistics::ResourceZone, network::{ClientList, ClientMessage, InsertedConnectionData, NetworkStatus, NetworkStatuses, PlayerList, ServerMessage}, unit::{self, Armies, ArmoredSquad, ArtilleryUnit, CompanyTypes, CombatComponent, IsArtilleryDesignationActive, LimitedHashMap, LimitedHashSet, LimitedNumber, SquadLeader, RegularSquad, SelectedUnit, SerializableArmoredSquad, SerializableArmyObject, SerializableRegularSquad, SerializableShockSquad, ShockSquad, UnitTypes, UnitsTileMap, MAX_SQUAD_COUNT, START_ARMORED_SQUADS_AMOUNT, START_REGULAR_SQUADS_AMOUNT, START_SHOCK_SQUADS_AMOUNT, TILE_SIZE}};
 
@@ -134,6 +135,9 @@ pub struct ArtilleryUnitSelectedEvent(pub (i32, i32));
 #[derive(Event)]
 pub struct BuildingButtonHovered(pub String);
 
+#[derive(Event)]
+pub struct RegimentSwipeEvent(pub i32);
+
 #[derive(Resource)]
 pub struct ArmySettingsNodes {
     pub land_army_settings_node: Entity,
@@ -147,10 +151,13 @@ pub struct ArmySettingsNodes {
     pub platoon_specialization_dropdown_lists: Vec<(Entity, String, LimitedNumber<0, 2>)>,
     pub last_platoon_specialization_dropdown_list_index: i32,
     pub platoon_specialization_cache: Vec<((String, String), CompanyTypes)>,
+    pub regiments_row: Entity,
+    pub battalions_row: Entity,
+    pub companies_row: Entity,
     pub platoons_row: Entity,
     pub squads_row: Entity,
     pub toggle_production_button: (Entity, LimitedNumber<0, 2>),
-    pub current_regiment: LimitedNumber<1, 3>,
+    pub current_regiment: i32,
     pub squad_specialization_dropdown_lists: (i32, Vec<Entity>),
     pub company_type_dropdown_lists: (i32, Vec<Entity>),
 }
@@ -643,7 +650,7 @@ pub fn setup_ingame_ui(
 
     let land_army_settings_node_entity = commands.spawn(land_army_settings_node).insert(ParentNode).id();
 
-    //commands.entity(land_army_settings_node_entity).insert(Visibility::Hidden);
+    commands.entity(land_army_settings_node_entity).insert(Visibility::Hidden);
 
     army_settings_nodes.land_army_settings_node = land_army_settings_node_entity;
 
@@ -818,21 +825,24 @@ pub fn setup_ingame_ui(
             ButtonAction{action: Actions::ToggleProduction}
         )
         .with_children(|bar_parent| {
-            bar_parent.spawn(TextBundle {
-                text: Text{
-                    sections: vec![TextSection {
-                        value: "Ready to start".to_string(),
-                        style: TextStyle {
-                            font_size: 30.,
+            army_settings_nodes.toggle_production_button = (
+                bar_parent.spawn(TextBundle {
+                    text: Text{
+                        sections: vec![TextSection {
+                            value: "Ready to start".to_string(),
+                            style: TextStyle {
+                                font_size: 30.,
+                                ..default()
+                            },
                             ..default()
-                        },
+                        }],
+                        justify: JustifyText::Center,
                         ..default()
-                    }],
-                    justify: JustifyText::Center,
+                    },
                     ..default()
-                },
-                ..default()
-            });
+                }).id(),
+                LimitedNumber::new(),
+            );
         })
         .id();
 
@@ -932,6 +942,9 @@ pub fn setup_ingame_ui(
         ).id();
     });
 
+    army_settings_nodes.regiments_row = regiments_row;
+    army_settings_nodes.battalions_row = battalions_row;
+    army_settings_nodes.companies_row = companies_row;
     army_settings_nodes.platoons_row = platoons_row;
     army_settings_nodes.squads_row = squads_row;
 
@@ -2381,7 +2394,7 @@ pub fn setup_ingame_ui(
     let mut platoon_index: LimitedNumber<1, 3>;
     let mut company_index: LimitedNumber<1, 3>;
     let mut battalion_index: LimitedNumber<1, 3>;
-    let mut regiment_index: LimitedNumber<1, 2>;
+    let mut regiment_index: LimitedNumber<1, 3>;
 
     let unit_button_size = ui_button_nodes.button_size * 0.75;
 
@@ -3084,6 +3097,7 @@ pub fn handle_button_clicks(
         EventWriter<RebuildApartments>,
         EventWriter<TransportDisembarkEvent>,
         EventWriter<ArtilleryUnitSelectedEvent>,
+        EventWriter<RegimentSwipeEvent>,
     ),
     mut buttons_hover_event_writer: (
         EventWriter<BuildingButtonHovered>,
@@ -3197,13 +3211,16 @@ pub fn handle_button_clicks(
                     },
                     Actions::DisembarkInfantry => {
                         event_writer2.9.send(TransportDisembarkEvent);
-                    }
+                    },
                     Actions::ArtilleryUnitSelection(d) => {
                         if d.0 != player_data.team {
                             continue;
                         }
                         event_writer2.10.send(ArtilleryUnitSelectedEvent(*d));
-                    }
+                    },
+                    Actions::SwipeRegiment(d) => {
+                        event_writer2.11.send(RegimentSwipeEvent(*d));
+                    },
                     _ => {},
                 }
 
@@ -3261,6 +3278,1088 @@ pub fn land_army_settings_system(
                 commands.entity(army_settings_nodes.land_army_settings_node).insert(Visibility::Visible);
                 army_settings_nodes.is_land_army_settings_visible = true;
             }
+        }
+    }
+}
+
+pub fn regiment_swipe_system(
+    mut event_reader: EventReader<RegimentSwipeEvent>,
+    mut commands: Commands,
+    mut army_settings_nodes: ResMut<ArmySettingsNodes>,
+    ui_button_nodes: Res<UiButtonNodes>,
+    player_data: Res<PlayerData>,
+    armies: Res<Armies>,
+){
+    for event in event_reader.read() {
+        let mut current_regiment = army_settings_nodes.current_regiment;
+        if event.0 == 0 {
+            current_regiment -= 1;
+
+            if current_regiment < 1 {
+                current_regiment = ARMY_SIZE as i32;
+            }
+        } else {
+            current_regiment += 1;
+
+            if current_regiment > ARMY_SIZE as i32 {
+                current_regiment = 1;
+            }
+        }
+
+        army_settings_nodes.current_regiment = current_regiment;
+
+        let mut prefix = "".to_string();
+
+        match current_regiment {
+            1 => {
+                prefix = "1st".to_string();
+            },
+            2 => {
+                prefix = "2nd".to_string();
+            },
+            3 => {
+                prefix = "3rd".to_string();
+            },
+            _ => {
+                prefix = current_regiment.to_string();
+            }
+        }
+        
+        commands.entity(army_settings_nodes.regiments_row).despawn_descendants();
+        commands.entity(army_settings_nodes.battalions_row).despawn_descendants();
+        commands.entity(army_settings_nodes.companies_row).despawn_descendants();
+        commands.entity(army_settings_nodes.platoons_row).despawn_descendants();
+        commands.entity(army_settings_nodes.squads_row).despawn_descendants();
+
+        army_settings_nodes.company_buttons.0 = -1;
+        army_settings_nodes.company_type_dropdown_lists.0 = -1;
+        army_settings_nodes.squad_specialization_dropdown_lists.0 = -1;
+
+        if let Some(team_army) = armies.0.get(&player_data.team) {
+            commands.entity(army_settings_nodes.regiments_row).with_children(|parent| {
+                parent.spawn(
+                    NodeBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2. - ui_button_nodes.button_size * 2. / 2.),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: prefix + " Regiment",
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                });
+            });
+
+            commands.entity(army_settings_nodes.battalions_row).with_children(|parent| {
+                parent.spawn(
+                    NodeBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                - ui_button_nodes.button_size * 2. / 2.
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.1
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.5
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.1
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "1st Battalion".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                });
+
+                parent.spawn(
+                    NodeBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                - ui_button_nodes.button_size * 2. / 2.
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "2nd Battalion".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                });
+
+                parent.spawn(
+                    NodeBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                + ui_button_nodes.button_size * 2.
+                                + ui_button_nodes.button_size * 0.1
+                                + ui_button_nodes.button_size * 2.
+                                + ui_button_nodes.button_size * 0.5
+                                + ui_button_nodes.button_size * 2. / 2.
+                                + ui_button_nodes.button_size * 0.1
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "3rd Battalion".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                });
+            });
+
+            let mut company1 = Entity::PLACEHOLDER;
+            let mut company2 = Entity::PLACEHOLDER;
+            let mut company3 = Entity::PLACEHOLDER;
+            let mut company4 = Entity::PLACEHOLDER;
+            let mut company5 = Entity::PLACEHOLDER;
+            let mut company6 = Entity::PLACEHOLDER;
+            let mut company7 = Entity::PLACEHOLDER;
+            let mut company8 = Entity::PLACEHOLDER;
+            let mut company9 = Entity::PLACEHOLDER;
+
+            let mut company_dropdown1 = Entity::PLACEHOLDER;
+            let mut company_dropdown2 = Entity::PLACEHOLDER;
+            let mut company_dropdown3 = Entity::PLACEHOLDER;
+            let mut company_dropdown4 = Entity::PLACEHOLDER;
+            let mut company_dropdown5 = Entity::PLACEHOLDER;
+            let mut company_dropdown6 = Entity::PLACEHOLDER;
+            let mut company_dropdown7 = Entity::PLACEHOLDER;
+            let mut company_dropdown8 = Entity::PLACEHOLDER;
+            let mut company_dropdown9 = Entity::PLACEHOLDER;
+
+            let mut company_types: Vec<String> = Vec::new();
+
+            let mut company_index: LimitedNumber<1, 3> = LimitedNumber::new();
+            let mut battalion_index: LimitedNumber<1, 3> = LimitedNumber::new();
+            company_index.set_value(0);
+
+            for _i in 0..9 {
+                if company_index.next() {
+                    battalion_index.next();
+                }
+
+                let squad_id = (
+                    current_regiment,
+                    battalion_index.get_value(),
+                    company_index.get_value(),
+                    1,
+                    1,
+                );
+
+                if let Some(_) = team_army.regular_squads.get(&squad_id) {
+                    company_types.push("Regular".to_string());
+                } else if let Some(_) = team_army.shock_squads.get(&squad_id) {
+                    company_types.push("Shock".to_string());
+                } else if let Some(_) = team_army.armored_squads.get(&squad_id) {
+                    company_types.push("Armored".to_string());
+                }
+            }
+
+            commands.entity(army_settings_nodes.companies_row).with_children(|parent| {
+                company1 = parent.spawn(
+                    ButtonBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                - ui_button_nodes.button_size * 2. / 2.
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.1
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.5
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.1
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.1
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .insert(
+                    ButtonAction{action: Actions::SetupCompany((0, (current_regiment, 1, 1)))}
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "1st Company".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                })
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(ui_button_nodes.button_size * 2.),
+                                height: Val::Px(ui_button_nodes.button_size * 0.4),
+                                top: Val::Px(ui_button_nodes.button_size * 1.1),
+                                left: Val::Px(0.),
+                                align_content: AlignContent::Center,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                justify_items: JustifyItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                            ..default()
+                        }
+                    )
+                    .insert(
+                        ButtonAction{action: Actions::OpenCompanyTypes((0, (current_regiment,1,1)))}
+                    )
+                    .with_children(|button_parent| {
+                        company_dropdown1 = button_parent.spawn(TextBundle {
+                            text: Text{
+                                sections: vec![TextSection {
+                                    value: company_types[0].clone(),
+                                    style: TextStyle {
+                                        font_size: 30.,
+                                        ..default()
+                                    },
+                                    ..default()
+                                }],
+                                justify: JustifyText::Center,
+                                ..default()
+                            },
+                            ..default()
+                        }).id();
+                    });
+                })
+                .id();
+
+                company2 = parent.spawn(
+                    ButtonBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                - ui_button_nodes.button_size * 2. / 2.
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.1
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.5
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.1
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .insert(
+                    ButtonAction{action: Actions::SetupCompany((1, (current_regiment, 1, 2)))}
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "2nd Company".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                })
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(ui_button_nodes.button_size * 2.),
+                                height: Val::Px(ui_button_nodes.button_size * 0.4),
+                                top: Val::Px(ui_button_nodes.button_size * 1.1),
+                                left: Val::Px(0.),
+                                align_content: AlignContent::Center,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                justify_items: JustifyItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                            ..default()
+                        }
+                    )
+                    .insert(
+                        ButtonAction{action: Actions::OpenCompanyTypes((1, (current_regiment, 1, 2)))}
+                    )
+                    .with_children(|button_parent| {
+                        company_dropdown2 = button_parent.spawn(TextBundle {
+                            text: Text{
+                                sections: vec![TextSection {
+                                    value: company_types[1].clone(),
+                                    style: TextStyle {
+                                        font_size: 30.,
+                                        ..default()
+                                    },
+                                    ..default()
+                                }],
+                                justify: JustifyText::Center,
+                                ..default()
+                            },
+                            ..default()
+                        }).id();
+                    });
+                })
+                .id();
+
+                company3 = parent.spawn(
+                    ButtonBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                - ui_button_nodes.button_size * 2. / 2.
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.1
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.5
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .insert(
+                    ButtonAction{action: Actions::SetupCompany((2, (current_regiment, 1, 3)))}
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "3rd Company".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                })
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(ui_button_nodes.button_size * 2.),
+                                height: Val::Px(ui_button_nodes.button_size * 0.4),
+                                top: Val::Px(ui_button_nodes.button_size * 1.1),
+                                left: Val::Px(0.),
+                                align_content: AlignContent::Center,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                justify_items: JustifyItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                            ..default()
+                        }
+                    )
+                    .insert(
+                        ButtonAction{action: Actions::OpenCompanyTypes((2, (current_regiment, 1, 3)))}
+                    )
+                    .with_children(|button_parent| {
+                        company_dropdown3 = button_parent.spawn(TextBundle {
+                            text: Text{
+                                sections: vec![TextSection {
+                                    value: company_types[2].clone(),
+                                    style: TextStyle {
+                                        font_size: 30.,
+                                        ..default()
+                                    },
+                                    ..default()
+                                }],
+                                justify: JustifyText::Center,
+                                ..default()
+                            },
+                            ..default()
+                        }).id();
+                    });
+                })
+                .id();
+
+                company4 = parent.spawn(
+                    ButtonBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                - ui_button_nodes.button_size * 2. / 2.
+                                - ui_button_nodes.button_size * 2.
+                                - ui_button_nodes.button_size * 0.1
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .insert(
+                    ButtonAction{action: Actions::SetupCompany((3, (current_regiment, 2, 1)))}
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "1st Company".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                })
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(ui_button_nodes.button_size * 2.),
+                                height: Val::Px(ui_button_nodes.button_size * 0.4),
+                                top: Val::Px(ui_button_nodes.button_size * 1.1),
+                                left: Val::Px(0.),
+                                align_content: AlignContent::Center,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                justify_items: JustifyItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                            ..default()
+                        }
+                    )
+                    .insert(
+                        ButtonAction{action: Actions::OpenCompanyTypes((3, (current_regiment, 2, 1)))}
+                    )
+                    .with_children(|button_parent| {
+                        company_dropdown4 = button_parent.spawn(TextBundle {
+                            text: Text{
+                                sections: vec![TextSection {
+                                    value: company_types[3].clone(),
+                                    style: TextStyle {
+                                        font_size: 30.,
+                                        ..default()
+                                    },
+                                    ..default()
+                                }],
+                                justify: JustifyText::Center,
+                                ..default()
+                            },
+                            ..default()
+                        }).id();
+                    });
+                })
+                .id();
+
+                company5 = parent.spawn(
+                    ButtonBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                - ui_button_nodes.button_size * 2. / 2.
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .insert(
+                    ButtonAction{action: Actions::SetupCompany((4, (current_regiment, 2, 2)))}
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "2nd Company".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                })
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(ui_button_nodes.button_size * 2.),
+                                height: Val::Px(ui_button_nodes.button_size * 0.4),
+                                top: Val::Px(ui_button_nodes.button_size * 1.1),
+                                left: Val::Px(0.),
+                                align_content: AlignContent::Center,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                justify_items: JustifyItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                            ..default()
+                        }
+                    )
+                    .insert(
+                        ButtonAction{action: Actions::OpenCompanyTypes((4, (current_regiment, 2, 2)))}
+                    )
+                    .with_children(|button_parent| {
+                        company_dropdown5 = button_parent.spawn(TextBundle {
+                            text: Text{
+                                sections: vec![TextSection {
+                                    value: company_types[4].clone(),
+                                    style: TextStyle {
+                                        font_size: 30.,
+                                        ..default()
+                                    },
+                                    ..default()
+                                }],
+                                justify: JustifyText::Center,
+                                ..default()
+                            },
+                            ..default()
+                        }).id();
+                    });
+                })
+                .id();
+
+                company6 = parent.spawn(
+                    ButtonBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                + ui_button_nodes.button_size * 2. / 2.
+                                + ui_button_nodes.button_size * 0.1
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .insert(
+                    ButtonAction{action: Actions::SetupCompany((5, (current_regiment, 2, 3)))}
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "3rd Company".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                })
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(ui_button_nodes.button_size * 2.),
+                                height: Val::Px(ui_button_nodes.button_size * 0.4),
+                                top: Val::Px(ui_button_nodes.button_size * 1.1),
+                                left: Val::Px(0.),
+                                align_content: AlignContent::Center,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                justify_items: JustifyItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                            ..default()
+                        }
+                    )
+                    .insert(
+                        ButtonAction{action: Actions::OpenCompanyTypes((5, (current_regiment, 2, 3)))}
+                    )
+                    .with_children(|button_parent| {
+                        company_dropdown6 = button_parent.spawn(TextBundle {
+                            text: Text{
+                                sections: vec![TextSection {
+                                    value: company_types[5].clone(),
+                                    style: TextStyle {
+                                        font_size: 30.,
+                                        ..default()
+                                    },
+                                    ..default()
+                                }],
+                                justify: JustifyText::Center,
+                                ..default()
+                            },
+                            ..default()
+                        }).id();
+                    });
+                })
+                .id();
+
+                company7 = parent.spawn(
+                    ButtonBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                + ui_button_nodes.button_size * 2.
+                                + ui_button_nodes.button_size * 0.1
+                                + ui_button_nodes.button_size * 2. / 2.
+                                + ui_button_nodes.button_size * 0.5
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .insert(
+                    ButtonAction{action: Actions::SetupCompany((6, (current_regiment, 3, 1)))}
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "1st Company".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                })
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(ui_button_nodes.button_size * 2.),
+                                height: Val::Px(ui_button_nodes.button_size * 0.4),
+                                top: Val::Px(ui_button_nodes.button_size * 1.1),
+                                left: Val::Px(0.),
+                                align_content: AlignContent::Center,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                justify_items: JustifyItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                            ..default()
+                        }
+                    )
+                    .insert(
+                        ButtonAction{action: Actions::OpenCompanyTypes((6, (current_regiment, 3, 1)))}
+                    )
+                    .with_children(|button_parent| {
+                        company_dropdown7 = button_parent.spawn(TextBundle {
+                            text: Text{
+                                sections: vec![TextSection {
+                                    value: company_types[6].clone(),
+                                    style: TextStyle {
+                                        font_size: 30.,
+                                        ..default()
+                                    },
+                                    ..default()
+                                }],
+                                justify: JustifyText::Center,
+                                ..default()
+                            },
+                            ..default()
+                        }).id();
+                    });
+                })
+                .id();
+
+                company8 = parent.spawn(
+                    ButtonBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                + ui_button_nodes.button_size * 2.
+                                + ui_button_nodes.button_size * 0.1
+                                + ui_button_nodes.button_size * 2.
+                                + ui_button_nodes.button_size * 0.5
+                                + ui_button_nodes.button_size * 2. / 2.
+                                + ui_button_nodes.button_size * 0.1
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .insert(
+                    ButtonAction{action: Actions::SetupCompany((7, (current_regiment, 3, 2)))}
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "2nd Company".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                })
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(ui_button_nodes.button_size * 2.),
+                                height: Val::Px(ui_button_nodes.button_size * 0.4),
+                                top: Val::Px(ui_button_nodes.button_size * 1.1),
+                                left: Val::Px(0.),
+                                align_content: AlignContent::Center,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                justify_items: JustifyItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                            ..default()
+                        }
+                    )
+                    .insert(
+                        ButtonAction{action: Actions::OpenCompanyTypes((7, (current_regiment, 3, 2)))}
+                    )
+                    .with_children(|button_parent| {
+                        company_dropdown8 = button_parent.spawn(TextBundle {
+                            text: Text{
+                                sections: vec![TextSection {
+                                    value: company_types[7].clone(),
+                                    style: TextStyle {
+                                        font_size: 30.,
+                                        ..default()
+                                    },
+                                    ..default()
+                                }],
+                                justify: JustifyText::Center,
+                                ..default()
+                            },
+                            ..default()
+                        }).id();
+                    });
+                })
+                .id();
+
+                company9 = parent.spawn(
+                    ButtonBundle {
+                        style: Style {
+                            position_type: PositionType::Absolute,
+                            width: Val::Px(ui_button_nodes.button_size * 2.),
+                            height: Val::Px(ui_button_nodes.button_size),
+                            top: Val::Px(army_settings_nodes.land_army_settings_node_height as f32 / 6. * 0.4 - ui_button_nodes.button_size / 2.),
+                            left: Val::Px(
+                                army_settings_nodes.land_army_settings_node_width as f32 * 0.8 / 2.
+                                + ui_button_nodes.button_size * 2.
+                                + ui_button_nodes.button_size * 0.1
+                                + ui_button_nodes.button_size * 2.
+                                + ui_button_nodes.button_size * 0.5
+                                + ui_button_nodes.button_size * 2.
+                                + ui_button_nodes.button_size * 0.1
+                                + ui_button_nodes.button_size * 2. / 2.
+                                + ui_button_nodes.button_size * 0.1
+                            ),
+                            align_content: AlignContent::Center,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            justify_items: JustifyItems::Center,
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                        ..default()
+                    }
+                )
+                .insert(
+                    ButtonAction{action: Actions::SetupCompany((8, (current_regiment, 3, 3)))}
+                )
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(TextBundle {
+                        text: Text{
+                            sections: vec![TextSection {
+                                value: "3rd Company".to_string(),
+                                style: TextStyle {
+                                    font_size: 30.,
+                                    ..default()
+                                },
+                                ..default()
+                            }],
+                            justify: JustifyText::Center,
+                            ..default()
+                        },
+                        ..default()
+                    });
+                })
+                .with_children(|bar_parent| {
+                    bar_parent.spawn(
+                        ButtonBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(ui_button_nodes.button_size * 2.),
+                                height: Val::Px(ui_button_nodes.button_size * 0.4),
+                                top: Val::Px(ui_button_nodes.button_size * 1.1),
+                                left: Val::Px(0.),
+                                align_content: AlignContent::Center,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                justify_items: JustifyItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                            ..default()
+                        }
+                    )
+                    .insert(
+                        ButtonAction{action: Actions::OpenCompanyTypes((8, (current_regiment, 3, 3)))}
+                    )
+                    .with_children(|button_parent| {
+                        company_dropdown9 = button_parent.spawn(TextBundle {
+                            text: Text{
+                                sections: vec![TextSection {
+                                    value: company_types[8].clone(),
+                                    style: TextStyle {
+                                        font_size: 30.,
+                                        ..default()
+                                    },
+                                    ..default()
+                                }],
+                                justify: JustifyText::Center,
+                                ..default()
+                            },
+                            ..default()
+                        }).id();
+                    });
+                })
+                .id();
+            });
+
+            army_settings_nodes.company_buttons.2 = vec![
+                company1,
+                company2,
+                company3,
+                company4,
+                company5,
+                company6,
+                company7,
+                company8,
+                company9,
+            ];
+
+            army_settings_nodes.company_type_dropdown_lists.1 = vec![
+                company_dropdown1,
+                company_dropdown2,
+                company_dropdown3,
+                company_dropdown4,
+                company_dropdown5,
+                company_dropdown6,
+                company_dropdown7,
+                company_dropdown8,
+                company_dropdown9,
+            ];
         }
     }
 }
@@ -5236,6 +6335,11 @@ pub fn choose_squad_specialization(
     mut army_settings_nodes: ResMut<ArmySettingsNodes>,
     player_data: Res<PlayerData>,
     mut event_reader: EventReader<ChooseSquadSpecializationEvent>,
+    network_status: Res<NetworkStatus>,
+    mut client: ResMut<QuinnetClient>,
+    entity_maps: Res<EntityMaps>,
+    mut server: ResMut<QuinnetServer>,
+    clients: Res<ClientList>,
 ){
     for event in event_reader.read() {
         army_settings_nodes.squad_specialization_dropdown_lists.0 = -1;
@@ -5257,6 +6361,240 @@ pub fn choose_squad_specialization(
                 squad.1 = event.0.0.0.clone();
             } else if let Some(squad) = team_army.armored_squads.get_mut(&event.0.1) {
                 squad.1 = event.0.0.0.clone();
+            }
+
+            if matches!(network_status.0, NetworkStatuses::Client) {
+                let mut regular_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableRegularSquad, String, Entity))> = Vec::new();
+                let mut shock_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableShockSquad, String, Entity))> = Vec::new();
+                let mut armored_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableArmoredSquad, String, Entity))> = Vec::new();
+                let mut artillery_units: (Vec<(i32, ((Option<Entity>, String), Entity))>, Entity) = (Vec::new(), Entity::PLACEHOLDER);
+                let mut engineers: Vec<(i32, ((Option<Entity>, String), Entity))> = Vec::new();
+
+                for reg_p in team_army.regular_squads.iter() {
+                    let mut soldiers: Vec<Entity> = Vec::new();
+                    let mut specialists: Vec<Entity> = Vec::new();
+                    let mut squad_leader = Entity::PLACEHOLDER;
+
+                    for soldier in reg_p.1.0.0.0.set.iter() {
+                        if let Some(server_entity) = entity_maps.client_to_server.get(soldier) {
+                            soldiers.push(*server_entity);
+                        }
+                    }
+
+                    for specialist in reg_p.1.0.0.1.set.iter() {
+                        if let Some(server_entity) = entity_maps.client_to_server.get(specialist) {
+                            specialists.push(*server_entity);
+                        }
+                    }
+
+                    if let Some(server_entity) = entity_maps.client_to_server.get(&reg_p.1.2) {
+                        squad_leader = *server_entity;
+                    }
+
+                    regular_platoons.push((*reg_p.0, (
+                        SerializableRegularSquad((
+                            soldiers,
+                            specialists,
+                        )),
+                        reg_p.1.1.clone(),
+                        squad_leader,
+                    )));
+                }
+
+                for shock_p in team_army.shock_squads.iter() {
+                    let mut soldiers: Vec<Entity> = Vec::new();
+                    let mut specialists: Vec<Entity> = Vec::new();
+                    let mut squad_leader = Entity::PLACEHOLDER;
+
+                    for soldier in shock_p.1.0.0.0.set.iter() {
+                        if let Some(server_entity) = entity_maps.client_to_server.get(soldier) {
+                            soldiers.push(*server_entity);
+                        }
+                    }
+
+                    for specialist in shock_p.1.0.0.1.set.iter() {
+                        if let Some(server_entity) = entity_maps.client_to_server.get(specialist) {
+                            specialists.push(*server_entity);
+                        }
+                    }
+
+                    if let Some(server_entity) = entity_maps.client_to_server.get(&shock_p.1.2) {
+                        squad_leader = *server_entity;
+                    }
+
+                    shock_platoons.push((*shock_p.0, (
+                        SerializableShockSquad((
+                            soldiers,
+                            specialists,
+                        )),
+                        shock_p.1.1.clone(),
+                        squad_leader,
+                    )));
+                }
+
+                for arm_p in team_army.armored_squads.iter() {
+                    let mut vehicles: Vec<Entity> = Vec::new();
+                    let mut squad_leader = Entity::PLACEHOLDER;
+
+                    for vehicle in arm_p.1.0.0.set.iter() {
+                        if let Some(server_entity) = entity_maps.client_to_server.get(vehicle) {
+                            vehicles.push(*server_entity);
+                        }
+                    }
+
+                    if let Some(server_entity) = entity_maps.client_to_server.get(&arm_p.1.2) {
+                        squad_leader = *server_entity;
+                    }
+
+                    armored_platoons.push((*arm_p.0, (
+                        SerializableArmoredSquad(
+                            vehicles,
+                        ),
+                        arm_p.1.1.clone(),
+                        squad_leader,
+                    )));
+                }
+
+                for art in team_army.artillery_units.0.iter() {
+                    let mut art_option = None;
+                    if let Some(some_unit) = art.1.0.0 {
+                        if let Some(client_entity) = entity_maps.client_to_server.get(&some_unit) {
+                            art_option = Some(client_entity);
+                        }
+                    }
+
+                    artillery_units.0.push((*art.0, ((art_option.copied(), art.1.0.1.clone()), art.1.1)));
+                }
+
+                for eng in team_army.engineers.iter() {
+                    let mut eng_option = None;
+                    if let Some(some_unit) = eng.1.0.0 {
+                        if let Some(client_entity) = entity_maps.client_to_server.get(&some_unit) {
+                            eng_option = Some(client_entity);
+                        }
+                    }
+
+                    engineers.push((*eng.0, ((eng_option.copied(), eng.1.0.1.clone()), eng.1.1)));
+                }
+
+                let army = SerializableArmyObject{
+                    regular_platoons,
+                    shock_platoons,
+                    armored_platoons,
+                    artillery_units,
+                    engineers,
+                };
+
+                let mut channel_id = 30;
+                while channel_id <= 59 {
+                    if let Err(_) = client.connection_mut().send_message_on(channel_id, ClientMessage::ClientArmyChanged { army: army.clone()}){
+                        channel_id += 1;
+                    } else {
+                        break;
+                    }
+                }
+            } else if matches!(network_status.0, NetworkStatuses::Host) {
+                let mut regular_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableRegularSquad, String, Entity))> = Vec::new();
+                let mut shock_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableShockSquad, String, Entity))> = Vec::new();
+                let mut armored_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableArmoredSquad, String, Entity))> = Vec::new();
+                let mut artillery_units: (Vec<(i32, ((Option<Entity>, String), Entity))>, Entity) = (Vec::new(), Entity::PLACEHOLDER);
+                let mut engineers: Vec<(i32, ((Option<Entity>, String), Entity))> = Vec::new();
+
+                for reg_p in team_army.regular_squads.iter() {
+                    let mut soldiers: Vec<Entity> = Vec::new();
+                    let mut specialists: Vec<Entity> = Vec::new();
+                    let mut squad_leader = Entity::PLACEHOLDER;
+
+                    for soldier in reg_p.1.0.0.0.set.iter() {
+                        soldiers.push(*soldier);
+                    }
+
+                    for specialist in reg_p.1.0.0.1.set.iter() {
+                        specialists.push(*specialist);
+                    }
+
+                    squad_leader = reg_p.1.2;
+
+                    regular_platoons.push((*reg_p.0, (
+                        SerializableRegularSquad((
+                            soldiers,
+                            specialists,
+                        )),
+                        reg_p.1.1.clone(),
+                        squad_leader,
+                    )));
+                }
+
+                for shock_p in team_army.shock_squads.iter() {
+                    let mut soldiers: Vec<Entity> = Vec::new();
+                    let mut specialists: Vec<Entity> = Vec::new();
+                    let mut squad_leader = Entity::PLACEHOLDER;
+
+                    for soldier in shock_p.1.0.0.0.set.iter() {
+                        soldiers.push(*soldier);
+                    }
+
+                    for specialist in shock_p.1.0.0.1.set.iter() {
+                        specialists.push(*specialist);
+                    }
+
+                    squad_leader = shock_p.1.2;
+
+                    shock_platoons.push((*shock_p.0, (
+                        SerializableShockSquad((
+                            soldiers,
+                            specialists,
+                        )),
+                        shock_p.1.1.clone(),
+                        squad_leader,
+                    )));
+                }
+
+                for arm_p in team_army.armored_squads.iter() {
+                    let mut vehicles: Vec<Entity> = Vec::new();
+                    let mut squad_leader = Entity::PLACEHOLDER;
+
+                    for vehicle in arm_p.1.0.0.set.iter() {
+                        vehicles.push(*vehicle);
+                    }
+
+                    squad_leader = arm_p.1.2;
+
+                    armored_platoons.push((*arm_p.0, (
+                        SerializableArmoredSquad(
+                            vehicles,
+                        ),
+                        arm_p.1.1.clone(),
+                        squad_leader,
+                    )));
+                }
+
+                for art in team_army.artillery_units.0.iter() {
+                    artillery_units.0.push((*art.0, ((art.1.0.0, art.1.0.1.clone()), art.1.1)));
+                }
+
+                for eng in team_army.engineers.iter() {
+                    engineers.push((*eng.0, ((eng.1.0.0, eng.1.0.1.clone()), eng.1.1)));
+                }
+
+                let army = SerializableArmyObject{
+                    regular_platoons,
+                    shock_platoons,
+                    armored_platoons,
+                    artillery_units,
+                    engineers,
+                };
+
+                let mut channel_id = 30;
+                while channel_id <= 59 {
+                    if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::HostArmyChanged {
+                        army: army.clone(),
+                    }){
+                        channel_id += 1;
+                    } else {
+                        break;
+                    }
+                }
             }
         }
 
@@ -5691,6 +7029,11 @@ pub fn choose_company_type(
     mut army_settings_nodes: ResMut<ArmySettingsNodes>,
     player_data: Res<PlayerData>,
     mut event_reader: EventReader<ChooseCompanyTypeEvent>,
+    network_status: Res<NetworkStatus>,
+    mut client: ResMut<QuinnetClient>,
+    entity_maps: Res<EntityMaps>,
+    mut server: ResMut<QuinnetServer>,
+    clients: Res<ClientList>,
 ){
     for event in event_reader.read() {
         if let Some(team_army) = armies.0.get_mut(&player_data.team) {
@@ -5829,6 +7172,240 @@ pub fn choose_company_type(
                     );
                 },
                 _ => {},
+            }
+
+            if matches!(network_status.0, NetworkStatuses::Client) {
+                let mut regular_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableRegularSquad, String, Entity))> = Vec::new();
+                let mut shock_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableShockSquad, String, Entity))> = Vec::new();
+                let mut armored_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableArmoredSquad, String, Entity))> = Vec::new();
+                let mut artillery_units: (Vec<(i32, ((Option<Entity>, String), Entity))>, Entity) = (Vec::new(), Entity::PLACEHOLDER);
+                let mut engineers: Vec<(i32, ((Option<Entity>, String), Entity))> = Vec::new();
+
+                for reg_p in team_army.regular_squads.iter() {
+                    let mut soldiers: Vec<Entity> = Vec::new();
+                    let mut specialists: Vec<Entity> = Vec::new();
+                    let mut squad_leader = Entity::PLACEHOLDER;
+
+                    for soldier in reg_p.1.0.0.0.set.iter() {
+                        if let Some(server_entity) = entity_maps.client_to_server.get(soldier) {
+                            soldiers.push(*server_entity);
+                        }
+                    }
+
+                    for specialist in reg_p.1.0.0.1.set.iter() {
+                        if let Some(server_entity) = entity_maps.client_to_server.get(specialist) {
+                            specialists.push(*server_entity);
+                        }
+                    }
+
+                    if let Some(server_entity) = entity_maps.client_to_server.get(&reg_p.1.2) {
+                        squad_leader = *server_entity;
+                    }
+
+                    regular_platoons.push((*reg_p.0, (
+                        SerializableRegularSquad((
+                            soldiers,
+                            specialists,
+                        )),
+                        reg_p.1.1.clone(),
+                        squad_leader,
+                    )));
+                }
+
+                for shock_p in team_army.shock_squads.iter() {
+                    let mut soldiers: Vec<Entity> = Vec::new();
+                    let mut specialists: Vec<Entity> = Vec::new();
+                    let mut squad_leader = Entity::PLACEHOLDER;
+
+                    for soldier in shock_p.1.0.0.0.set.iter() {
+                        if let Some(server_entity) = entity_maps.client_to_server.get(soldier) {
+                            soldiers.push(*server_entity);
+                        }
+                    }
+
+                    for specialist in shock_p.1.0.0.1.set.iter() {
+                        if let Some(server_entity) = entity_maps.client_to_server.get(specialist) {
+                            specialists.push(*server_entity);
+                        }
+                    }
+
+                    if let Some(server_entity) = entity_maps.client_to_server.get(&shock_p.1.2) {
+                        squad_leader = *server_entity;
+                    }
+
+                    shock_platoons.push((*shock_p.0, (
+                        SerializableShockSquad((
+                            soldiers,
+                            specialists,
+                        )),
+                        shock_p.1.1.clone(),
+                        squad_leader,
+                    )));
+                }
+
+                for arm_p in team_army.armored_squads.iter() {
+                    let mut vehicles: Vec<Entity> = Vec::new();
+                    let mut squad_leader = Entity::PLACEHOLDER;
+
+                    for vehicle in arm_p.1.0.0.set.iter() {
+                        if let Some(server_entity) = entity_maps.client_to_server.get(vehicle) {
+                            vehicles.push(*server_entity);
+                        }
+                    }
+
+                    if let Some(server_entity) = entity_maps.client_to_server.get(&arm_p.1.2) {
+                        squad_leader = *server_entity;
+                    }
+
+                    armored_platoons.push((*arm_p.0, (
+                        SerializableArmoredSquad(
+                            vehicles,
+                        ),
+                        arm_p.1.1.clone(),
+                        squad_leader,
+                    )));
+                }
+
+                for art in team_army.artillery_units.0.iter() {
+                    let mut art_option = None;
+                    if let Some(some_unit) = art.1.0.0 {
+                        if let Some(client_entity) = entity_maps.client_to_server.get(&some_unit) {
+                            art_option = Some(client_entity);
+                        }
+                    }
+
+                    artillery_units.0.push((*art.0, ((art_option.copied(), art.1.0.1.clone()), art.1.1)));
+                }
+
+                for eng in team_army.engineers.iter() {
+                    let mut eng_option = None;
+                    if let Some(some_unit) = eng.1.0.0 {
+                        if let Some(client_entity) = entity_maps.client_to_server.get(&some_unit) {
+                            eng_option = Some(client_entity);
+                        }
+                    }
+
+                    engineers.push((*eng.0, ((eng_option.copied(), eng.1.0.1.clone()), eng.1.1)));
+                }
+
+                let army = SerializableArmyObject{
+                    regular_platoons,
+                    shock_platoons,
+                    armored_platoons,
+                    artillery_units,
+                    engineers,
+                };
+
+                let mut channel_id = 30;
+                while channel_id <= 59 {
+                    if let Err(_) = client.connection_mut().send_message_on(channel_id, ClientMessage::ClientArmyChanged { army: army.clone()}){
+                        channel_id += 1;
+                    } else {
+                        break;
+                    }
+                }
+            } else if matches!(network_status.0, NetworkStatuses::Host) {
+                let mut regular_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableRegularSquad, String, Entity))> = Vec::new();
+                let mut shock_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableShockSquad, String, Entity))> = Vec::new();
+                let mut armored_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableArmoredSquad, String, Entity))> = Vec::new();
+                let mut artillery_units: (Vec<(i32, ((Option<Entity>, String), Entity))>, Entity) = (Vec::new(), Entity::PLACEHOLDER);
+                let mut engineers: Vec<(i32, ((Option<Entity>, String), Entity))> = Vec::new();
+
+                for reg_p in team_army.regular_squads.iter() {
+                    let mut soldiers: Vec<Entity> = Vec::new();
+                    let mut specialists: Vec<Entity> = Vec::new();
+                    let mut squad_leader = Entity::PLACEHOLDER;
+
+                    for soldier in reg_p.1.0.0.0.set.iter() {
+                        soldiers.push(*soldier);
+                    }
+
+                    for specialist in reg_p.1.0.0.1.set.iter() {
+                        specialists.push(*specialist);
+                    }
+
+                    squad_leader = reg_p.1.2;
+
+                    regular_platoons.push((*reg_p.0, (
+                        SerializableRegularSquad((
+                            soldiers,
+                            specialists,
+                        )),
+                        reg_p.1.1.clone(),
+                        squad_leader,
+                    )));
+                }
+
+                for shock_p in team_army.shock_squads.iter() {
+                    let mut soldiers: Vec<Entity> = Vec::new();
+                    let mut specialists: Vec<Entity> = Vec::new();
+                    let mut squad_leader = Entity::PLACEHOLDER;
+
+                    for soldier in shock_p.1.0.0.0.set.iter() {
+                        soldiers.push(*soldier);
+                    }
+
+                    for specialist in shock_p.1.0.0.1.set.iter() {
+                        specialists.push(*specialist);
+                    }
+
+                    squad_leader = shock_p.1.2;
+
+                    shock_platoons.push((*shock_p.0, (
+                        SerializableShockSquad((
+                            soldiers,
+                            specialists,
+                        )),
+                        shock_p.1.1.clone(),
+                        squad_leader,
+                    )));
+                }
+
+                for arm_p in team_army.armored_squads.iter() {
+                    let mut vehicles: Vec<Entity> = Vec::new();
+                    let mut squad_leader = Entity::PLACEHOLDER;
+
+                    for vehicle in arm_p.1.0.0.set.iter() {
+                        vehicles.push(*vehicle);
+                    }
+
+                    squad_leader = arm_p.1.2;
+
+                    armored_platoons.push((*arm_p.0, (
+                        SerializableArmoredSquad(
+                            vehicles,
+                        ),
+                        arm_p.1.1.clone(),
+                        squad_leader,
+                    )));
+                }
+
+                for art in team_army.artillery_units.0.iter() {
+                    artillery_units.0.push((*art.0, ((art.1.0.0, art.1.0.1.clone()), art.1.1)));
+                }
+
+                for eng in team_army.engineers.iter() {
+                    engineers.push((*eng.0, ((eng.1.0.0, eng.1.0.1.clone()), eng.1.1)));
+                }
+
+                let army = SerializableArmyObject{
+                    regular_platoons,
+                    shock_platoons,
+                    armored_platoons,
+                    artillery_units,
+                    engineers,
+                };
+
+                let mut channel_id = 30;
+                while channel_id <= 59 {
+                    if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::HostArmyChanged {
+                        army: army.clone(),
+                    }){
+                        channel_id += 1;
+                    } else {
+                        break;
+                    }
+                }
             }
         }
     }
@@ -8303,7 +9880,238 @@ pub fn main_menu_ui_system (
         EventWriter<HostNewGameEvent>,
         EventWriter<ConnectToHostedGameEvent>,
     ),
+    mut exit_events: EventWriter<AppExit>,
     mut network_status: ResMut<NetworkStatus>,
+    mut current_menu_page_id: Local<i32>,
+    mut initial_delay: Local<u128>,
+    time: Res<Time>,
+){
+    if *initial_delay < 3000 {
+        *initial_delay += time.delta().as_millis();
+        return;
+    }
+
+    let ctx = contexts.ctx_mut();
+    let window = windows_q.single();
+    let window_width = window.physical_width() as f32;
+    let window_height = window.physical_height() as f32;
+
+    match *current_menu_page_id {
+        0 => {
+            let main_menu_node_width = window_width * 0.8;
+            let main_menu_node_height = window_height * 0.8;
+
+            let x = (window_width - main_menu_node_width) / 2.;
+            let y = (window_height - main_menu_node_height) / 4.;
+            
+            egui::Window::new("Main menu")
+            .default_pos(egui::Pos2::new(x, y))
+            .default_size(egui::Vec2::new(main_menu_node_width, main_menu_node_height))
+            .collapsible(false)
+            .resizable(false)
+            .movable(false)
+            .show(&ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(main_menu_node_height * 0.05);
+
+                    if ui.add(
+                        egui::Button::new(
+                                egui::RichText::new("Singleplayer")
+                                .size(main_menu_node_height * 0.1)
+                                .color(egui::Color32::WHITE),
+                            )
+                            .fill(Color32::from_rgb(0, 0, 0))
+                            .stroke(Stroke{
+                                width: 0.1,
+                                color: Color32::from_rgb(255, 255, 255),
+                            })
+                            .min_size(egui::Vec2::new(main_menu_node_width * 0.8, main_menu_node_height * 0.15))
+                    ).clicked() {
+                        next_state.set(GameState::Singleplayer);
+                        event_writer.0.send(StartSingleplayerEvent);
+                        network_status.0 = NetworkStatuses::SinglePlayer;
+                    }
+
+                    ui.add_space(main_menu_node_height * 0.1);
+
+                    if ui.add(
+                        egui::Button::new(
+                                egui::RichText::new("Multiplayer")
+                                .size(main_menu_node_height * 0.1)
+                                .color(egui::Color32::WHITE),
+                            )
+                            .fill(Color32::from_rgb(0, 0, 0))
+                            .stroke(Stroke{
+                                width: 0.1,
+                                color: Color32::from_rgb(255, 255, 255),
+                            })
+                            .min_size(egui::Vec2::new(main_menu_node_width * 0.8, main_menu_node_height * 0.15))
+                    ).clicked() {
+                        *current_menu_page_id = 1;
+                    }
+
+                    ui.add_space(main_menu_node_height * 0.1);
+
+                    if ui.add(
+                        egui::Button::new(
+                                egui::RichText::new("Settings")
+                                .size(main_menu_node_height * 0.1)
+                                .color(egui::Color32::WHITE),
+                            )
+                            .fill(Color32::from_rgb(0, 0, 0))
+                            .stroke(Stroke{
+                                width: 0.1,
+                                color: Color32::from_rgb(255, 255, 255),
+                            })
+                            .min_size(egui::Vec2::new(main_menu_node_width * 0.8, main_menu_node_height * 0.15))
+                    ).clicked() {
+                    }
+
+                    ui.add_space(main_menu_node_height * 0.1);
+
+                    if ui.add(
+                        egui::Button::new(
+                                egui::RichText::new("Close the game")
+                                .size(main_menu_node_height * 0.1)
+                                .color(egui::Color32::WHITE),
+                            )
+                            .fill(Color32::from_rgb(0, 0, 0))
+                            .stroke(Stroke{
+                                width: 0.1,
+                                color: Color32::from_rgb(255, 255, 255),
+                            })
+                            .min_size(egui::Vec2::new(main_menu_node_width * 0.8, main_menu_node_height * 0.15))
+                    ).clicked() {
+                        exit_events.send(AppExit::Success);
+                    }
+
+                    ui.add_space(main_menu_node_height * 0.1);
+                });
+            });
+        }
+        1 => {
+            let main_menu_node_width = window_width * 0.8;
+            let main_menu_node_height = window_height * 0.8;
+
+            let x = (window_width - main_menu_node_width) / 2.;
+            let y = (window_height - main_menu_node_height) / 4.;
+
+            egui::Window::new("Multiplayer")
+            .default_pos(egui::Pos2::new(x, y))
+            .default_size(egui::Vec2::new(main_menu_node_width, main_menu_node_height))
+            .collapsible(false)
+            .resizable(false)
+            .movable(false)
+            .show(&ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(main_menu_node_height * 0.01);
+
+                    ui.label(
+                        egui::RichText::new("Nickname")
+                        .size(main_menu_node_height * 0.1)
+                        .color(egui::Color32::WHITE)
+                    );
+                    ui.add(
+                        egui::TextEdit::singleline(&mut ip_buffer.username)
+                            .desired_width(main_menu_node_width * 0.8)
+                            .min_size(egui::Vec2::new(main_menu_node_width * 0.8, main_menu_node_height * 0.15))
+                            .font(FontId { size: main_menu_node_height * 0.1, family: egui::FontFamily::Proportional })
+                            .text_color(egui::Color32::WHITE)
+                    );
+
+                    ui.add_space(main_menu_node_height * 0.01);
+
+                    if ui.add(
+                        egui::Button::new(
+                        egui::RichText::new("Host")
+                        .size(main_menu_node_height * 0.1)
+                        .color(egui::Color32::WHITE),
+                        )
+                        .fill(Color32::from_rgb(0, 0, 0))
+                        .stroke(Stroke{
+                            width: 0.1,
+                            color: Color32::from_rgb(255, 255, 255),
+                        })
+                        .min_size(egui::Vec2::new(main_menu_node_width * 0.8, main_menu_node_height * 0.15))
+                    ).clicked() {
+                        next_state.set(GameState::LobbyAsServer);
+                        event_writer.1.send(HostNewGameEvent);
+                        network_status.0 = NetworkStatuses::Host;
+                        
+                        *current_menu_page_id = 0;
+                    }
+
+                    ui.add_space(main_menu_node_height * 0.01);
+
+                    ui.label(
+                        egui::RichText::new("IP:Port")
+                        .size(main_menu_node_height * 0.1)
+                        .color(egui::Color32::WHITE)
+                    );
+                    ui.add(
+                        egui::TextEdit::singleline(&mut ip_buffer.ip)
+                            .desired_width(main_menu_node_width * 0.8)
+                            .min_size(egui::Vec2::new(main_menu_node_width * 0.8, main_menu_node_height * 0.15))
+                            .font(FontId { size: main_menu_node_height * 0.1, family: egui::FontFamily::Proportional })
+                            .text_color(egui::Color32::WHITE)
+                    );
+
+                    ui.add_space(main_menu_node_height * 0.01);
+
+                    if ui.add(
+                        egui::Button::new(
+                            egui::RichText::new("Connect")
+                            .size(main_menu_node_height * 0.1)
+                            .color(egui::Color32::WHITE),
+                        )
+                        .fill(Color32::from_rgb(0, 0, 0))
+                        .stroke(Stroke{
+                            width: 0.1,
+                            color: Color32::from_rgb(255, 255, 255),
+                        })
+                        .min_size(egui::Vec2::new(main_menu_node_width * 0.8, main_menu_node_height * 0.15))
+                    ).clicked() {
+                        next_state.set(GameState::LobbyAsClient);
+                        event_writer.2.send(ConnectToHostedGameEvent);
+                        network_status.0 = NetworkStatuses::Client;
+
+                        *current_menu_page_id = 0;
+                    }
+
+                    ui.add_space(main_menu_node_height * 0.01);
+
+                    if ui.add(
+                        egui::Button::new(
+                            egui::RichText::new("Back")
+                            .size(main_menu_node_height * 0.1)
+                            .color(egui::Color32::WHITE),
+                        )
+                        .fill(Color32::from_rgb(0, 0, 0))
+                        .stroke(Stroke{
+                            width: 0.1,
+                            color: Color32::from_rgb(255, 255, 255),
+                        })
+                        .min_size(egui::Vec2::new(main_menu_node_width * 0.8, main_menu_node_height * 0.15))
+                    ).clicked() {
+                        *current_menu_page_id = 0;
+                    }
+
+                    ui.add_space(main_menu_node_height * 0.01);
+                });
+            });
+        }
+        _ => {}
+    }
+}
+
+pub fn game_end_ui_system (
+    captured_settlements_record: Res<Settlements>,
+    player_data: Res<PlayerData>,
+    windows_q: Query<&Window, With<PrimaryWindow>>,
+    mut ip_buffer: ResMut<InsertedConnectionData>,
+    mut commands: Commands,
+    mut contexts: EguiContexts,
+    mut next_state: ResMut<NextState<GameState>>,
 ){
     let ctx = contexts.ctx_mut();
     let window = windows_q.single();
@@ -8311,12 +10119,12 @@ pub fn main_menu_ui_system (
     let window_height = window.physical_height() as f32;
 
     let main_menu_node_width = window_width * 0.8;
-    let main_menu_node_height = window_height * 0.8;
+    let main_menu_node_height = window_height * 0.5;
 
     let x = (window_width - main_menu_node_width) / 2.;
     let y = (window_height - main_menu_node_height) / 2.;
 
-    egui::Window::new("Main menu")
+    egui::Window::new("Game ended")
         .default_pos(egui::Pos2::new(x, y))
         .default_size(egui::Vec2::new(main_menu_node_width, main_menu_node_height))
         .collapsible(false)
@@ -8324,11 +10132,28 @@ pub fn main_menu_ui_system (
         .movable(false)
         .show(&ctx, |ui| {
             ui.vertical_centered(|ui| {
+                ui.add_space(main_menu_node_height * 0.2);
+
+                let mut text = "";
+                if let Some(team_settlements) = captured_settlements_record.0.get(&player_data.team) {
+                    if *team_settlements == 0 {
+                        text = "You've lost";
+                    } else {
+                        text = "You've won";
+                    }
+                }
+
+                ui.label(
+                    egui::RichText::new(text)
+                    .size(main_menu_node_height * 0.1)
+                    .color(egui::Color32::WHITE)
+                );
+
                 ui.add_space(main_menu_node_height * 0.05);
 
                 if ui.add(
                     egui::Button::new(
-                            egui::RichText::new("Singleplayer")
+                            egui::RichText::new("Ok")
                             .size(main_menu_node_height * 0.1)
                             .color(egui::Color32::WHITE),
                         )
@@ -8339,72 +10164,405 @@ pub fn main_menu_ui_system (
                         })
                         .min_size(egui::Vec2::new(main_menu_node_width * 0.8, main_menu_node_height * 0.15))
                 ).clicked() {
-                    next_state.set(GameState::Singleplayer);
-                    event_writer.0.send(StartSingleplayerEvent);
-                    network_status.0 = NetworkStatuses::SinglePlayer;
+                    ip_buffer.username = "".to_string();
+                    ip_buffer.ip = "".to_string();
+
+                    let mut settlements_record: HashMap<i32, i32> = HashMap::new();
+
+                    settlements_record.insert(1, VILLAGES_COUNT + CITIES_COUNT);
+                    settlements_record.insert(2, VILLAGES_COUNT + CITIES_COUNT);
+
+                    commands.insert_resource(Settlements(settlements_record));
+                    
+                    commands.insert_resource(PlayerData{
+                        team: 1,
+                        is_all_settlements_placed: false,
+                        is_ready_to_start: false,
+                    });
+                    commands.insert_resource(components::unit::TargetPosition{
+                        position: Vec3::new(0., 0., 0.),
+                    });
+                    commands.insert_resource(components::unit::SelectedUnits{
+                        platoons: HashMap::new(),
+                    });
+                    commands.insert_resource(components::camera::SelectionBounds{
+                        first_point: Vec2::ZERO,
+                        second_point: Vec2::ZERO,
+                        is_selection_active: false,
+                        is_selection_hidden: false,
+                        is_ui_hovered: false,
+                        min_x: 0.,
+                        max_x: 0.,
+                        min_y: 0.,
+                        max_y: 0.,
+                        first_point_world: Vec3::ZERO,
+                        second_point_world: Vec3::ZERO,
+                    });
+                    commands.insert_resource(components::camera::Formation{
+                        points: Vec::new(),
+                        is_formation_active: false,
+                    });
+                    commands.insert_resource(components::unit::UnitsTileMap{
+                        tiles: HashMap::new(),
+                    });
+                    commands.insert_resource(components::camera::TimerResource(Timer::from_seconds(0.5, TimerMode::Repeating)));
+                    commands.insert_resource(components::unit::AsyncPathfindingTasks{
+                        tasks: Vec::new(),
+                    });
+                    commands.insert_resource(components::building::SelectedBuildings{
+                        buildings: Vec::new(),
+                    });
+                    commands.insert_resource(components::ui_manager::UiButtonNodes {
+                        left_bottom_node: Entity::PLACEHOLDER,
+                        left_bottom_node_rows: Vec::new(),
+                        middle_bottom_node: Entity::PLACEHOLDER,
+                        middle_bottom_node_row: Entity::PLACEHOLDER,
+                        margin: 0.,
+                        button_size: 0.,
+                        is_left_bottom_node_visible: false,
+                        is_middle_bottom_node_visible: false,
+                        middle_upper_node: Entity::PLACEHOLDER,
+                        middle_upper_node_row: Entity::PLACEHOLDER,
+                        is_middle_upper_node_visible: false,
+                        middle_upper_node_width: 0.,
+                        symbol_level_dropdown_list: Entity::PLACEHOLDER,
+                        right_bottom_node: Entity::PLACEHOLDER,
+                        right_bottom_node_rows: Vec::new(),
+                        hint_node: Entity::PLACEHOLDER,
+                        hint_text: Entity::PLACEHOLDER,
+                    });
+                    commands.insert_resource(components::unit::Armies(HashMap::new()));
+                    commands.insert_resource(ArmySettingsNodes {
+                        land_army_settings_node: Entity::PLACEHOLDER,
+                        is_land_army_settings_visible: false,
+                        batallion_type_dropdown_lists: Vec::new(),
+                        platoons_row: Entity::PLACEHOLDER,
+                        squads_row: Entity::PLACEHOLDER,
+                        regiments_row: Entity::PLACEHOLDER,
+                        battalions_row: Entity::PLACEHOLDER,
+                        companies_row: Entity::PLACEHOLDER,
+                        land_army_settings_node_height: 0,
+                        land_army_settings_node_width: 0,
+                        company_buttons: (-1, Entity::PLACEHOLDER, Vec::new()),
+                        platoon_specialization_dropdown_lists: Vec::new(),
+                        platoon_specialization_cache: Vec::new(),
+                        toggle_production_button: (Entity::PLACEHOLDER, LimitedNumber::new()),
+                        last_battalion_button_index: -1,
+                        last_battalion_type_dropdown_list_index: -1,
+                        last_platoon_specialization_dropdown_list_index: -1,
+                        current_regiment: 1,
+                        squad_specialization_dropdown_lists: (-1, Vec::new()),
+                        company_type_dropdown_lists: (-1, Vec::new()),
+                    });
+                    commands.insert_resource(Specializations{
+                        regular: Vec::new(),
+                        shock: Vec::new(),
+                        armored: Vec::new(),
+                    });
+                    commands.insert_resource(ProductionState{
+                        is_allowed: HashMap::new(),
+                    });
+                    commands.insert_resource(ProductionQueue(HashMap::new()));
+                    commands.insert_resource(BuildingsList(
+                        Vec::new(),
+                    ));
+                    commands.insert_resource(BuildingPlacementCache {
+                        is_active: false,
+                        current_building: BuildingsBundles::None,
+                        current_building_y_adjustment: 0.,
+                        current_building_check_collider: Collider::ball(0.),
+                        needed_buildpower: 0,
+                        name: "".to_string(),
+                        build_distance: 0.,
+                        resource_cost: 0,
+                    });
+                    commands.insert_resource(UnactivatedBlueprints(HashMap::new()));
+                    commands.insert_resource(GameStage(GameStages::SettlementsSetup));
+                    commands.insert_resource(SettlementsLeft(Vec::new()));
+                    commands.insert_resource(IsArtilleryDesignationActive(false));
+                    commands.insert_resource(IsUnitDeselectionAllowed(true));
+                    commands.insert_resource(AsyncTaskPools{
+                        manual_pathfinding_pool: TaskPool::new(),
+                        logistic_pathfinding_pool: TaskPool::new(),
+                        extra_pathfinding_pool: TaskPool::new(),
+                    });
+                    commands.insert_resource(NetworkStatus(NetworkStatuses::SinglePlayer));
+                    commands.insert_resource(InsertedConnectionData{
+                        ip: "".to_string(),
+                        username: "".to_string(),
+                    });
+                    commands.insert_resource(ClientList(HashMap::new()));
+                    commands.insert_resource(PlayerList(HashMap::new()));
+                    commands.insert_resource(EntityMaps{
+                        server_to_client: HashMap::new(),
+                        client_to_server: HashMap::new(),
+                    });
+                    commands.insert_resource(ProducableUnits{
+                        barrack_producables: HashMap::new(),
+                        factory_producables: HashMap::new(),
+                    });
+                    commands.insert_resource(UnspecifiedEntitiesToMove(Vec::new()));
+                    commands.insert_resource(UnitsToDamage(Vec::new()));
+                    commands.insert_resource(UnitsToInsertPath(Vec::new()));
+                    commands.insert_resource(InstancedMaterials{
+                        team_materials: HashMap::new(),
+                        blue_solid: Handle::default(),
+                        red_solid: Handle::default(),
+                        blue_transparent: Handle::default(),
+                        red_transparent: Handle::default(),
+                        wreck_material: Handle::default(),
+                    });
+                    commands.insert_resource(DisplayedTacicalSymbolsLevel(1));
+                    commands.insert_resource(IsUnitSelectionAllowed(true));
+                    commands.insert_resource(BuildingsDeletionStates{
+                        is_blueprints_deletion_active: false,
+                        is_buildings_deletion_active: false,
+                        is_buildings_deletion_cancelation_active: false,
+                    });
+                    commands.insert_resource(UiBlocker{
+                        is_bottom_left_node_blocked: false,
+                        is_bottom_middle_node_blocked: false,
+                    });
+                    commands.insert_resource(BuildingStageCache{
+                        buildings: HashMap::new(),
+                    });
+                    commands.insert_resource(InstancedAnimations{
+                        running_animations: HashMap::new(),
+                    });
+                    commands.insert_resource(RemainsCount(0));
+
+                    next_state.set(GameState::MainMenu);
                 }
 
-                ui.add_space(main_menu_node_height * 0.05);
-
-                if ui.add(
-                    egui::Button::new(
-                    egui::RichText::new("Host")
-                    .size(main_menu_node_height * 0.1)
-                    .color(egui::Color32::WHITE),
-                    )
-                    .fill(Color32::from_rgb(0, 0, 0))
-                    .stroke(Stroke{
-                        width: 0.1,
-                        color: Color32::from_rgb(255, 255, 255),
-                    })
-                    .min_size(egui::Vec2::new(main_menu_node_width * 0.8, main_menu_node_height * 0.15))
-                ).clicked() {
-                    next_state.set(GameState::LobbyAsServer);
-                    event_writer.1.send(HostNewGameEvent);
-                    network_status.0 = NetworkStatuses::Host;
-                }
-
-                ui.add_space(main_menu_node_height * 0.05);
-
-                if ui.add(
-                    egui::Button::new(
-                        egui::RichText::new("Connect")
-                        .size(main_menu_node_height * 0.1)
-                        .color(egui::Color32::WHITE),
-                    )
-                    .fill(Color32::from_rgb(0, 0, 0))
-                    .stroke(Stroke{
-                        width: 0.1,
-                        color: Color32::from_rgb(255, 255, 255),
-                    })
-                    .min_size(egui::Vec2::new(main_menu_node_width * 0.8, main_menu_node_height * 0.15))
-                ).clicked() {
-                    next_state.set(GameState::LobbyAsClient);
-                    event_writer.2.send(ConnectToHostedGameEvent);
-                    network_status.0 = NetworkStatuses::Client;
-                }
-
-                ui.add_space(main_menu_node_height * 0.05);
-
-                ui.add(
-                    egui::TextEdit::singleline(&mut ip_buffer.username)
-                        .desired_width(main_menu_node_width * 0.8)
-                        .min_size(egui::Vec2::new(main_menu_node_width * 0.8, main_menu_node_height * 0.15))
-                        .font(FontId { size: main_menu_node_height * 0.1, family: egui::FontFamily::Proportional })
-                        .text_color(egui::Color32::WHITE)
-                );
-
-                ui.add(
-                    egui::TextEdit::singleline(&mut ip_buffer.ip)
-                        .desired_width(main_menu_node_width * 0.8)
-                        .min_size(egui::Vec2::new(main_menu_node_width * 0.8, main_menu_node_height * 0.15))
-                        .font(FontId { size: main_menu_node_height * 0.1, family: egui::FontFamily::Proportional })
-                        .text_color(egui::Color32::WHITE)
-                );
-
-                ui.add_space(main_menu_node_height * 0.05);
+                ui.add_space(main_menu_node_height * 0.2);
             });
         });
+}
+
+pub fn esc_menu_ui_system (
+    windows_q: Query<&Window, With<PrimaryWindow>>,
+    mut ip_buffer: ResMut<InsertedConnectionData>,
+    mut commands: Commands,
+    mut contexts: EguiContexts,
+    mut next_state: ResMut<NextState<GameState>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut state: Local<bool>,
+){
+    if keys.just_pressed(KeyCode::Escape) {
+        *state = !*state;
+    }
+
+    if *state {
+        let ctx = contexts.ctx_mut();
+        let window = windows_q.single();
+        let window_width = window.physical_width() as f32;
+        let window_height = window.physical_height() as f32;
+
+        let main_menu_node_width = window_width * 0.8;
+        let main_menu_node_height = window_height * 0.5;
+
+        let x = (window_width - main_menu_node_width) / 2.;
+        let y = (window_height - main_menu_node_height) / 2.;
+
+        egui::Window::new("ESC menu")
+        .default_pos(egui::Pos2::new(x, y))
+        .default_size(egui::Vec2::new(main_menu_node_width, main_menu_node_height))
+        .collapsible(false)
+        .resizable(false)
+        .movable(false)
+        .show(&ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(main_menu_node_height * 0.2);
+
+                if ui.add(
+                    egui::Button::new(
+                            egui::RichText::new("Exit to main menu")
+                            .size(main_menu_node_height * 0.1)
+                            .color(egui::Color32::WHITE),
+                        )
+                        .fill(Color32::from_rgb(0, 0, 0))
+                        .stroke(Stroke{
+                            width: 0.1,
+                            color: Color32::from_rgb(255, 255, 255),
+                        })
+                        .min_size(egui::Vec2::new(main_menu_node_width * 0.8, main_menu_node_height * 0.15))
+                ).clicked() {
+                    *state = false;
+
+                    ip_buffer.username = "".to_string();
+                    ip_buffer.ip = "".to_string();
+
+                    let mut settlements_record: HashMap<i32, i32> = HashMap::new();
+
+                    settlements_record.insert(1, VILLAGES_COUNT + CITIES_COUNT);
+                    settlements_record.insert(2, VILLAGES_COUNT + CITIES_COUNT);
+
+                    commands.insert_resource(Settlements(settlements_record));
+                    
+                    commands.insert_resource(PlayerData{
+                        team: 1,
+                        is_all_settlements_placed: false,
+                        is_ready_to_start: false,
+                    });
+                    commands.insert_resource(components::unit::TargetPosition{
+                        position: Vec3::new(0., 0., 0.),
+                    });
+                    commands.insert_resource(components::unit::SelectedUnits{
+                        platoons: HashMap::new(),
+                    });
+                    commands.insert_resource(components::camera::SelectionBounds{
+                        first_point: Vec2::ZERO,
+                        second_point: Vec2::ZERO,
+                        is_selection_active: false,
+                        is_selection_hidden: false,
+                        is_ui_hovered: false,
+                        min_x: 0.,
+                        max_x: 0.,
+                        min_y: 0.,
+                        max_y: 0.,
+                        first_point_world: Vec3::ZERO,
+                        second_point_world: Vec3::ZERO,
+                    });
+                    commands.insert_resource(components::camera::Formation{
+                        points: Vec::new(),
+                        is_formation_active: false,
+                    });
+                    commands.insert_resource(components::unit::UnitsTileMap{
+                        tiles: HashMap::new(),
+                    });
+                    commands.insert_resource(components::camera::TimerResource(Timer::from_seconds(0.5, TimerMode::Repeating)));
+                    commands.insert_resource(components::unit::AsyncPathfindingTasks{
+                        tasks: Vec::new(),
+                    });
+                    commands.insert_resource(components::building::SelectedBuildings{
+                        buildings: Vec::new(),
+                    });
+                    commands.insert_resource(components::ui_manager::UiButtonNodes {
+                        left_bottom_node: Entity::PLACEHOLDER,
+                        left_bottom_node_rows: Vec::new(),
+                        middle_bottom_node: Entity::PLACEHOLDER,
+                        middle_bottom_node_row: Entity::PLACEHOLDER,
+                        margin: 0.,
+                        button_size: 0.,
+                        is_left_bottom_node_visible: false,
+                        is_middle_bottom_node_visible: false,
+                        middle_upper_node: Entity::PLACEHOLDER,
+                        middle_upper_node_row: Entity::PLACEHOLDER,
+                        is_middle_upper_node_visible: false,
+                        middle_upper_node_width: 0.,
+                        symbol_level_dropdown_list: Entity::PLACEHOLDER,
+                        right_bottom_node: Entity::PLACEHOLDER,
+                        right_bottom_node_rows: Vec::new(),
+                        hint_node: Entity::PLACEHOLDER,
+                        hint_text: Entity::PLACEHOLDER,
+                    });
+                    commands.insert_resource(components::unit::Armies(HashMap::new()));
+                    commands.insert_resource(ArmySettingsNodes {
+                        land_army_settings_node: Entity::PLACEHOLDER,
+                        is_land_army_settings_visible: false,
+                        batallion_type_dropdown_lists: Vec::new(),
+                        platoons_row: Entity::PLACEHOLDER,
+                        squads_row: Entity::PLACEHOLDER,
+                        regiments_row: Entity::PLACEHOLDER,
+                        battalions_row: Entity::PLACEHOLDER,
+                        companies_row: Entity::PLACEHOLDER,
+                        land_army_settings_node_height: 0,
+                        land_army_settings_node_width: 0,
+                        company_buttons: (-1, Entity::PLACEHOLDER, Vec::new()),
+                        platoon_specialization_dropdown_lists: Vec::new(),
+                        platoon_specialization_cache: Vec::new(),
+                        toggle_production_button: (Entity::PLACEHOLDER, LimitedNumber::new()),
+                        last_battalion_button_index: -1,
+                        last_battalion_type_dropdown_list_index: -1,
+                        last_platoon_specialization_dropdown_list_index: -1,
+                        current_regiment: 1,
+                        squad_specialization_dropdown_lists: (-1, Vec::new()),
+                        company_type_dropdown_lists: (-1, Vec::new()),
+                    });
+                    commands.insert_resource(Specializations{
+                        regular: Vec::new(),
+                        shock: Vec::new(),
+                        armored: Vec::new(),
+                    });
+                    commands.insert_resource(ProductionState{
+                        is_allowed: HashMap::new(),
+                    });
+                    commands.insert_resource(ProductionQueue(HashMap::new()));
+                    commands.insert_resource(BuildingsList(
+                        Vec::new(),
+                    ));
+                    commands.insert_resource(BuildingPlacementCache {
+                        is_active: false,
+                        current_building: BuildingsBundles::None,
+                        current_building_y_adjustment: 0.,
+                        current_building_check_collider: Collider::ball(0.),
+                        needed_buildpower: 0,
+                        name: "".to_string(),
+                        build_distance: 0.,
+                        resource_cost: 0,
+                    });
+                    commands.insert_resource(UnactivatedBlueprints(HashMap::new()));
+                    commands.insert_resource(GameStage(GameStages::SettlementsSetup));
+                    commands.insert_resource(SettlementsLeft(Vec::new()));
+                    commands.insert_resource(IsArtilleryDesignationActive(false));
+                    commands.insert_resource(IsUnitDeselectionAllowed(true));
+                    commands.insert_resource(AsyncTaskPools{
+                        manual_pathfinding_pool: TaskPool::new(),
+                        logistic_pathfinding_pool: TaskPool::new(),
+                        extra_pathfinding_pool: TaskPool::new(),
+                    });
+                    commands.insert_resource(NetworkStatus(NetworkStatuses::SinglePlayer));
+                    commands.insert_resource(InsertedConnectionData{
+                        ip: "".to_string(),
+                        username: "".to_string(),
+                    });
+                    commands.insert_resource(ClientList(HashMap::new()));
+                    commands.insert_resource(PlayerList(HashMap::new()));
+                    commands.insert_resource(EntityMaps{
+                        server_to_client: HashMap::new(),
+                        client_to_server: HashMap::new(),
+                    });
+                    commands.insert_resource(ProducableUnits{
+                        barrack_producables: HashMap::new(),
+                        factory_producables: HashMap::new(),
+                    });
+                    commands.insert_resource(UnspecifiedEntitiesToMove(Vec::new()));
+                    commands.insert_resource(UnitsToDamage(Vec::new()));
+                    commands.insert_resource(UnitsToInsertPath(Vec::new()));
+                    commands.insert_resource(InstancedMaterials{
+                        team_materials: HashMap::new(),
+                        blue_solid: Handle::default(),
+                        red_solid: Handle::default(),
+                        blue_transparent: Handle::default(),
+                        red_transparent: Handle::default(),
+                        wreck_material: Handle::default(),
+                    });
+                    commands.insert_resource(DisplayedTacicalSymbolsLevel(1));
+                    commands.insert_resource(IsUnitSelectionAllowed(true));
+                    commands.insert_resource(BuildingsDeletionStates{
+                        is_blueprints_deletion_active: false,
+                        is_buildings_deletion_active: false,
+                        is_buildings_deletion_cancelation_active: false,
+                    });
+                    commands.insert_resource(UiBlocker{
+                        is_bottom_left_node_blocked: false,
+                        is_bottom_middle_node_blocked: false,
+                    });
+                    commands.insert_resource(BuildingStageCache{
+                        buildings: HashMap::new(),
+                    });
+                    commands.insert_resource(InstancedAnimations{
+                        running_animations: HashMap::new(),
+                    });
+                    commands.insert_resource(RemainsCount(0));
+
+                    next_state.set(GameState::MainMenu);
+                }
+
+                ui.add_space(main_menu_node_height * 0.2);
+            });
+        });
+    }
 }
 
 pub fn show_lobby_as_server(
@@ -8487,6 +10645,7 @@ pub fn show_lobby_as_client(
     windows_q: Query<&Window, With<PrimaryWindow>>,
     mut contexts: EguiContexts,
     players: ResMut<PlayerList>,
+    mut next_state: ResMut<NextState<GameState>>,
 ){
     if players.0.len() > 0 {
         let ctx = contexts.ctx_mut();
@@ -8521,6 +10680,47 @@ pub fn show_lobby_as_client(
                         ui.add_space(lobby_node_height * 0.05);
                     }
                 }
+            });
+        });
+    } else {
+        let ctx = contexts.ctx_mut();
+        let window = windows_q.single();
+        let window_width = window.physical_width() as f32;
+        let window_height = window.physical_height() as f32;
+
+        let connection_node_width = window_width * 0.8;
+        let connection_node_height = window_height * 0.8;
+
+        let x = (window_width - connection_node_width) / 2.;
+        let y = (window_height - connection_node_height) / 2.;
+        
+        egui::Window::new("Connecting...")
+        .default_pos(egui::Pos2::new(x, y))
+        .default_size(egui::Vec2::new(connection_node_width, connection_node_height))
+        .collapsible(false)
+        .resizable(false)
+        .movable(false)
+        .show(&ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(connection_node_height * 0.5);
+
+                if ui.add(
+                    egui::Button::new(
+                            egui::RichText::new("Cancel")
+                            .size(connection_node_height * 0.1)
+                            .color(egui::Color32::WHITE),
+                        )
+                        .fill(Color32::from_rgb(0, 0, 0))
+                        .stroke(Stroke{
+                            width: 0.1,
+                            color: Color32::from_rgb(255, 255, 255),
+                        })
+                        .min_size(egui::Vec2::new(connection_node_width * 0.8, connection_node_height * 0.15))
+                ).clicked() {
+                    next_state.set(GameState::MainMenu);
+                }
+
+                ui.add_space(connection_node_height * 0.5);
             });
         });
     }

@@ -1,13 +1,13 @@
 use core::f32;
 use std::{hash, process::Command};
-use bevy::{ecs::event::{self, event_update_condition}, math::VectorSpace, pbr::{ExtendedMaterial, NotShadowCaster}, prelude::*, utils::hashbrown::{HashMap, HashSet}};
+use bevy::{ecs::event::{self, event_update_condition}, math::{VectorSpace, bool}, pbr::{ExtendedMaterial, NotShadowCaster}, prelude::*, utils::hashbrown::{HashMap, HashSet}};
 use bevy_mod_raycast::{cursor::CursorRay, prelude::{Raycast, RaycastSettings}};
 use bevy_quinnet::{client::QuinnetClient, server::QuinnetServer};
-use bevy_rapier3d::{na::ComplexField, plugin::RapierContext, prelude::{CharacterLength, Collider, CollisionGroups, ComputedColliderShape, Group, KinematicCharacterController, LockedAxes, QueryFilter, RigidBody}};
+use bevy_rapier3d::{na::ComplexField, plugin::RapierContext, prelude::{CharacterAutostep, CharacterLength, Collider, CollisionGroups, ComputedColliderShape, Group, KinematicCharacterController, LockedAxes, QueryFilter, RigidBody}};
 use oxidized_navigation_serializable::{colliders, query::{find_polygon_path, perform_string_pulling_on_path}, Area, NavMesh, NavMeshAffector, NavMeshAreaType, NavMeshSettings};
 use rand::Rng;
 use serde::{de, Deserialize, Serialize};
-use crate::{GameStage, GameStages, PlayerData, WORLD_SIZE, components::{asset_manager::{AnimationComponent, BuildingsAssets, ChangeMaterial, CircleData, CircleHolder, ForbiddenBlueprint, InstancedMaterials, LOD, TeamMaterialExtension, Terrain, UnitAssets}, camera::{self, CameraComponent, SelectionBounds, SelectionBox}, logistics::LogisticUnitComponent, network::EntityMaps, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, DisplayedModelHolder, OpenBuildingsListEvent, RebuildApartments, SwitchBuildingState}, unit::{self, AttackAnimationTypes, BusyEngineer, DeleteAfterStart, EngineerActions, InfantryTransport, IsUnitSelectionAllowed, NeedToMove, RemainsCount, StoppedMoving, UnitRemains}}};
+use crate::{GameStage, GameStages, GameState, PlayerData, WORLD_SIZE, components::{asset_manager::{AnimationComponent, BuildingsAssets, ChangeMaterial, CircleData, CircleHolder, ForbiddenBlueprint, InstancedMaterials, LOD, TeamMaterialExtension, Terrain, UnitAssets}, camera::{self, CameraComponent, SelectionBounds, SelectionBox}, logistics::LogisticUnitComponent, network::EntityMaps, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, DisplayedModelHolder, OpenBuildingsListEvent, RebuildApartments, SwitchBuildingState}, unit::{self, AttackAnimationTypes, BusyEngineer, DeleteAfterStart, EngineerActions, InfantryTransport, IsUnitSelectionAllowed, NeedToMove, RemainsCount, StoppedMoving, UnitRemains}}};
 
 use super::{asset_manager::{generate_circle_segments, LineData, LineHolder}, logistics::{create_curved_mesh, create_plane_between_points, ResourceZone, RESOURCE_ZONES_COUNT /*RoadComponent, RoadObject*/}, network::{ClientList, ClientMessage, NetworkStatus, NetworkStatuses, ServerMessage}, ui_manager::{Actions, ButtonAction, GameStartedEvent, ProductionStateChanged, UiButtonNodes}, unit::{Armies, ArtilleryUnit, AttackTypes, CompanyTypes, CombatComponent, EngineerComponent, SelectableUnit, SuppliesConsumerComponent, UnitComponent, UnitDeathEvent, UnitNeedsToBeUncovered, UnitTypes, UnitsTileMap, TILE_SIZE}};
 
@@ -2713,8 +2713,8 @@ pub fn apartments_generation_system(
                 let theta = rng.gen_range(0.0..std::f32::consts::TAU);
                 let mut distance = rng.gen_range(0.0..1.0).sqrt() * settlement.2.0.settlement_size;
 
-                if distance < 40. {
-                    distance = 40.;
+                if distance < 50. {
+                    distance = 50.;
                 }
             
                 let x = center.x + distance * theta.cos();
@@ -2723,7 +2723,7 @@ pub fn apartments_generation_system(
                 let position = Vec3::new(x, center.y, z);
                 let mut success = true;
                 for placed in placeds.iter(){
-                    if placed.xz().distance(position.xz()) <= 40. {
+                    if placed.xz().distance(position.xz()) <= 50. {
                         success = false;
                         break;
                     }
@@ -2764,8 +2764,10 @@ pub fn apartments_generation_system(
                         transform: Transform::from_translation(position).with_rotation(Quat::from_rotation_y(angle)),
                         ..default()
                     })
-                    //.insert(Collider::cuboid(5., 5., 5.))
-                    //.insert(NavMeshAffector)
+                    .insert(Collider::cuboid(18., 10., 8.))
+                    .insert(CollisionGroups::new(Group::GROUP_2, Group::all()))
+                    .insert(NavMeshAffector)
+                    .insert(NavMeshAreaType(None))
                     .insert(ApartmentHouse)
                     .insert(CombatComponent{
                         team: settlement.2.0.team,
@@ -2791,7 +2793,7 @@ pub fn apartments_generation_system(
                     })
                     .insert(CoverComponent{
                         cover_efficiency: 0.5,
-                        points: vec![position, position, position, position, position, position, position, position, position, position],
+                        points: vec![position, position, position, position, position, position, position, position, position],
                         units_inside: HashSet::new(),
                     })
                     .id();
@@ -2829,407 +2831,8 @@ pub fn apartments_generation_system(
     }
 }
 
-pub fn roads_generation_system_legacy(
-    mut event_reader: EventReader<AllApartmentsPlaced>,
-    mut settlements_q: Query<(Entity, &Transform, &mut SettlementComponent), With<SettlementComponent>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    nav_mesh_settings: Res<NavMeshSettings>,
-    nav_mesh: Res<NavMesh>,
-    mut commands: Commands,
-    mut event_writer: (
-        //EventWriter<UnsentServerMessage>,
-        EventWriter<AllRoadsGenerated>,
-    ),
-    network_status: Res<NetworkStatus>,
-    mut server: ResMut<QuinnetServer>,
-    clients: Res<ClientList>,
-){
-    for _event in event_reader.read() {
-        let mut roads: Vec<((Entity, Vec<Vec3>, Vec3), (Entity, Entity))> = Vec::new();
-
-        for settlement1 in settlements_q.iter() {
-            let mut is_atleast_one_road_built = false;
-            let mut nearest_settlement = ((Entity::PLACEHOLDER, Vec3::ZERO), f32::INFINITY);
-
-            for settlement2 in settlements_q.iter() {
-                if settlement1.0 != settlement2.0 {
-                    let distance_between_settlements = settlement1.1.translation.xz().distance(settlement2.1.translation.xz());
-                    if distance_between_settlements <= settlement1.2.0.max_road_connection_distance {
-                        is_atleast_one_road_built = true;
-
-                        let road_center = (
-                            Vec3::new(settlement1.1.translation.x, 0.01, settlement1.1.translation.z) +
-                            Vec3::new(settlement2.1.translation.x, 0.01, settlement2.1.translation.z)
-                        ) / 2.;
-                        let road_start = Vec3::new(settlement1.1.translation.x, 0.01, settlement1.1.translation.z);
-                        let road_end = Vec3::new(settlement2.1.translation.x, 0.01, settlement2.1.translation.z);
-                        let mut road_points: Vec<Vec3> = Vec::new();
-
-                        if let Ok(nav_mesh) = nav_mesh.get().read() {
-                            match find_polygon_path(
-                                &nav_mesh,
-                                &nav_mesh_settings,
-                                road_start,
-                                road_end,
-                                None,
-                                Some(&[1.0, 1.0]),
-                            ) {
-                                Ok(path) => {
-                                    match perform_string_pulling_on_path(&nav_mesh, road_start, road_end, &path) {
-                                        Ok(string_path) => {
-                                            road_points = string_path;
-                                        }
-                                        Err(error) => error!("Error with string path: {:?}", error),
-                                    };
-                                }
-                                Err(error) => error!("Error with pathfinding: {:?}", error),
-                            }
-                        }
-
-                        if road_points.len() > 1 {
-                            let mut road_transform = Transform::from_translation(road_center);
-                            road_transform.rotate(Quat::from_rotation_arc(Vec3::Z, (road_start - road_end).normalize()));
-    
-                            let raod_mesh = create_curved_mesh(
-                                5.,
-                                5.,
-                                road_points.clone(),
-                                -1.2,
-                                &Transform::from_translation(road_center),
-                            );
-    
-                            let new_road = commands.spawn(MaterialMeshBundle{
-                                mesh: meshes.add(raod_mesh.clone()),
-                                material: materials.add(Color::srgb(0.5, 0.5, 0.5)).into(),
-                                transform: Transform::from_translation(road_center),
-                                ..default()
-                            })
-                            .insert(Collider::from_bevy_mesh(&raod_mesh, &ComputedColliderShape::TriMesh).unwrap())
-                            .insert(NavMeshAffector)
-                            .insert(NavMeshAreaType(Some(Area(1))))
-                            .insert(NotShadowCaster)
-                            .id();
-    
-                            roads.push((
-                                (
-                                    new_road,
-                                    road_points,
-                                    road_center,
-                                ),
-                                (
-                                    settlement1.0,
-                                    settlement2.0,
-                                ),
-                            ));
-                        }
-                    } else {
-                        if distance_between_settlements < nearest_settlement.1 {
-                            nearest_settlement = ((settlement2.0, settlement2.1.translation), distance_between_settlements);
-                        }
-                    }
-                }
-            }
-
-            if !is_atleast_one_road_built {
-                let road_center = (
-                    Vec3::new(settlement1.1.translation.x, 0.01, settlement1.1.translation.z) +
-                    Vec3::new(nearest_settlement.0.1.x, 0.01, nearest_settlement.0.1.z)
-                ) / 2.;
-                let road_start = Vec3::new(settlement1.1.translation.x, 0.01, settlement1.1.translation.z);
-                let road_end = Vec3::new(nearest_settlement.0.1.x, 0.01, nearest_settlement.0.1.z);
-
-                let mut road_points: Vec<Vec3> = Vec::new();
-
-                if let Ok(nav_mesh) = nav_mesh.get().read() {                    
-                    match find_polygon_path(
-                        &nav_mesh,
-                        &nav_mesh_settings,
-                        road_start,
-                        road_end,
-                        None,
-                        Some(&[1.0, 1.0]),
-                    ) {
-                        Ok(path) => {
-                            match perform_string_pulling_on_path(&nav_mesh, road_start, road_end, &path) {
-                                Ok(string_path) => {
-                                    road_points = string_path;
-                                }
-                                Err(error) => error!("Error with string path: {:?}", error),
-                            };
-                        }
-                        Err(error) => error!("Error with pathfinding: {:?}", error),
-                    }
-                }
-
-                if road_points.len() > 1 {
-                    let mut road_transform = Transform::from_translation(road_center);
-                    road_transform.rotate(Quat::from_rotation_arc(Vec3::Z, (road_start - road_end).normalize()));
-    
-                    let raod_mesh = create_curved_mesh(
-                        5.,
-                        5.,
-                        road_points.clone(),
-                        -1.2,
-                        &Transform::from_translation(road_center),
-                    );
-    
-                    let new_road = commands.spawn(MaterialMeshBundle{
-                        mesh: meshes.add(raod_mesh.clone()),
-                        material: materials.add(Color::srgb(0.5, 0.5, 0.5)).into(),
-                        transform: Transform::from_translation(road_center),
-                        ..default()
-                    })
-                    .insert(Collider::from_bevy_mesh(&raod_mesh, &ComputedColliderShape::TriMesh).unwrap())
-                    .insert(NavMeshAffector)
-                    .insert(NavMeshAreaType(Some(Area(1))))
-                    .insert(NotShadowCaster)
-                    .id();
-    
-                    roads.push((
-                        (
-                            new_road,
-                            road_points,
-                            road_center,
-                        ),
-                        (
-                            settlement1.0,
-                            nearest_settlement.0.0,
-                        ),
-                    ));
-                }
-            }
-        }
-
-        let mut roads_to_delete: Vec<Entity> = Vec::new();
-        for road in roads.iter() {
-            if !roads_to_delete.contains(&road.0.0) {
-                for another_road in roads.iter() {
-                    if !roads_to_delete.contains(&another_road.0.0) &&
-                    road.0.1[0].xz() == another_road.0.1[another_road.0.1.len() - 1].xz() &&
-                    road.0.1[road.0.1.len() - 1].xz() == another_road.0.1[0].xz(){
-                        commands.entity(another_road.0.0).despawn();
-                        roads_to_delete.push(another_road.0.0);
-                    }
-                }
-            }
-        }
-
-        for road in roads_to_delete.iter() {
-            roads.retain(|r| r.0.0 != *road);
-        }
-
-        for road in roads.iter() {
-            if let Ok(mut settlement) = settlements_q.get_mut(road.1.0) {
-                settlement.2.0.connected_roads.push(road.0.0);
-                settlement.2.0.connected_settlements.push(road.1.1);
-            }
-
-            if let Ok(mut settlement) = settlements_q.get_mut(road.1.1) {
-                settlement.2.0.connected_roads.push(road.0.0);
-                settlement.2.0.connected_settlements.push(road.1.0);
-            }
-        }
-
-        let mut settlements_clusters: Vec<Vec<Entity>> = Vec::new();
-        let mut last_cluster_index: i32 = -1;
-
-        let settlements_count = settlements_q.iter().count();
-
-        for settlement in settlements_q.iter() {
-            if last_cluster_index == -1 {
-                last_cluster_index = 0;
-                settlements_clusters.push(Vec::new());
-                settlements_clusters[0].push(settlement.0);
-            }
-            else if !settlements_clusters[last_cluster_index as usize].contains(&settlement.0) {
-                settlements_clusters.push(Vec::new());
-                last_cluster_index += 1;
-            } else {
-                continue;
-            }
-
-            let mut times_unaffected = 0;
-            let mut settlements_to_check = vec![settlement];
-
-            while times_unaffected < settlements_count {
-                let settlements_to_check_clone = settlements_to_check.clone();
-                settlements_to_check = Vec::new();
-                for current_settlement in settlements_to_check_clone.iter(){
-                    for connected_settlement_entity in current_settlement.2.0.connected_settlements.iter() {
-                        if !settlements_clusters[last_cluster_index as usize].contains(connected_settlement_entity) {
-                            settlements_clusters[last_cluster_index as usize].push(*connected_settlement_entity);
-                        } else {
-                            times_unaffected += 1;
-                        }
-    
-                        if let Ok(connected_settlement) = settlements_q.get(*connected_settlement_entity) {
-                            settlements_to_check.push(connected_settlement);
-                        }
-                    }
-                }
-            }
-        }
-
-        while settlements_clusters.len() > 1 {
-            let mut clusters_to_connect = (0, 0);
-
-            for (index, cluster) in settlements_clusters.iter().enumerate() {
-                let mut nearest_settlement = Entity::PLACEHOLDER;
-                let mut nearest_another_settlement = (f32::INFINITY, Entity::PLACEHOLDER, 0);
-    
-                for settlement_entity in cluster.iter() {
-                    if let Ok(settlement) = settlements_q.get(*settlement_entity) {
-                        for (another_index, another_cluster) in settlements_clusters.iter().enumerate() {
-                            if index != another_index {
-                                for another_settlement_entity in another_cluster.iter() {
-                                    if let Ok(another_settlement) = settlements_q.get(*another_settlement_entity) {
-                                        let current_distance = settlement.1.translation.distance(another_settlement.1.translation);
-                                        if current_distance < nearest_another_settlement.0 {
-                                            nearest_settlement = settlement.0;
-                                            nearest_another_settlement.0 = current_distance;
-                                            nearest_another_settlement.1 = another_settlement.0;
-                                            nearest_another_settlement.2 = another_index;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-    
-                if let Ok(settlement1) = settlements_q.get(nearest_settlement) {
-                    if let Ok(settlement2) = settlements_q.get(nearest_another_settlement.1) {
-                        let road_center = (
-                            Vec3::new(settlement1.1.translation.x, 0.01, settlement1.1.translation.z) +
-                            Vec3::new(settlement2.1.translation.x, 0.01, settlement2.1.translation.z)
-                        ) / 2.;
-                        let road_start = Vec3::new(settlement1.1.translation.x, 0.01, settlement1.1.translation.z);
-                        let road_end = Vec3::new(settlement2.1.translation.x, 0.01, settlement2.1.translation.z);
-    
-                        let mut road_points: Vec<Vec3> = Vec::new();
-
-                        if let Ok(nav_mesh) = nav_mesh.get().read() {                    
-                            match find_polygon_path(
-                                &nav_mesh,
-                                &nav_mesh_settings,
-                                road_start,
-                                road_end,
-                                None,
-                                Some(&[1.0, 1.0]),
-                            ) {
-                                Ok(path) => {
-                                    match perform_string_pulling_on_path(&nav_mesh, road_start, road_end, &path) {
-                                        Ok(string_path) => {
-                                            road_points = string_path;
-                                        }
-                                        Err(error) => error!("Error with string path: {:?}", error),
-                                    };
-                                }
-                                Err(error) => error!("Error with pathfinding: {:?}", error),
-                            }
-                        }
-
-                        if road_points.len() > 1 {
-                            let mut road_transform = Transform::from_translation(road_center);
-                            road_transform.rotate(Quat::from_rotation_arc(Vec3::Z, (road_start - road_end).normalize()));
-    
-                            let raod_mesh = create_curved_mesh(
-                                5.,
-                                5.,
-                                road_points.clone(),
-                                -1.2,
-                                &Transform::from_translation(road_center),
-                            );
-    
-                            let new_road = commands.spawn(MaterialMeshBundle{
-                                mesh: meshes.add(raod_mesh.clone()),
-                                material: materials.add(Color::srgb(0.5, 0.5, 0.5)).into(),
-                                transform: Transform::from_translation(road_center),
-                                ..default()
-                            })
-                            .insert(Collider::from_bevy_mesh(&raod_mesh, &ComputedColliderShape::TriMesh).unwrap())
-                            .insert(NavMeshAffector)
-                            .insert(NavMeshAreaType(Some(Area(1))))
-                            .insert(NotShadowCaster)
-                            .id();
-        
-                            roads.push((
-                                (
-                                    new_road,
-                                    road_points,
-                                    road_center,
-                                ),
-                                (
-                                    settlement1.0,
-                                    settlement2.0,
-                                ),
-                            ));
-                        }
-                    }
-                }
-                
-                clusters_to_connect = (index, nearest_another_settlement.2);
-            }
-
-            for road in roads.iter() {
-                if let Ok(mut settlement) = settlements_q.get_mut(road.1.0) {
-                    settlement.2.0.connected_roads.push(road.0.0);
-                    settlement.2.0.connected_settlements.push(road.1.1);
-                }
-    
-                if let Ok(mut settlement) = settlements_q.get_mut(road.1.1) {
-                    settlement.2.0.connected_roads.push(road.0.0);
-                    settlement.2.0.connected_settlements.push(road.1.0);
-                }
-            }
-
-            let cluster_clone = settlements_clusters[clusters_to_connect.1].clone();
-            settlements_clusters[clusters_to_connect.0].extend(cluster_clone);
-            settlements_clusters.remove(clusters_to_connect.1);
-        }
-
-        roads_to_delete = Vec::new();
-        for road in roads.iter() {
-            if !roads_to_delete.contains(&road.0.0) {
-                for another_road in roads.iter() {
-                    if !roads_to_delete.contains(&another_road.0.0) &&
-                    road.0.1[0].xz() == another_road.0.1[another_road.0.1.len() - 1].xz() &&
-                    road.0.1[road.0.1.len() - 1].xz() == another_road.0.1[0].xz(){
-                        commands.entity(another_road.0.0).despawn();
-                        roads_to_delete.push(another_road.0.0);
-                    }
-                }
-            }
-        }
-
-        for road in roads_to_delete.iter() {
-            roads.retain(|r| r.0.0 != *road);
-        }
-
-        event_writer.0.send(AllRoadsGenerated);
-
-        if matches!(network_status.0, NetworkStatuses::Host) {
-            for road in roads.iter(){
-                let mut channel_id = 60;
-                while channel_id <= 89 {
-                    if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::RoadGenerated {
-                        road_points: road.0.1.clone(),
-                        road_center: road.0.2,
-                        server_entity: road.0.0,
-                    }){
-                        channel_id += 1;
-                    } else {
-                        break;
-                    }
-                }
-            }
-        }
-    }
-}
-
 pub fn resource_zones_generation_system (
-    mut event_reader: EventReader<AllRoadsGenerated>,
+    mut event_reader: EventReader<AllSettlementsPlaced>,
     settlements_q: Query<(Entity, &Transform, &SettlementComponent), With<SettlementComponent>>,
     rapier_context: Res<RapierContext>,
     network_status: Res<NetworkStatus>,
@@ -3447,6 +3050,9 @@ pub fn temporary_objects_deletion_system(
     }
 }
 
+#[derive(Resource)]
+pub struct Settlements(pub HashMap<i32, i32>);
+
 pub fn settlements_capturing_system (
     mut commands: Commands,
     mut tile_map: ResMut<UnitsTileMap>,
@@ -3460,6 +3066,8 @@ pub fn settlements_capturing_system (
         ResMut<InstancedMaterials>,
         ResMut<Assets<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>>,
     ),
+    mut next_state: ResMut<NextState<GameState>>,
+    mut captured_settlements_record: ResMut<Settlements>,
     network_status: Res<NetworkStatus>,
     mut server: ResMut<QuinnetServer>,
     clients: Res<ClientList>,
@@ -3612,9 +3220,6 @@ pub fn settlements_capturing_system (
                         }
                     }
 
-                    settlement.2.0.team = enemy_team;
-                    settlement.2.0.elapsed_capture_time = 0;
-
                     let mut captured_apartments: Vec<Entity> = Vec::new();
                     for apartment_entity in settlement.2.0.active_apartments.iter() {
                         if let Ok(mut apartment) = apartments_q.get_mut(apartment_entity.0) {
@@ -3675,6 +3280,21 @@ pub fn settlements_capturing_system (
                             }
                         }
                     }
+
+                    if let Some(team_settlements) = captured_settlements_record.0.get_mut(&settlement.2.0.team) {
+                        *team_settlements -= 1;
+
+                        if *team_settlements == 0 {
+                            next_state.set(GameState::GameEnd);
+                        }
+                    }
+
+                    if let Some(team_settlements) = captured_settlements_record.0.get_mut(&enemy_team) {
+                        *team_settlements += 1;
+                    }
+
+                    settlement.2.0.team = enemy_team;
+                    settlement.2.0.elapsed_capture_time = 0;
                 }
             } else {
                 commands.entity(settlement.0).remove::<SettlementCaptureInProgress>();
@@ -4626,7 +4246,11 @@ pub fn apartments_rebuilding_system(
                             transform: Transform::from_translation(apartment.1).with_rotation(Quat::from_rotation_y(apartment.2)),
                             ..default()
                         })
+                        .insert(Collider::cuboid(18., 10., 8.))
+                        .insert(NavMeshAffector)
+                        .insert(NavMeshAreaType(None))
                         .insert(ApartmentHouse)
+                        .insert(CollisionGroups::new(Group::GROUP_2, Group::all()))
                         .insert(CombatComponent{
                             team: team,
                             current_health: 1000,
@@ -4651,7 +4275,7 @@ pub fn apartments_rebuilding_system(
                         })
                         .insert(CoverComponent{
                             cover_efficiency: 0.5,
-                            points: vec![apartment.1, apartment.1, apartment.1, apartment.1, apartment.1, apartment.1, apartment.1, apartment.1, apartment.1, apartment.1],
+                            points: vec![apartment.1, apartment.1, apartment.1, apartment.1, apartment.1, apartment.1, apartment.1, apartment.1, apartment.1],
                             units_inside: HashSet::new(),
                         })
                         .id();
@@ -4762,7 +4386,7 @@ pub struct RoadBuilderComponent{
 }
 
 pub fn roads_generation_system(
-    mut event_reader: EventReader<AllApartmentsPlaced>,
+    mut event_reader: EventReader<GameStartedEvent>,
     mut settlements_q: Query<(Entity, &Transform, &mut SettlementComponent), With<SettlementComponent>>,
     mut road_builders_q: Query<(Entity, &Transform, &mut RoadBuilderComponent, Option<&StoppedMoving>), Without<SettlementComponent>>,
     nav_mesh: Res<NavMesh>,
@@ -4770,7 +4394,6 @@ pub fn roads_generation_system(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut event_writer: EventWriter<AllRoadsGenerated>,
-    time: Res<Time>,
     mut commands: Commands,
     network_status: Res<NetworkStatus>,
     mut server: ResMut<QuinnetServer>,
@@ -4959,7 +4582,8 @@ pub fn roads_generation_system(
                     UnitComponent{
                         path: road_path,
                         start_position: Vec3::ZERO,
-                        speed: 30.,
+                        quantized_destination: None,
+                        speed: 100.,
                         waypoint_radius: 0.5,
                         elapsed: 0.,
                         inv_duration: 0.,

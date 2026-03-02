@@ -191,6 +191,12 @@ pub fn handle_mouse_buttons(
         //         selection_bounds.first_point_world = hits[0].1.position();
         //     }
         // }
+
+        if !buttons_keys.1.pressed(KeyCode::ControlLeft) && !selection_bounds.is_ui_hovered && selection_modifiers.0.0 {
+            clear_selected_units(&mut selected_units, &mut commands, &selectables.0);
+
+            clear_selected_buildings(&mut selected_buildings, &mut commands, &selectables.1);
+        }
     }
 
     if buttons_keys.0.pressed(MouseButton::Left){
@@ -202,12 +208,6 @@ pub fn handle_mouse_buttons(
                     selection_bounds.is_selection_hidden = false;
                 }
             }
-        }
-
-        if !buttons_keys.1.pressed(KeyCode::ControlLeft) && !selection_bounds.is_ui_hovered && selection_modifiers.0.0 {
-            clear_selected_units(&mut selected_units, &mut commands, &selectables.0);
-
-            clear_selected_buildings(&mut selected_buildings, &mut commands, &selectables.1);
         }
     }
 

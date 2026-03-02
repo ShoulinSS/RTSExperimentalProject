@@ -1,10 +1,11 @@
 use std::{f32::consts::TAU, primitive};
 
-use bevy::{color::palettes::css::GRAY, gltf::GltfMesh, pbr::{ExtendedMaterial, MaterialExtension, NotShadowCaster}, prelude::*, render::{mesh::{Indices, MeshVertexBufferLayout, skinning::{SkinnedMesh, SkinnedMeshInverseBindposes}}, render_asset::RenderAssetUsages, render_resource::{AsBindGroup, DynamicUniformBuffer, PipelineDescriptor, RenderPipelineDescriptor, Sampler, ShaderRef, ShaderType, SpecializedMeshPipelineError}, texture::{ImageAddressMode, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor}}, scene::SceneInstance, transform::commands, utils::{HashSet, hashbrown::HashMap}};
+use bevy::{color::palettes::css::GRAY, gltf::GltfMesh, pbr::{ExtendedMaterial, MaterialExtension, NotShadowCaster}, prelude::*, render::{mesh::{Indices, MeshVertexBufferLayout, skinning::{SkinnedMesh, SkinnedMeshInverseBindposes}}, render_asset::RenderAssetUsages, render_resource::{AsBindGroup, DynamicUniformBuffer, PipelineDescriptor, RenderPipelineDescriptor, Sampler, ShaderRef, ShaderType, SpecializedMeshPipelineError}, texture::{ImageAddressMode, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor}}, scene::SceneInstance, transform::commands, utils::{HashSet, hashbrown::HashMap}, window::PrimaryWindow};
+use bevy_egui::{EguiContext, EguiRenderToTextureHandle};
 use bevy_rapier3d::{na::TGeneral, prelude::{Collider, CollisionGroups, ComputedColliderShape, Group}};
 use oxidized_navigation_serializable::NavMeshAffector;
 
-use crate::{PlayerData, WORLD_SIZE, components::{building::{BuildingBlueprint, UnactivatedBlueprints}, camera::CameraComponent, logistics::LogisticUnitComponent, ui_manager::DisplayedModelHolder, unit::{Armies, AttackTypes, CombatComponent, CompanyTypes, FogOfWarTexture, NeedToMove, SquadLeader, StoppedMoving, SuppliesConsumerComponent, UnitComponent, UnitTypes}}};
+use crate::{PlayerData, WORLD_SIZE, components::{building::{BuildingBlueprint, CITIES_COUNT, Settlements, UnactivatedBlueprints, VILLAGES_COUNT}, camera::CameraComponent, logistics::LogisticUnitComponent, ui_manager::DisplayedModelHolder, unit::{Armies, AttackTypes, CombatComponent, CompanyTypes, FogOfWarTexture, NeedToMove, SquadLeader, StoppedMoving, SuppliesConsumerComponent, UnitComponent, UnitTypes}}};
 
 #[derive(Resource)]
 pub struct LevelAssets {
@@ -220,6 +221,13 @@ pub fn load_assets (
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
 ){
+    let mut settlements_record: HashMap<i32, i32> = HashMap::new();
+
+    settlements_record.insert(1, VILLAGES_COUNT + CITIES_COUNT);
+    settlements_record.insert(2, VILLAGES_COUNT + CITIES_COUNT);
+
+    commands.insert_resource(Settlements(settlements_record));
+    
     //Level
     let gltf: Handle<Gltf> = asset_server.load("landscape/Terrain.glb");
     let grass: Handle<Image> = asset_server.load_with_settings(
@@ -580,6 +588,7 @@ pub struct Terrain;
 
 pub fn initialize_level_gltf_objects (
     mut commands: Commands,
+    terrain_q: Query<&Terrain>,
     level_assets: Res<LevelAssets>,
     gltf_assets: Res<Assets<Gltf>>,
     gltf_meshes: Res<Assets<GltfMesh>>,
@@ -588,16 +597,14 @@ pub fn initialize_level_gltf_objects (
     mut extended_materials: ResMut<Assets<ExtendedMaterial<StandardMaterial, TerrainMaterialExtension>>>,
     fog_of_war_texture: Res<FogOfWarTexture>,
     asset_server: Res<AssetServer>,
-    mut loaded: Local<bool>,
 ){
-    if *loaded {
+    if !terrain_q.is_empty() {
         return;
     }
 
     let Some(gltf) = gltf_assets.get(&level_assets.landscape) else {
         return;
     };
-    *loaded = true;
 
     if let Some(gltf_mesh) = gltf_meshes.get(&gltf.meshes[0].clone()) {
         let mesh_handle = gltf_mesh.primitives[0].mesh.clone();
@@ -1521,5 +1528,14 @@ pub fn explosion_effects_handler(
 
             commands.entity(explosion.0).insert(assets.explosion_regular.1[explosion.1.0.0].clone());
         }
+    }
+}
+
+pub fn entity_cleaning_system(
+    entities_q: Query<Entity, (Without<Window>, Without<PrimaryWindow>, Without<EguiContext>, Without<EguiRenderToTextureHandle>)>,
+    mut commands: Commands,
+){
+    for entity in entities_q.iter() {
+        commands.entity(entity).despawn();
     }
 }

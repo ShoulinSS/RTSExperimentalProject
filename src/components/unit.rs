@@ -11,7 +11,7 @@ use std::hash::Hash;
 use bevy_tasks::TaskPool;
 use serde::{Deserialize, Serialize};
 
-use crate::{FOG_TEXTURE_SIZE, GameStage, GameStages, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, PlayerData, WORLD_SIZE, components::{asset_manager::{AttackVisualisationAssets, ChangeMaterial, ExplosionComponent, InstancedMaterials, LOD, OtherAssets, TeamMaterialExtension, TrailComponent, TrailEmmiterComponent}, building::{CONSTRUCTION_PROGRESS_COLOR, ConstructionProgressBar, DeconstructableBuilding, DontTouch, HumanResourcesDisplay, MaterialsDisplay, MaterialsProductionComponent, SettlementComponent, SwitchableBuilding, ToDeconstruct}, camera::{self, CameraComponent}, ui_manager::{ArtilleryUnitSelectedEvent, BattalionSelectionEvent, BrigadeSelectionEvent, CompanySelectionEvent, PlatoonSelectionEvent, RegimentSelectionEvent, TransportDisembarkEvent, UiBlocker, UiButtonNodes}}};
+use crate::{FOG_TEXTURE_SIZE, GameStage, GameStages, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, PlayerData, WORLD_SIZE, components::{asset_manager::{AttackVisualisationAssets, ChangeMaterial, ExplosionComponent, InstancedMaterials, LOD, OtherAssets, TeamMaterialExtension, TrailComponent, TrailEmmiterComponent}, building::{CONSTRUCTION_PROGRESS_COLOR, ConstructionProgressBar, DeconstructableBuilding, DontTouch, HumanResourcesDisplay, MaterialsDisplay, MaterialsProductionComponent, SettlementComponent, SwitchableBuilding, ToDeconstruct}, camera::{self, CameraComponent}, logistics::LogisticUnitComponent, ui_manager::{ArtilleryUnitSelectedEvent, BattalionSelectionEvent, BrigadeSelectionEvent, CompanySelectionEvent, PlatoonSelectionEvent, RegimentSelectionEvent, TransportDisembarkEvent, UiBlocker, UiButtonNodes}}};
 
 use super::{building::{ArtilleryBundle, BuildingBlueprint, BuildingConstructionSite, BuildingsBundles, CoverComponent, EngineerBundle, IFVBundle, InfantryBarracksBundle, InfantryProducer, LogisticHubBundle, ProductionQueue, ProductionState, ResourceMinerBundle, SoldierBundle, SuppliesProductionComponent, TankBundle, UnactivatedBlueprints, UnitBundles, UnitProductionBuildingComponent, VehicleFactoryBundle, VehiclesProducer}, camera::MoveOrderEvent, logistics::ResourceZone, network::{self, ClientList, ClientMessage, EntityMaps, NetworkStatus, NetworkStatuses, ServerMessage}, ui_manager::{CancelArtilleryTargets, GameStartedEvent, SquadSelectionEvent, ProductionStateChanged, ToggleArtilleryDesignation}};
 
@@ -329,6 +329,7 @@ pub fn clear_selected_units(
 pub struct UnitComponent{
     pub path: Vec<Vec3>,
     pub start_position: Vec3,
+    pub quantized_destination: Option<Vec3>,
     pub speed: f32,
     pub waypoint_radius: f32,
     pub elapsed: f32,
@@ -555,20 +556,17 @@ pub struct HomingProjectile {
 #[derive(Component)]
 pub struct DeleteAfterStart;
 
-pub fn process_pathfinding(
+pub const QUANTIZATION_THRESHOLD: f32 = 300.;//needs to be fixed
+
+pub fn process_manual_pathfinding(
     mut units_q: Query<(&Transform, Entity, &mut UnitComponent), With<SelectedUnit>>,
-    nav_mesh: Res<NavMesh>,
-    nav_mesh_settings: Res<NavMeshSettings>,
     target: Res<TargetPosition>,
     selected_units: Res<SelectedUnits>,
     formation: ResMut<camera::Formation>,
-    mut pathfinding_task: ResMut<AsyncPathfindingTasks>,
-    async_task_pools: Res<AsyncTaskPools>,
+    mut unstarted_tasks: ResMut<UnstartedPathfindingTasksPool>,
     mut event_reader: EventReader<camera::MoveOrderEvent>,
 ){
     for _event in event_reader.read(){
-        let nav_mesh_lock = nav_mesh.get();
-
         if formation.is_formation_active {
             let mut desired_distance_between_points = 5.;
             let mut formation_length =0.;
@@ -745,17 +743,25 @@ pub fn process_pathfinding(
                     for unit_entity in platoon.iter(){
                         if let Ok(mut unit) = units_q.get_mut(*unit_entity) {
                             unit.2.path = Vec::new();
-                            let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
-                                nav_mesh_lock.clone(),
-                                nav_mesh_settings.clone(),
-                                unit.0.translation,
-                                allowed_positions[counter],
-                                Some(100.),
-                                Some(&[1.0, 1.5]),
-                                unit.1,
+
+                            let mut destination = allowed_positions[counter];
+
+                            // if unit.0.translation.distance(allowed_positions[counter]) > QUANTIZATION_THRESHOLD {
+                            //     destination = unit.0.translation + (allowed_positions[counter] - unit.0.translation).normalize() * QUANTIZATION_THRESHOLD;
+                            //     unit.2.quantized_destination = Some(allowed_positions[counter]);
+                            // } else {
+                            //     unit.2.quantized_destination = None;
+                            // }
+
+                            unstarted_tasks.0.push((
+                                TaskPoolTypes::Manual,
+                                (
+                                    unit.0.translation,
+                                    destination,
+                                    Some(100.),
+                                    unit.1,
+                                ),
                             ));
-            
-                            pathfinding_task.tasks.push(task);
     
                             counter +=1;
     
@@ -911,17 +917,24 @@ pub fn process_pathfinding(
 
                             unit.2.path = Vec::new();
 
-                            let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
-                                nav_mesh_lock.clone(),
-                                nav_mesh_settings.clone(),
-                                unit.0.translation,
-                                origin_position,
-                                Some(100.),
-                                Some(&[1.0, 1.5]),
-                                unit.1,
+                            let mut destination = origin_position;
+
+                            // if unit.0.translation.distance(origin_position) > QUANTIZATION_THRESHOLD {
+                            //     destination = unit.0.translation + (origin_position - unit.0.translation).normalize() * QUANTIZATION_THRESHOLD;
+                            //     unit.2.quantized_destination = Some(origin_position);
+                            // } else {
+                            //     unit.2.quantized_destination = None;
+                            // }
+
+                            unstarted_tasks.0.push((
+                                TaskPoolTypes::Manual,
+                                (
+                                    unit.0.translation,
+                                    destination,
+                                    Some(100.),
+                                    unit.1,
+                                ),
                             ));
-                
-                            pathfinding_task.tasks.push(task);
             
                             counter += 1;
                         }
@@ -929,6 +942,81 @@ pub fn process_pathfinding(
                 }
             }
         }
+    }
+}
+
+pub enum TaskPoolTypes {
+    Manual,
+    Logistic,
+    Extra,
+}
+
+#[derive(Resource)]
+pub struct UnstartedPathfindingTasksPool(
+    pub Vec<(
+        TaskPoolTypes,
+        (
+            Vec3,
+            Vec3,
+            Option<f32>,
+            Entity,
+        ),
+    )>
+);
+
+pub fn pathfinding_tasks_starter(
+    mut unstarted_tasks: ResMut<UnstartedPathfindingTasksPool>,
+    nav_mesh: Res<NavMesh>,
+    nav_mesh_settings: Res<NavMeshSettings>,
+    mut pathfinding_task: ResMut<AsyncPathfindingTasks>,
+    async_task_pools: Res<AsyncTaskPools>,
+){
+    if !unstarted_tasks.0.is_empty() {
+        let nav_mesh_lock = nav_mesh.get();
+
+        for unstarted_task in unstarted_tasks.0.iter() {
+            let task;
+
+            match unstarted_task.0 {
+                TaskPoolTypes::Manual => {
+                    task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
+                        nav_mesh_lock.clone(),
+                        nav_mesh_settings.clone(),
+                        unstarted_task.1.0,
+                        unstarted_task.1.1,
+                        unstarted_task.1.2,
+                        Some(&[1.0, 1.5]),
+                        unstarted_task.1.3,
+                    ));
+                },
+                TaskPoolTypes::Logistic => {
+                    task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
+                        nav_mesh_lock.clone(),
+                        nav_mesh_settings.clone(),
+                        unstarted_task.1.0,
+                        unstarted_task.1.1,
+                        unstarted_task.1.2,
+                        Some(&[1.0, 0.1]),
+                        unstarted_task.1.3,
+                    ));
+                },
+                TaskPoolTypes::Extra => {
+                    task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
+                        nav_mesh_lock.clone(),
+                        nav_mesh_settings.clone(),
+                        unstarted_task.1.0,
+                        unstarted_task.1.1,
+                        unstarted_task.1.2,
+                        Some(&[1.0, 1.5]),
+                        unstarted_task.1.3,
+                    ));
+                },
+            }
+
+            pathfinding_task.tasks.push(task);
+        }
+
+        unstarted_tasks.0.clear();
     }
 }
 
@@ -947,36 +1035,20 @@ pub fn poll_pathfinding_tasks_system(
 ){
     if pathfinding_task.tasks.len() > 0 {
         pathfinding_task.tasks.retain_mut(|task| {
-            if let Some((path, entity)) = future::block_on(future::poll_once(task)).unwrap_or(None) {
-                if let Ok((unit_entity, mut unit_component)) = units_q.get_mut(entity){
-                    match network_status.0 {
-                        NetworkStatuses::SinglePlayer => {
-                            unit_component.path = path;
-                            unit_component.elapsed = 0.;
-                            commands.entity(unit_entity).try_insert(NeedToMove);
-                        },
-                        NetworkStatuses::Host => {
-                            let mut channel_id = 30;
-                            while channel_id <= 59 {
-                                if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnitPathInserted {
-                                    server_entity: unit_entity,
-                                    path: path.clone(),
-                                }){
-                                    channel_id += 1;
-                                } else {
-                                    break;
-                                }
-                            }
-
-                            unit_component.path = path;
-                            commands.entity(unit_entity).try_insert(NeedToMove);
-                        },
-                        NetworkStatuses::Client => {
-                            if let Some(server_entity) = entity_maps.client_to_server.get(&unit_entity) {
+            if task.is_finished() {
+                if let Some((path, entity)) = future::block_on(future::poll_once(task)).unwrap_or(None) {
+                    if let Ok((unit_entity, mut unit_component)) = units_q.get_mut(entity){
+                        match network_status.0 {
+                            NetworkStatuses::SinglePlayer => {
+                                unit_component.path = path;
+                                unit_component.elapsed = 0.;
+                                commands.entity(unit_entity).try_insert(NeedToMove);
+                            },
+                            NetworkStatuses::Host => {
                                 let mut channel_id = 30;
                                 while channel_id <= 59 {
-                                    if let Err(_) = client.connection_mut().send_message_on(channel_id, ClientMessage::UnitPathInsertRequest {
-                                        entity: *server_entity,
+                                    if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnitPathInserted {
+                                        server_entity: unit_entity,
                                         path: path.clone(),
                                     }){
                                         channel_id += 1;
@@ -984,11 +1056,31 @@ pub fn poll_pathfinding_tasks_system(
                                         break;
                                     }
                                 }
-                            }
-                        },
+
+                                unit_component.path = path;
+                                commands.entity(unit_entity).try_insert(NeedToMove);
+                            },
+                            NetworkStatuses::Client => {
+                                if let Some(server_entity) = entity_maps.client_to_server.get(&unit_entity) {
+                                    let mut channel_id = 30;
+                                    while channel_id <= 59 {
+                                        if let Err(_) = client.connection_mut().send_message_on(channel_id, ClientMessage::UnitPathInsertRequest {
+                                            entity: *server_entity,
+                                            path: path.clone(),
+                                        }){
+                                            channel_id += 1;
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                }
+                            },
+                        }
                     }
+                    false
+                } else {
+                    true
                 }
-                false
             } else {
                 true
             }
@@ -1029,15 +1121,17 @@ pub async fn async_path_find(
 }
 
 pub fn process_agents_movement(
-    mut units_q: Query<(&mut UnitComponent, &mut Transform, Entity, Option<&mut KinematicCharacterController>, Option<&CombatComponent>), (With<NeedToMove>, Without<Covered>)>,
+    mut units_q: Query<(&mut UnitComponent, &mut Transform, Entity, Option<&mut KinematicCharacterController>, Option<&CombatComponent>, Option<&LogisticUnitComponent>),
+    (With<NeedToMove>, Without<Covered>)>,
     mut event_writer: EventWriter<UnitDeathEvent>,
     mut commands: Commands,
     time: Res<Time>,
     network_status: Res<NetworkStatus>,
     mut server: ResMut<QuinnetServer>,
     clients: Res<ClientList>,
+    mut unstarted_tasks: ResMut<UnstartedPathfindingTasksPool>,
 ){
-    for(mut unit_component,mut unit_transform, unit_entity, controller_option, combat_component_option) in units_q.iter_mut(){
+    for(mut unit_component,mut unit_transform, unit_entity, controller_option, combat_component_option, logistic_unit_option) in units_q.iter_mut(){
         if !unit_component.path.is_empty(){
             let unit_position = unit_transform.translation;
             let target_position = unit_component.path[0];
@@ -1105,6 +1199,33 @@ pub fn process_agents_movement(
             }
 
             if unit_component.path.is_empty() {
+                if let Some(destination) = unit_component.quantized_destination {
+                    let area_cost_multiplier: Option<&[f32]>;
+                    if let Some(_) = logistic_unit_option {
+                        area_cost_multiplier = Some(&[10.0, 0.1]);
+                    } else {
+                        area_cost_multiplier = Some(&[1.0, 1.5]);
+                    }
+
+                    let mut new_destination = destination;
+
+                    if unit_transform.translation.distance(destination) > QUANTIZATION_THRESHOLD {
+                        new_destination = unit_transform.translation + (destination - unit_transform.translation).normalize() * QUANTIZATION_THRESHOLD;
+                    } else {
+                        unit_component.quantized_destination = None;
+                    }
+
+                    unstarted_tasks.0.push((
+                        TaskPoolTypes::Manual,
+                        (
+                            unit_transform.translation,
+                            new_destination,
+                            Some(100.),
+                            unit_entity,
+                        ),
+                    ));
+                }
+                
                 commands.entity(unit_entity).remove::<NeedToMove>();
                 commands.entity(unit_entity).try_insert(StoppedMoving);
 
@@ -1165,6 +1286,33 @@ pub fn process_agents_movement(
                 unit_component.last_position = unit_transform.translation;
             }
         } else {
+            if let Some(destination) = unit_component.quantized_destination {
+                let area_cost_multiplier: Option<&[f32]>;
+                if let Some(_) = logistic_unit_option {
+                    area_cost_multiplier = Some(&[10.0, 0.1]);
+                } else {
+                    area_cost_multiplier = Some(&[1.0, 1.5]);
+                }
+
+                let mut new_destination = destination;
+
+                if unit_transform.translation.distance(destination) > QUANTIZATION_THRESHOLD {
+                    new_destination = unit_transform.translation + (destination - unit_transform.translation).normalize() * QUANTIZATION_THRESHOLD;
+                } else {
+                    unit_component.quantized_destination = None;
+                }
+
+                unstarted_tasks.0.push((
+                    TaskPoolTypes::Manual,
+                    (
+                        unit_transform.translation,
+                        new_destination,
+                        Some(100.),
+                        unit_entity,
+                    ),
+                ));
+            }
+
             commands.entity(unit_entity).remove::<NeedToMove>();
             commands.entity(unit_entity).try_insert(StoppedMoving);
 
@@ -1344,7 +1492,7 @@ pub fn find_targets(
                                         UnitTypes::None => {},
                                     }
 
-                                    if enemy_count > 20 {
+                                    if enemy_count > 10 {
                                         is_enemy_count_overflow = true;
 
                                         break;
@@ -1444,7 +1592,6 @@ pub fn process_combat (
                         if let Some(children) = unit.4 {
                             for enemy_entity in unit.0.enemies.iter() {
                                 if let Ok(enemy) = units_q.get(enemy_entity.0) {
-                                    attacks_to_simulate.push((unit.3, enemy.1.translation));
                                     if enemy.0.current_health > 0 && unit.1.translation.distance(enemy.1.translation) <= unit.0.attack_range {
                                         for child in children.iter() {
                                             if let  Ok(mut transform) = transforms_q.get_mut(*child) {
@@ -1464,6 +1611,12 @@ pub fn process_combat (
                                                 transform.0.rotation = local_rotation;
                                             }
                                         }
+                                        
+                                        if let Some(supplies_consumer) = unit.6 {
+                                            if supplies_consumer.supplies > 0 {
+                                                attacks_to_simulate.push((unit.3, enemy.1.translation));
+                                            }
+                                        }
 
                                         break;
                                     }
@@ -1473,7 +1626,11 @@ pub fn process_combat (
                             for enemy_entity in unit.0.enemies.iter() {
                                 if let Ok(enemy) = units_q.get(enemy_entity.0) {
                                     if enemy.0.current_health > 0 && unit.1.translation.distance(enemy.1.translation) <= unit.0.attack_range {
-                                        attacks_to_simulate.push((unit.3, enemy.1.translation));
+                                        if let Some(supplies_consumer) = unit.6 {
+                                            if supplies_consumer.supplies > 0 {
+                                                attacks_to_simulate.push((unit.3, enemy.1.translation));
+                                            }
+                                        }
 
                                         entities_to_rotate.push((unit.3, enemy.1.translation));
 
@@ -1506,7 +1663,15 @@ pub fn process_combat (
             let mut sounds_needs_to_play: HashMap<AttackAnimationTypes, Vec<(Entity, f32)>> = HashMap::new();
 
             for attack_attempt in attacks_to_simulate.iter() {
-                if let Ok(unit) = units_q.get_mut(attack_attempt.0) {
+                if let Ok(mut unit) = units_q.get_mut(attack_attempt.0) {
+                    unit.0.attack_elapsed_time += time.delta().as_millis();
+
+                    if unit.0.attack_elapsed_time >= unit.0.attack_frequency {
+                        unit.0.attack_elapsed_time = 0;
+                    } else {
+                        continue;
+                    }
+
                     let mut rng = rand::thread_rng();
 
                     let displaced_enemy_pos = Vec3::new(
@@ -2720,10 +2885,7 @@ pub fn cover_assignation_system (
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     cursor_ray: Res<CursorRay>,
     mut raycast: Raycast,
-    nav_mesh: Res<NavMesh>,
-    nav_mesh_settings: Res<NavMeshSettings>,
-    mut pathfinding_task: ResMut<AsyncPathfindingTasks>,
-    async_task_pools: Res<AsyncTaskPools>,
+    mut unstarted_tasks: ResMut<UnstartedPathfindingTasksPool>,
     mut commands: Commands,
     network_status: Res<NetworkStatus>,
     mut client: ResMut<QuinnetClient>,
@@ -2750,8 +2912,6 @@ pub fn cover_assignation_system (
                                 if let Some(server_cover_entity) = entity_maps.client_to_server.get(&cover.0) {
                                     cover_entity = *server_cover_entity;
                                 }
-
-                                let nav_mesh_lock = nav_mesh.get();
                                 
                                 for _i in 0..cover.1.points.len() - cover.1.units_inside.len() {
                                     if let Some(unit) = selected_units_iter.next() {
@@ -2759,17 +2919,15 @@ pub fn cover_assignation_system (
                                             if let Some(server_unit_entity) = entity_maps.client_to_server.get(&unit.0) {
                                                 units_to_cover.push(*server_unit_entity);
 
-                                                let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
-                                                    nav_mesh_lock.clone(),
-                                                    nav_mesh_settings.clone(),
-                                                    unit.2.translation,
-                                                    cover.2.translation,
-                                                    Some(100.),
-                                                    Some(&[1.0, 1.5]),
-                                                    unit.0,
+                                                unstarted_tasks.0.push((
+                                                    TaskPoolTypes::Manual,
+                                                    (
+                                                        unit.2.translation,
+                                                        cover.2.translation,
+                                                        Some(100.),
+                                                        unit.0,
+                                                    ),
                                                 ));
-                                
-                                                pathfinding_task.tasks.push(task);
                                             }
                                         }
                                     }
@@ -2794,8 +2952,6 @@ pub fn cover_assignation_system (
                                 }
                             },
                             _ => {
-                                let nav_mesh_lock = nav_mesh.get();
-
                                 for _i in 0..cover.1.points.len() - cover.1.units_inside.len() {
                                     if let Some(unit) = selected_units_iter.next() {
                                         if unit.1.unit_data.1.0 != CompanyTypes::Armored {
@@ -2804,17 +2960,15 @@ pub fn cover_assignation_system (
                                                 cover_position: cover.2.translation,
                                             });
 
-                                            let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
-                                                nav_mesh_lock.clone(),
-                                                nav_mesh_settings.clone(),
-                                                unit.2.translation,
-                                                cover.2.translation,
-                                                Some(100.),
-                                                Some(&[1.0, 1.5]),
-                                                unit.0,
+                                            unstarted_tasks.0.push((
+                                                TaskPoolTypes::Manual,
+                                                (
+                                                    unit.2.translation,
+                                                    cover.2.translation,
+                                                    Some(100.),
+                                                    unit.0,
+                                                ),
                                             ));
-                            
-                                            pathfinding_task.tasks.push(task);
                                         }
                                     }
                                     else {
@@ -2948,10 +3102,7 @@ pub fn engineer_to_blueprint_assignation_system (
     busy_engineers: Query<(Entity, &Transform, &CombatComponent),
     (With<EngineerComponent>, With<BusyEngineer>, Without<BuildingConstructionSite>, Without<ToDeconstruct>)>,
     mut commands: Commands,
-    nav_mesh: Res<NavMesh>,
-    nav_mesh_settings: Res<NavMeshSettings>,
-    mut pathfinding_task: ResMut<AsyncPathfindingTasks>,
-    async_task_pools: Res<AsyncTaskPools>,
+    mut unstarted_tasks: ResMut<UnstartedPathfindingTasksPool>,
     timer: ResMut<camera::TimerResource>,
     game_stage: Res<GameStage>,
 ){
@@ -3013,20 +3164,16 @@ pub fn engineer_to_blueprint_assignation_system (
                                     commands.entity(engineer.0).insert(
                                         BusyEngineer(EngineerActions::ActivateBlueprint((blueprint.1.0, *blueprint.0, blueprint.1.2)))
                                     );
-                    
-                                    let nav_mesh_lock = nav_mesh.get();
-                    
-                                    let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
-                                        nav_mesh_lock.clone(),
-                                        nav_mesh_settings.clone(),
-                                        engineer.1.translation,
-                                        blueprint.1.0,
-                                        Some(100.),
-                                        Some(&[1.0, 1.5]),
-                                        engineer.0,
+
+                                    unstarted_tasks.0.push((
+                                        TaskPoolTypes::Extra,
+                                        (
+                                            engineer.1.translation,
+                                            blueprint.1.0,
+                                            Some(100.),
+                                            engineer.0,
+                                        ),
                                     ));
-                    
-                                    pathfinding_task.tasks.push(task);
                                 }
                             }
                         }
@@ -3072,20 +3219,16 @@ pub fn engineer_to_blueprint_assignation_system (
                                     commands.entity(engineer.0).insert(BusyEngineer(
                                         EngineerActions::Construction((construction_site.2.translation, construction_site.0, construction_site.1.build_distance)))
                                     );
-                    
-                                    let nav_mesh_lock = nav_mesh.get();
-                    
-                                    let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
-                                        nav_mesh_lock.clone(),
-                                        nav_mesh_settings.clone(),
-                                        engineer.1.translation,
-                                        construction_site.2.translation,
-                                        Some(100.),
-                                        Some(&[1.0, 1.5]),
-                                        engineer.0,
+
+                                    unstarted_tasks.0.push((
+                                        TaskPoolTypes::Extra,
+                                        (
+                                            engineer.1.translation,
+                                            construction_site.2.translation,
+                                            Some(100.),
+                                            engineer.0,
+                                        ),
                                     ));
-                    
-                                    pathfinding_task.tasks.push(task);
                                 }
                             }
                         }
@@ -3138,19 +3281,15 @@ pub fn engineer_to_blueprint_assignation_system (
                                         );
 
                                         if deconstruction_site.2.translation.distance(current_enginer.1.translation) > deconstruction_site.1.deconstruction_distance {
-                                            let nav_mesh_lock = nav_mesh.get();
-                            
-                                            let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
-                                                nav_mesh_lock.clone(),
-                                                nav_mesh_settings.clone(),
-                                                current_enginer.1.translation,
-                                                deconstruction_site.2.translation,
-                                                Some(100.),
-                                                Some(&[1.0, 1.5]),
-                                                current_enginer.0,
+                                            unstarted_tasks.0.push((
+                                                TaskPoolTypes::Extra,
+                                                (
+                                                    current_enginer.1.translation,
+                                                    deconstruction_site.2.translation,
+                                                    Some(100.),
+                                                    current_enginer.0,
+                                                ),
                                             ));
-                            
-                                            pathfinding_task.tasks.push(task);
                                         }
 
                                         continue;
@@ -3161,19 +3300,15 @@ pub fn engineer_to_blueprint_assignation_system (
                                         );
 
                                         if deconstruction_site.2.translation.distance(current_enginer.1.translation) > deconstruction_site.1.deconstruction_distance {
-                                            let nav_mesh_lock = nav_mesh.get();
-                            
-                                            let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
-                                                nav_mesh_lock.clone(),
-                                                nav_mesh_settings.clone(),
-                                                current_enginer.1.translation,
-                                                deconstruction_site.2.translation,
-                                                Some(100.),
-                                                Some(&[1.0, 1.5]),
-                                                current_enginer.0,
+                                            unstarted_tasks.0.push((
+                                                TaskPoolTypes::Extra,
+                                                (
+                                                    current_enginer.1.translation,
+                                                    deconstruction_site.2.translation,
+                                                    Some(100.),
+                                                    current_enginer.0,
+                                                ),
                                             ));
-                            
-                                            pathfinding_task.tasks.push(task);
                                         }
 
                                         continue;
@@ -3185,19 +3320,15 @@ pub fn engineer_to_blueprint_assignation_system (
                                     EngineerActions::Deconstruction((deconstruction_site.2.translation, deconstruction_site.0, deconstruction_site.1.deconstruction_distance)))
                                 );
                 
-                                let nav_mesh_lock = nav_mesh.get();
-                
-                                let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
-                                    nav_mesh_lock.clone(),
-                                    nav_mesh_settings.clone(),
-                                    engineer.1.translation,
-                                    deconstruction_site.2.translation,
-                                    Some(100.),
-                                    Some(&[1.0, 1.5]),
-                                    engineer.0,
+                                unstarted_tasks.0.push((
+                                    TaskPoolTypes::Extra,
+                                    (
+                                        engineer.1.translation,
+                                        deconstruction_site.2.translation,
+                                        Some(100.),
+                                        engineer.0,
+                                    ),
                                 ));
-                
-                                pathfinding_task.tasks.push(task);
                             }
                         }
                     } else {
@@ -3229,12 +3360,7 @@ pub fn process_busy_engineers (
         Query<(&GlobalTransform, &UnitProductionBuildingComponent), With<VehiclesProducer>>,
     ),
     mut tile_map: ResMut<UnitsTileMap>,
-    mut navigation: (
-        Res<NavMesh>,
-        Res<NavMeshSettings>,
-        Res<AsyncTaskPools>,
-        ResMut<AsyncPathfindingTasks>,
-    ),
+    mut unstarted_tasks: ResMut<UnstartedPathfindingTasksPool>,
     timer: ResMut<camera::TimerResource>,
     game_stage: Res<GameStage>,
     network_status: Res<NetworkStatus>,
@@ -3899,19 +4025,15 @@ pub fn process_busy_engineers (
                                     }
 
                                     if nearest_vehicles_producer.1 != f32::INFINITY {
-                                        let nav_mesh_lock = navigation.0.get();
-
-                                        let task = navigation.2.extra_pathfinding_pool.spawn(async_path_find(
-                                            nav_mesh_lock.clone(),
-                                            navigation.1.clone(),
-                                            engineer.2.translation,
-                                            nearest_vehicles_producer.0,
-                                            Some(100.),
-                                            Some(&[1.0, 1.5]),
-                                            engineer.3,
+                                        unstarted_tasks.0.push((
+                                            TaskPoolTypes::Extra,
+                                            (
+                                                engineer.2.translation,
+                                                nearest_vehicles_producer.0,
+                                                Some(100.),
+                                                engineer.3,
+                                            ),
                                         ));
-
-                                        navigation.3.tasks.push(task);
                                     }
                                 }
                             },
@@ -4548,19 +4670,15 @@ pub fn process_busy_engineers (
                                             }
 
                                             if nearest_vehicles_producer.1 != f32::INFINITY {
-                                                let nav_mesh_lock = navigation.0.get();
-
-                                                let task = navigation.2.extra_pathfinding_pool.spawn(async_path_find(
-                                                    nav_mesh_lock.clone(),
-                                                    navigation.1.clone(),
-                                                    engineer.2.translation,
-                                                    nearest_vehicles_producer.0,
-                                                    Some(100.),
-                                                    Some(&[1.0, 1.5]),
-                                                    engineer.3,
+                                                unstarted_tasks.0.push((
+                                                    TaskPoolTypes::Extra,
+                                                    (
+                                                        engineer.2.translation,
+                                                        nearest_vehicles_producer.0,
+                                                        Some(100.),
+                                                        engineer.3,
+                                                    ),
                                                 ));
-
-                                                navigation.3.tasks.push(task);
                                             }
 
                                             tile_map.tiles.entry(current_construction_site.1.team).or_insert_with(HashMap::new).entry(current_construction_site_tile)
@@ -4608,19 +4726,15 @@ pub fn process_busy_engineers (
                                     }
 
                                     if nearest_vehicles_producer.1 != f32::INFINITY {
-                                        let nav_mesh_lock = navigation.0.get();
-
-                                        let task = navigation.2.extra_pathfinding_pool.spawn(async_path_find(
-                                            nav_mesh_lock.clone(),
-                                            navigation.1.clone(),
-                                            engineer.2.translation,
-                                            nearest_vehicles_producer.0,
-                                            Some(100.),
-                                            Some(&[1.0, 1.5]),
-                                            engineer.3,
+                                        unstarted_tasks.0.push((
+                                            TaskPoolTypes::Extra,
+                                            (
+                                                engineer.2.translation,
+                                                nearest_vehicles_producer.0,
+                                                Some(100.),
+                                                engineer.3,
+                                            ),
                                         ));
-
-                                        navigation.3.tasks.push(task);
                                     }
                                 }
                             },
@@ -4693,19 +4807,15 @@ pub fn process_busy_engineers (
                                             }
 
                                             if nearest_vehicles_producer.1 != f32::INFINITY {
-                                                let nav_mesh_lock = navigation.0.get();
-
-                                                let task = navigation.2.extra_pathfinding_pool.spawn(async_path_find(
-                                                    nav_mesh_lock.clone(),
-                                                    navigation.1.clone(),
-                                                    engineer.2.translation,
-                                                    nearest_vehicles_producer.0,
-                                                    Some(100.),
-                                                    Some(&[1.0, 1.5]),
-                                                    engineer.3,
+                                                unstarted_tasks.0.push((
+                                                    TaskPoolTypes::Extra,
+                                                    (
+                                                        engineer.2.translation,
+                                                        nearest_vehicles_producer.0,
+                                                        Some(100.),
+                                                        engineer.3,
+                                                    ),
                                                 ));
-
-                                                navigation.3.tasks.push(task);
                                             }
                                         }
                                     }
@@ -4832,19 +4942,15 @@ pub fn process_busy_engineers (
                                             }
 
                                             if nearest_vehicles_producer.1 != f32::INFINITY {
-                                                let nav_mesh_lock = navigation.0.get();
-
-                                                let task = navigation.2.extra_pathfinding_pool.spawn(async_path_find(
-                                                    nav_mesh_lock.clone(),
-                                                    navigation.1.clone(),
-                                                    engineer.2.translation,
-                                                    nearest_vehicles_producer.0,
-                                                    Some(100.),
-                                                    Some(&[1.0, 1.5]),
-                                                    engineer.3,
+                                                unstarted_tasks.0.push((
+                                                    TaskPoolTypes::Extra,
+                                                    (
+                                                        engineer.2.translation,
+                                                        nearest_vehicles_producer.0,
+                                                        Some(100.),
+                                                        engineer.3,
+                                                    ),
                                                 ));
-
-                                                navigation.3.tasks.push(task);
                                             }
                                         }
                                     }
@@ -4864,19 +4970,15 @@ pub fn process_busy_engineers (
                                     }
 
                                     if nearest_vehicles_producer.1 != f32::INFINITY {
-                                        let nav_mesh_lock = navigation.0.get();
-
-                                        let task = navigation.2.extra_pathfinding_pool.spawn(async_path_find(
-                                            nav_mesh_lock.clone(),
-                                            navigation.1.clone(),
-                                            engineer.2.translation,
-                                            nearest_vehicles_producer.0,
-                                            Some(100.),
-                                            Some(&[1.0, 1.5]),
-                                            engineer.3,
+                                        unstarted_tasks.0.push((
+                                            TaskPoolTypes::Extra,
+                                            (
+                                                engineer.2.translation,
+                                                nearest_vehicles_producer.0,
+                                                Some(100.),
+                                                engineer.3,
+                                            ),
                                         ));
-
-                                        navigation.3.tasks.push(task);
                                     }
                                 }
                             },
@@ -5695,10 +5797,7 @@ pub fn artillery_order_delayed (
 
 pub fn artillery_firing_system(
     mut artillery_units_q: Query<(&Transform, &mut ArtilleryUnit, &ArtilleryNeedsToFire, Entity, Option<&NeedToMove>), With<ArtilleryNeedsToFire>>,
-    nav_mesh: Res<NavMesh>,
-    nav_mesh_settings: Res<NavMeshSettings>,
-    mut pathfinding_task: ResMut<AsyncPathfindingTasks>,
-    async_task_pools: Res<AsyncTaskPools>,
+    mut unstarted_tasks: ResMut<UnstartedPathfindingTasksPool>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
     instanced_materials: Res<InstancedMaterials>,
@@ -5716,19 +5815,15 @@ pub fn artillery_firing_system(
     for mut artillery_unit in artillery_units_q.iter_mut() {
         if let None = artillery_unit.4 {
             if artillery_unit.0.translation.distance(artillery_unit.2.0) > artillery_unit.1.max_range {
-                let nav_mesh_lock = nav_mesh.get();
-    
-                let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
-                    nav_mesh_lock.clone(),
-                    nav_mesh_settings.clone(),
-                    artillery_unit.0.translation,
-                    (artillery_unit.0.translation - artillery_unit.2.0).normalize() * (artillery_unit.1.max_range - 5.) + artillery_unit.2.0,
-                    Some(100.),
-                    Some(&[1.0, 1.5]),
-                    artillery_unit.3,
+                unstarted_tasks.0.push((
+                    TaskPoolTypes::Extra,
+                    (
+                        artillery_unit.0.translation,
+                        (artillery_unit.0.translation - artillery_unit.2.0).normalize() * (artillery_unit.1.max_range - 5.) + artillery_unit.2.0,
+                        Some(100.),
+                        artillery_unit.3,
+                    ),
                 ));
-    
-                pathfinding_task.tasks.push(task);
             }
             else {
                 artillery_unit.1.elapsed_reload_time += time.delta().as_millis();
@@ -8029,10 +8124,7 @@ pub fn transport_assignation_system(
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     cursor_ray: Res<CursorRay>,
     mut raycast: Raycast,
-    nav_mesh: Res<NavMesh>,
-    nav_mesh_settings: Res<NavMeshSettings>,
-    mut pathfinding_task: ResMut<AsyncPathfindingTasks>,
-    async_task_pools: Res<AsyncTaskPools>,
+    mut unstarted_tasks: ResMut<UnstartedPathfindingTasksPool>,
     mut commands: Commands,
     network_status: Res<NetworkStatus>,
     mut client: ResMut<QuinnetClient>,
@@ -8051,8 +8143,6 @@ pub fn transport_assignation_system(
 
                         let mut selected_units_iter = selected_units_q.iter();
 
-                        let nav_mesh_lock = nav_mesh.get();
-
                         let mut assigned_units: Vec<Entity> = Vec::new();
                         for _i in 0..transport.1.max_units - transport.1.units_inside.len() {
                             if let Some(unit) = selected_units_iter.next() {
@@ -8064,17 +8154,15 @@ pub fn transport_assignation_system(
                                                 transport_position: transport.2.translation,
                                             });
 
-                                            let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
-                                                nav_mesh_lock.clone(),
-                                                nav_mesh_settings.clone(),
-                                                unit.2.translation,
-                                                transport.2.translation,
-                                                Some(100.),
-                                                Some(&[1.0, 1.5]),
-                                                unit.0,
+                                            unstarted_tasks.0.push((
+                                                TaskPoolTypes::Manual,
+                                                (
+                                                    unit.2.translation,
+                                                    transport.2.translation,
+                                                    Some(100.),
+                                                    unit.0,
+                                                ),
                                             ));
-                            
-                                            pathfinding_task.tasks.push(task);
 
                                             if let Some(server_entity) = entity_maps.client_to_server.get(&unit.0) {
                                                 assigned_units.push(*server_entity);
@@ -8086,17 +8174,15 @@ pub fn transport_assignation_system(
                                                 transport_position: transport.2.translation,
                                             });
 
-                                            let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
-                                                nav_mesh_lock.clone(),
-                                                nav_mesh_settings.clone(),
-                                                unit.2.translation,
-                                                transport.2.translation,
-                                                Some(100.),
-                                                Some(&[1.0, 1.5]),
-                                                unit.0,
+                                            unstarted_tasks.0.push((
+                                                TaskPoolTypes::Manual,
+                                                (
+                                                    unit.2.translation,
+                                                    transport.2.translation,
+                                                    Some(100.),
+                                                    unit.0,
+                                                ),
                                             ));
-                            
-                                            pathfinding_task.tasks.push(task);
                                         }
                                     }
                                 }
@@ -8296,10 +8382,7 @@ pub fn transport_disembark_system(
     mut event_reader: EventReader<TransportDisembarkEvent>,
     mut transports_q: Query<(&Transform, &mut InfantryTransport, Entity), (With<InfantryTransport>, With<SelectedUnit>)>,
     mut units_q: Query<(&mut Transform, &mut UnitComponent), (With<InTransport>, Without<InfantryTransport>)>,
-    nav_mesh: Res<NavMesh>,
-    nav_mesh_settings: Res<NavMeshSettings>,
-    mut pathfinding_task: ResMut<AsyncPathfindingTasks>,
-    async_task_pools: Res<AsyncTaskPools>,
+    mut unstarted_tasks: ResMut<UnstartedPathfindingTasksPool>,
     mut commands: Commands,
     network_status: Res<NetworkStatus>,
     mut server: ResMut<QuinnetServer>,
@@ -8330,8 +8413,6 @@ pub fn transport_disembark_system(
                 }
             },
             _ => {
-                let nav_mesh_lock = nav_mesh.get();
-
                 for mut transport in transports_q.iter_mut() {
                     let mut disembarked_units: Vec<Entity> = Vec::new();
 
@@ -8424,17 +8505,15 @@ pub fn transport_disembark_system(
 
                             unit.1.path = Vec::new();
 
-                            let task = async_task_pools.manual_pathfinding_pool.spawn(async_path_find(
-                                nav_mesh_lock.clone(),
-                                nav_mesh_settings.clone(),
-                                unit.0.translation,
-                                origin_position,
-                                Some(100.),
-                                Some(&[1.0, 1.5]),
-                                *unit_entity,
+                            unstarted_tasks.0.push((
+                                TaskPoolTypes::Manual,
+                                (
+                                    unit.0.translation,
+                                    origin_position,
+                                    Some(100.),
+                                    *unit_entity,
+                                ),
                             ));
-                
-                            pathfinding_task.tasks.push(task);
             
                             counter += 1;
                         }

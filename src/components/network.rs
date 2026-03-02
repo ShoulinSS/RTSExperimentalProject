@@ -6,7 +6,7 @@ use bevy_rapier3d::{prelude::{CharacterLength, Collider, CollisionGroups, Comput
 use oxidized_navigation_serializable::{Area, NavMesh, NavMeshAffector, NavMeshAreaType, NavMeshSettings};
 use serde::{Deserialize, Serialize};
 
-use crate::{GameStage, GameStages, GameState, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, PlayerData, components::{asset_manager::{AttackVisualisationAssets, BuildingsAssets, ChangeMaterial, CircleData, CircleHolder, InstancedMaterials, LOD, TeamMaterialExtension, TrailComponent, TrailEmmiterComponent, UnitAssets}, building::{CONSTRUCTION_PROGRESS_COLOR, ConstructionProgressBar, DeconstructableBuilding, DontTouch, HumanResourceStorageComponent, HumanResourcesDisplay, MaterialsDisplay, MaterialsProductionComponent, MaterialsStorageComponent, SettlementCaptureInProgress, SettlementCaptureProgressBar, SwitchableBuilding, ToDeconstruct}, logistics::LOGISTIC_UNITS_SPEED, ui_manager::{HumanResourcesOverallAmountDisplay, MaterialsOverallAmountDisplay}, unit::{AsyncPathfindingTasks, AsyncTaskPools, AttackAnimationTypes, BusyEngineer, Covered, DisabledUnit, EngineerActions, ExplosionEvent, InTransport, InfantryTransport, LimitedNumber, MovingToCover, MovingToTransport, RemainsCount, START_ARMORED_SQUADS_AMOUNT, START_ARTILLERY_UNITS_COUNT, START_ENGINEERS_COUNT, START_REGULAR_SQUADS_AMOUNT, START_SHOCK_SQUADS_AMOUNT, SelectedUnit, SquadLeader, StoppedMoving, SuppliesConsumerComponent, UnitNeedsToBeUncovered, UnitRemains, async_path_find}}};
+use crate::{GameStage, GameStages, GameState, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, PlayerData, components::{asset_manager::{AttackVisualisationAssets, BuildingsAssets, ChangeMaterial, CircleData, CircleHolder, InstancedMaterials, LOD, TeamMaterialExtension, TrailComponent, TrailEmmiterComponent, UnitAssets}, building::{CONSTRUCTION_PROGRESS_COLOR, ConstructionProgressBar, DeconstructableBuilding, DontTouch, HumanResourceStorageComponent, HumanResourcesDisplay, MaterialsDisplay, MaterialsProductionComponent, MaterialsStorageComponent, SettlementCaptureInProgress, SettlementCaptureProgressBar, Settlements, SwitchableBuilding, ToDeconstruct}, logistics::LOGISTIC_UNITS_SPEED, ui_manager::{HumanResourcesOverallAmountDisplay, MaterialsOverallAmountDisplay}, unit::{AsyncPathfindingTasks, AsyncTaskPools, AttackAnimationTypes, BusyEngineer, Covered, DisabledUnit, EngineerActions, ExplosionEvent, InTransport, InfantryTransport, LimitedNumber, MovingToCover, MovingToTransport, RemainsCount, START_ARMORED_SQUADS_AMOUNT, START_ARTILLERY_UNITS_COUNT, START_ENGINEERS_COUNT, START_REGULAR_SQUADS_AMOUNT, START_SHOCK_SQUADS_AMOUNT, SelectedUnit, SquadLeader, StoppedMoving, SuppliesConsumerComponent, TaskPoolTypes, UnitNeedsToBeUncovered, UnitRemains, UnstartedPathfindingTasksPool, async_path_find}}};
 
 use super::{asset_manager::{generate_circle_segments, LineData, LineHolder}, building::{create_ring, AllSettlementsPlaced, ApartmentHouse, ArtilleryBundle, BuildingBlueprint, BuildingConstructionSite, BuildingsBundles, BuildingsList, CoverComponent, DeleteTemporaryObjects, EngineerBundle, IFVBundle, InfantryBarracksBundle, LogisticHubBundle, ProducableUnits, ProductionQueue, ProductionState, ResourceMinerBundle, SettlementComponent, SettlementObject, SoldierBundle, SuppliesProductionComponent, TankBundle, TemporaryObject, UnactivatedBlueprints, UnitBundles, VehicleFactoryBundle}, logistics::{create_curved_mesh, ResourceZone}, ui_manager::{Actions, ButtonAction, GameStartedEvent, ProductionStateChanged, UiButtonNodes}, unit::{self, Armies, ArmoredSquad, ArmyObject, ArtilleryNeedsToFire, ArtilleryUnit, AttackTypes, CompanyTypes, CombatComponent, DamageTypes, DeleteAfterStart, LimitedHashSet, NeedToMove, RegularSquad, SelectableUnit, SerializableArmyObject, ShockSquad, UnitComponent, UnitDeathEvent, UnitTypes, UnitsTileMap, ARMORED_SQUAD_SIZE, REGULAR_SQUAD_SIZE, SHOCK_SQUAD_SIZE, SPECIALISTS_PER_REGULAR_SQUAD, SPECIALISTS_PER_SHOCK_SQUAD, TILE_SIZE}};
 
@@ -65,6 +65,8 @@ const LOCAL_BIND_IP: Ipv4Addr = Ipv4Addr::UNSPECIFIED;
 const SERVER_PORT: u16 = 6000;
 
 pub fn start_listening_clients(mut server: ResMut<QuinnetServer>) {
+    let _ = server.stop_endpoint();
+
     server
     .start_endpoint(
         ServerEndpointConfiguration::from_ip(LOCAL_BIND_IP, SERVER_PORT),
@@ -188,7 +190,7 @@ pub enum ClientMessage{
     ArmySetupStageCompleted{
         army: SerializableArmyObject,
     },
-    ArmyChanged{
+    ClientArmyChanged{
         army: SerializableArmyObject,
     },
     ProductionStateChanged{
@@ -285,12 +287,7 @@ pub fn client_messages_handler(
     mut unactivated_blueprints: ResMut<UnactivatedBlueprints>,
     game_stage: Res<GameStage>,
     mut production_state: ResMut<ProductionState>,
-    mut navigation: (
-        Res<NavMesh>,
-        Res<NavMeshSettings>,
-        ResMut<AsyncPathfindingTasks>,
-        Res<AsyncTaskPools>,
-    ),
+    mut unstarted_tasks: ResMut<UnstartedPathfindingTasksPool>,
     mut event_writer: (
         EventWriter<ProductionStateChanged>,
         EventWriter<UnitNeedsToBeUncovered>,
@@ -984,7 +981,7 @@ pub fn client_messages_handler(
                         }
                     }
                 },
-                ClientMessage::ArmyChanged { army } => {
+                ClientMessage::ClientArmyChanged { army } => {
                     let mut regular_platoons: HashMap<(i32, i32, i32, i32, i32), (RegularSquad, String, Entity)> = HashMap::new();
                     let mut shock_platoons: HashMap<(i32, i32, i32, i32, i32), (ShockSquad, String, Entity)> = HashMap::new();
                     let mut armored_platoons: HashMap<(i32, i32, i32, i32, i32), (ArmoredSquad, String, Entity)> = HashMap::new();
@@ -1089,7 +1086,9 @@ pub fn client_messages_handler(
                 },
                 ClientMessage::UncoveringRequest { unit_entities } => {
                     for unit_entity in unit_entities.iter() {
-                        commands.entity(*unit_entity).remove::<MovingToCover>();
+                        if commands.get_entity(*unit_entity).is_some() {
+                            commands.entity(*unit_entity).remove::<MovingToCover>();
+                        }
 
                         if let Ok(mut unit) = queries.3.get_mut(*unit_entity) {
                             if let Some(cover) = unit.1 {
@@ -1332,8 +1331,6 @@ pub fn client_messages_handler(
                     }
                 },
                 ClientMessage::DisembarkRequest { transports } => {
-                    let nav_mesh_lock = navigation.0.get();
-
                     for transport_entity in transports.iter() {
                         if let Ok(mut transport) = queries.9.get_mut(*transport_entity) {
                             let mut disembarked_units: Vec<Entity> = Vec::new();
@@ -1426,17 +1423,15 @@ pub fn client_messages_handler(
                                     unit.path = Vec::new();
 
                                     if let Ok(transform) = queries.10.get(*unit_entity) {
-                                        let task = navigation.3.manual_pathfinding_pool.spawn(async_path_find(
-                                            nav_mesh_lock.clone(),
-                                            navigation.1.clone(),
-                                            transform.translation,
-                                            origin_position,
-                                            Some(100.),
-                                            Some(&[1.0, 1.5]),
-                                            *unit_entity,
+                                        unstarted_tasks.0.push((
+                                            TaskPoolTypes::Manual,
+                                            (
+                                                transform.translation,
+                                                origin_position,
+                                                Some(100.),
+                                                *unit_entity,
+                                            ),
                                         ));
-                            
-                                        navigation.2.tasks.push(task);
                                     }
                     
                                     counter += 1;
@@ -1525,6 +1520,8 @@ pub fn start_connection_to_server(
     ip_buffer: Res<InsertedConnectionData>,
 ) {
     if ip_buffer.ip == "".to_string() {
+        let _ = client.close_all_connections();
+
         client
         .open_connection(
             ClientEndpointConfiguration::from_ips(SERVER_HOST, SERVER_PORT, LOCAL_BIND_IP, 0),
@@ -1631,6 +1628,8 @@ pub fn start_connection_to_server(
         println!("{}", ip[0]);
         let server_host = Ipv4Addr::from_str(&ip[0]).unwrap();
         let server_port = ip[1].parse::<u16>().unwrap();
+        
+        let _ = client.close_all_connections();
 
         client
         .open_connection(
@@ -1937,6 +1936,9 @@ pub enum ServerMessage{
         transport_server_entity: Entity,
         transport_position: Vec3,
     },
+    HostArmyChanged{
+        army: SerializableArmyObject,
+    },
 }
 
 #[derive(Resource)]
@@ -1955,9 +1957,10 @@ pub fn server_messages_handler(
         EventReader<ConnectionFailedEvent>,
     ),
     ip_buffer: Res<InsertedConnectionData>,
-    mut players: (
+    mut other: (
         ResMut<PlayerList>,
         ResMut<PlayerData>,
+        ResMut<NextState<GameState>>,
     ),
     mut entity_maps: ResMut<EntityMaps>,
     mut entities_to_move: (
@@ -1995,6 +1998,7 @@ pub fn server_messages_handler(
         Res<UnitAssets>,
         Res<UiButtonNodes>,
         ResMut<RemainsCount>,
+        ResMut<Settlements>,
     ),
     mut tile_map: ResMut<UnitsTileMap>,
     mut event_writer: (
@@ -2040,7 +2044,7 @@ pub fn server_messages_handler(
                     actual_player_list.insert(team.0, players_to_insert);
                 }
 
-                players.0.0 = actual_player_list;
+                other.0.0 = actual_player_list;
             },
             ServerMessage::PlayerQuit { player_list } => {
                 let mut actual_player_list: HashMap<i32, HashMap<ClientId, String>> = HashMap::new();
@@ -2055,10 +2059,10 @@ pub fn server_messages_handler(
                     actual_player_list.insert(team.0, players_to_insert);
                 }
 
-                players.0.0 = actual_player_list;
+                other.0.0 = actual_player_list;
             },
             ServerMessage::TeamDefined { team } => {
-                players.1.team = team;
+                other.1.team = team;
             },
             ServerMessage::SettlementPlaced { settlement, position, server_entity } => {
                 let color;
@@ -2138,8 +2142,10 @@ pub fn server_messages_handler(
                     transform: Transform::from_translation(position).with_rotation(Quat::from_rotation_y(angle)),
                     ..default()
                 })
-                //.insert(Collider::cuboid(5., 5., 5.))
-                //.insert(NavMeshAffector)
+                .insert(Collider::cuboid(18., 10., 8.))
+                .insert(CollisionGroups::new(Group::GROUP_2, Group::all()))
+                .insert(NavMeshAffector)
+                .insert(NavMeshAreaType(None))
                 .insert(ApartmentHouse)
                 .insert(CombatComponent{
                     team: team,
@@ -2165,7 +2171,7 @@ pub fn server_messages_handler(
                 })
                 .insert(CoverComponent{
                     cover_efficiency: 0.5,
-                    points: vec![position, position, position, position, position, position, position, position, position, position],
+                    points: vec![position, position, position, position, position, position, position, position, position],
                     units_inside: HashSet::new(),
                 })
                 .id();
@@ -4688,6 +4694,7 @@ pub fn server_messages_handler(
                 .insert(UnitComponent{
                     path: Vec::new(),
                     start_position: Vec3::ZERO,
+                    quantized_destination: None,
                     speed: LOGISTIC_UNITS_SPEED,
                     waypoint_radius: 1.,
                     elapsed: 0.,
@@ -4752,6 +4759,18 @@ pub fn server_messages_handler(
             ServerMessage::SettlementCaptured { server_entity, team, captured_apartments } => {
                 if let Some(client_entity) = entity_maps.server_to_client.get(&server_entity) {
                     if let Ok(mut settlement) = queries.8.get_mut(*client_entity) {
+                        if let Some(team_settlements) = resources.5.0.get_mut(&settlement.0.team) {
+                            *team_settlements -= 1;
+
+                            if *team_settlements == 0 {
+                                other.2.set(GameState::GameEnd);
+                            }
+                        }
+
+                        if let Some(team_settlements) = resources.5.0.get_mut(&team) {
+                            *team_settlements += 1;
+                        }
+
                         settlement.0.team = team;
                         settlement.0.elapsed_capture_time = 0;
                     }
@@ -5094,7 +5113,7 @@ pub fn server_messages_handler(
                 }
             },
             ServerMessage::ResourceDisplayesUpdated { materials_display, human_resource_display } => {
-                if players.1.team == 1 {
+                if other.1.team == 1 {
                     for mut material_display in queries.9.iter_mut() {
                         material_display.sections[0].value = materials_display.0.clone();
                     }
@@ -5165,6 +5184,118 @@ pub fn server_messages_handler(
                         transport.units_inside.clear();
                     }
                 }
+            },
+            ServerMessage::HostArmyChanged { army } => {
+                let mut regular_platoons: HashMap<(i32, i32, i32, i32, i32), (RegularSquad, String, Entity)> = HashMap::new();
+                let mut shock_platoons: HashMap<(i32, i32, i32, i32, i32), (ShockSquad, String, Entity)> = HashMap::new();
+                let mut armored_platoons: HashMap<(i32, i32, i32, i32, i32), (ArmoredSquad, String, Entity)> = HashMap::new();
+                let mut artillery_units: (HashMap<i32, ((Option<Entity>, String), Entity)>, Entity) = (HashMap::new(), Entity::PLACEHOLDER);
+                let mut engineers: HashMap<i32, ((Option<Entity>, String), Entity)> = HashMap::new();
+
+                for s_regular_platoon in army.regular_platoons.iter() {
+                    let mut soldiers: LimitedHashSet<Entity, REGULAR_SQUAD_SIZE> = LimitedHashSet::new();
+                    let mut specialists: LimitedHashSet<Entity, SPECIALISTS_PER_REGULAR_SQUAD> = LimitedHashSet::new();
+
+                    for soldier in s_regular_platoon.1.0.0.0.iter() {
+                        if let Some(client_entity) = entity_maps.server_to_client.get(soldier) {
+                            let _ = soldiers.insert(*client_entity);
+                        }
+                    }
+
+                    for specialist in s_regular_platoon.1.0.0.1.iter() {
+                        if let Some(client_entity) = entity_maps.server_to_client.get(specialist) {
+                            let _ = specialists.insert(*client_entity);
+                        }
+                    }
+
+                    let mut leader = Entity::PLACEHOLDER;
+                    if let Some(client_entity) = entity_maps.server_to_client.get(&s_regular_platoon.1.2) {
+                        leader = *client_entity;
+                    }
+
+                    regular_platoons.insert(s_regular_platoon.0, (RegularSquad((soldiers, specialists)), s_regular_platoon.1.1.clone(), leader));
+                }
+
+                for s_shock_platoon in army.shock_platoons.iter() {
+                    let mut soldiers: LimitedHashSet<Entity, SHOCK_SQUAD_SIZE> = LimitedHashSet::new();
+                    let mut specialists: LimitedHashSet<Entity, SPECIALISTS_PER_SHOCK_SQUAD> = LimitedHashSet::new();
+
+                    for soldier in s_shock_platoon.1.0.0.0.iter() {
+                        if let Some(client_entity) = entity_maps.server_to_client.get(soldier) {
+                            let _ = soldiers.insert(*client_entity);
+                        }
+                    }
+
+                    for specialist in s_shock_platoon.1.0.0.1.iter() {
+                        if let Some(client_entity) = entity_maps.server_to_client.get(specialist) {
+                            let _ = specialists.insert(*client_entity);
+                        }
+                    }
+
+                    let mut leader = Entity::PLACEHOLDER;
+                    if let Some(client_entity) = entity_maps.server_to_client.get(&s_shock_platoon.1.2) {
+                        leader = *client_entity;
+                    }
+
+                    shock_platoons.insert(s_shock_platoon.0, (ShockSquad((soldiers, specialists)), s_shock_platoon.1.1.clone(), leader));
+                }
+
+                for s_armored_platoon in army.armored_platoons.iter() {
+                    let mut vehicles: LimitedHashSet<Entity, ARMORED_SQUAD_SIZE> = LimitedHashSet::new();
+
+                    for vehicle in s_armored_platoon.1.0.0.iter() {
+                        if let Some(client_entity) = entity_maps.server_to_client.get(vehicle) {
+                            let _ = vehicles.insert(*client_entity);
+                        }
+                    }
+
+                    let mut leader = Entity::PLACEHOLDER;
+                    if let Some(client_entity) = entity_maps.server_to_client.get(&s_armored_platoon.1.2) {
+                        leader = *client_entity;
+                    }
+
+                    armored_platoons.insert(s_armored_platoon.0, (ArmoredSquad(vehicles), s_armored_platoon.1.1.clone(), leader));
+                }
+
+                for s_artillery in army.artillery_units.0.iter() {
+                    if let Some(server_entity) = s_artillery.1.0.0 {
+                        if let Some(client_entity) = entity_maps.server_to_client.get(&server_entity) {
+                            artillery_units.0.insert(s_artillery.0, (
+                                (
+                                    Some(*client_entity),
+                                    s_artillery.1.0.1.clone(),
+                                ),
+                                s_artillery.1.1,
+                            ));
+                        }
+                    } else {
+                        artillery_units.0.insert(s_artillery.0, s_artillery.1.clone());
+                    }
+                }
+
+                for s_engineer in army.engineers.iter() {
+                    if let Some(server_entity) = s_engineer.1.0.0 {
+                        if let Some(client_entity) = entity_maps.server_to_client.get(&server_entity) {
+                            engineers.insert(s_engineer.0, (
+                                (
+                                    Some(*client_entity),
+                                    s_engineer.1.0.1.clone(),
+                                ),
+                                s_engineer.1.1,
+                            ));
+                        }
+                    } else {
+                        engineers.insert(s_engineer.0, s_engineer.1.clone());
+                    }
+                }
+
+                armies.0.insert(1, ArmyObject{
+                    regular_squads: regular_platoons,
+                    shock_squads: shock_platoons,
+                    armored_squads: armored_platoons,
+                    artillery_units,
+                    engineers,
+                });
             },
         }
     }
@@ -5308,9 +5439,6 @@ pub fn client_entity_movement_system(
             if let Ok(mut transform) = moving_entities_q.get_mut(entity.0) {
                 if let Ok(mut unit_component) = units_q.get_mut(entity.0) {
                     unit_component.path.clear();
-
-                    commands.entity(entity.0).remove::<NeedToMove>();
-                    commands.entity(entity.0).try_insert(StoppedMoving);
                 } else {
                     transform.look_at(entity.1, Vec3::Y);
                 }
