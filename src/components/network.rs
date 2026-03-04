@@ -427,7 +427,7 @@ pub fn client_messages_handler(
                         transform: Transform::from_translation(position).with_rotation(Quat::from_rotation_y(angle)),
                         ..default()
                     })
-                    .insert(SettlementComponent(settlement.clone()))
+                    .try_insert(SettlementComponent(settlement.clone()))
                     .id();
 
                     commands.spawn(CircleHolder(vec![
@@ -450,7 +450,7 @@ pub fn client_messages_handler(
                             highlight_color: Vec4::new(0., 1., 0., 1.),
                         },
                     ]))
-                    .insert(TemporaryObject);
+                    .try_insert(TemporaryObject);
 
                     let mut channel_id = 60;
                     while channel_id <= 89 {
@@ -513,13 +513,13 @@ pub fn client_messages_handler(
 
                                     materials.1.team_materials.insert((bundle.model.mesh.id(), team), material.clone());
                                 }
-                                
+    
                                 new_building_entity = commands.spawn(MaterialMeshBundle{
                                     mesh: bundle.model.mesh.clone(),
                                     material: material.clone(),
                                     transform: transform,
                                     ..default()
-                                }).insert(BuildingBlueprint{
+                                }).try_insert(BuildingBlueprint{
                                     team: team,
                                     building_bundle: building.1.clone(),
                                     build_power_remaining: building.4,
@@ -527,21 +527,6 @@ pub fn client_messages_handler(
                                     build_distance: building.5,
                                     resource_cost: building.6,
                                 }).id();
-
-                                let mut channel_id = 60;
-                                while channel_id <= 89 {
-                                    if let Err(_) = endpoint.send_group_message_on(clients.0.0.keys(), channel_id, ServerMessage::BlueprintPlaced{
-                                        team: team,
-                                        name: name.clone(),
-                                        position: position,
-                                        angle: angle,
-                                        server_entity: new_building_entity,
-                                    }){
-                                        channel_id += 1;
-                                    } else {
-                                        break;
-                                    }
-                                }
                             },
                             BuildingsBundles::VehicleFactory(bundle) => {
                                 let material;
@@ -575,7 +560,7 @@ pub fn client_messages_handler(
                                     material: material.clone(),
                                     transform: transform,
                                     ..default()
-                                }).insert(BuildingBlueprint{
+                                }).try_insert(BuildingBlueprint{
                                     team: team,
                                     building_bundle: building.1.clone(),
                                     build_power_remaining: building.4,
@@ -583,21 +568,6 @@ pub fn client_messages_handler(
                                     build_distance: building.5,
                                     resource_cost: building.6,
                                 }).id();
-
-                                let mut channel_id = 60;
-                                while channel_id <= 89 {
-                                    if let Err(_) = endpoint.send_group_message_on(clients.0.0.keys(), channel_id, ServerMessage::BlueprintPlaced{
-                                        team: team,
-                                        name: name.clone(),
-                                        position: position,
-                                        angle: angle,
-                                        server_entity: new_building_entity,
-                                    }){
-                                        channel_id += 1;
-                                    } else {
-                                        break;
-                                    }
-                                }
                             },
                             BuildingsBundles::LogisticHub(bundle) => {
                                 let material;
@@ -631,7 +601,7 @@ pub fn client_messages_handler(
                                     material: material.clone(),
                                     transform: transform,
                                     ..default()
-                                }).insert(BuildingBlueprint{
+                                }).try_insert(BuildingBlueprint{
                                     team: team,
                                     building_bundle: building.1.clone(),
                                     build_power_remaining: building.4,
@@ -639,21 +609,6 @@ pub fn client_messages_handler(
                                     build_distance: building.5,
                                     resource_cost: building.6,
                                 }).id();
-
-                                let mut channel_id = 60;
-                                while channel_id <= 89 {
-                                    if let Err(_) = endpoint.send_group_message_on(clients.0.0.keys(), channel_id, ServerMessage::BlueprintPlaced{
-                                        team: team,
-                                        name: name.clone(),
-                                        position: position,
-                                        angle: angle,
-                                        server_entity: new_building_entity,
-                                    }){
-                                        channel_id += 1;
-                                    } else {
-                                        break;
-                                    }
-                                }
                             },
                             BuildingsBundles::ResourceMiner(bundle) => {
                                 for mut zone in queries.0.iter_mut() {
@@ -670,7 +625,7 @@ pub fn client_messages_handler(
                                             }
                                         }
                                     }
-                                    
+        
                                     if !is_some && zone.1.translation.xz().distance(position.xz()) <= zone.0.zone_radius {
                                         let material;
 
@@ -697,13 +652,13 @@ pub fn client_messages_handler(
 
                                             materials.1.team_materials.insert((bundle.model.mesh.id(), team), material.clone());
                                         }
-                                        
+            
                                         new_building_entity = commands.spawn(MaterialMeshBundle{
                                             mesh: bundle.model.mesh.clone(),
                                             material: material.clone(),
                                             transform: transform,
                                             ..default()
-                                        }).insert(BuildingBlueprint{
+                                        }).try_insert(BuildingBlueprint{
                                             team: team,
                                             building_bundle: building.1.clone(),
                                             build_power_remaining: building.4,
@@ -714,21 +669,6 @@ pub fn client_messages_handler(
         
                                         if let Some(miner) = zone.0.current_miners.get_mut(&team) {
                                             *miner = Some((new_building_entity, 0));
-                                        }
-
-                                        let mut channel_id = 60;
-                                        while channel_id <= 89 {
-                                            if let Err(_) = endpoint.send_group_message_on(clients.0.0.keys(), channel_id, ServerMessage::BlueprintPlaced{
-                                                team: team,
-                                                name: name.clone(),
-                                                position: position,
-                                                angle: angle,
-                                                server_entity: new_building_entity,
-                                            }){
-                                                channel_id += 1;
-                                            } else {
-                                                break;
-                                            }
                                         }
         
                                         break;
@@ -767,7 +707,7 @@ pub fn client_messages_handler(
                                     material: material.clone(),
                                     transform: transform,
                                     ..default()
-                                }).insert(BuildingBlueprint{
+                                }).try_insert(BuildingBlueprint{
                                     team: team,
                                     building_bundle: building.1.clone(),
                                     build_power_remaining: building.4,
@@ -775,28 +715,116 @@ pub fn client_messages_handler(
                                     build_distance: building.5,
                                     resource_cost: building.6,
                                 }).id();
-
-                                let mut channel_id = 60;
-                                while channel_id <= 89 {
-                                    if let Err(_) = endpoint.send_group_message_on(clients.0.0.keys(), channel_id, ServerMessage::BlueprintPlaced{
-                                        team: team,
-                                        name: name.clone(),
-                                        position: position,
-                                        angle: angle,
-                                        server_entity: new_building_entity,
-                                    }){
-                                        channel_id += 1;
-                                    } else {
-                                        break;
-                                    }
-                                }
                             }
+                            BuildingsBundles::WatchingTower(bundle) => {
+                                let material;
+
+                                if let Some(mat) = materials.1.team_materials.get(&(bundle.model.mesh.id(), team)) {
+                                    material = mat.clone();
+                                } else {
+                                    if let Some(original) = materials.0.get(bundle.model.material.id()) {
+                                        material = materials.2.add(ExtendedMaterial {
+                                            base: original.clone(),
+                                            extension: TeamMaterialExtension {
+                                                team_color: color,
+                                            },
+                                        });
+                                    } else {
+                                        material = materials.2.add(ExtendedMaterial {
+                                            base: StandardMaterial{
+                                                ..default()
+                                            },
+                                            extension: TeamMaterialExtension {
+                                                team_color: color,
+                                            },
+                                        });
+                                    }
+
+                                    materials.1.team_materials.insert((bundle.model.mesh.id(), team), material.clone());
+                                }
+
+                                new_building_entity = commands.spawn(MaterialMeshBundle{
+                                    mesh: bundle.model.mesh.clone(),
+                                    material: material.clone(),
+                                    transform: transform,
+                                    ..default()
+                                }).try_insert(BuildingBlueprint{
+                                    team: team,
+                                    building_bundle: building.1.clone(),
+                                    build_power_remaining: building.4,
+                                    name: building.0.clone(),
+                                    build_distance: building.5,
+                                    resource_cost: building.6,
+                                }).id();
+                            },
+                            BuildingsBundles::Autoturret(bundle) => {
+                                let material;
+
+                                if let Some(mat) = materials.1.team_materials.get(&(bundle.model.mesh.id(), team)) {
+                                    material = mat.clone();
+                                } else {
+                                    if let Some(original) = materials.0.get(bundle.model.material.id()) {
+                                        material = materials.2.add(ExtendedMaterial {
+                                            base: original.clone(),
+                                            extension: TeamMaterialExtension {
+                                                team_color: color,
+                                            },
+                                        });
+                                    } else {
+                                        material = materials.2.add(ExtendedMaterial {
+                                            base: StandardMaterial{
+                                                ..default()
+                                            },
+                                            extension: TeamMaterialExtension {
+                                                team_color: color,
+                                            },
+                                        });
+                                    }
+
+                                    materials.1.team_materials.insert((bundle.model.mesh.id(), team), material.clone());
+                                }
+
+                                new_building_entity = commands.spawn(MaterialMeshBundle{
+                                    mesh: bundle.model.mesh.clone(),
+                                    material: material.clone(),
+                                    transform: transform,
+                                    ..default()
+                                }).try_insert(BuildingBlueprint{
+                                    team: team,
+                                    building_bundle: building.1.clone(),
+                                    build_power_remaining: building.4,
+                                    name: building.0.clone(),
+                                    build_distance: building.5,
+                                    resource_cost: building.6,
+                                }).id();
+                            },
                             BuildingsBundles::None => {},
                         }
 
-                        if let GameStages::GameStarted = game_stage.0 {
-                            unactivated_blueprints.0.entry(team).or_insert_with(HashMap::new)
-                            .insert(new_building_entity, (position, Entity::PLACEHOLDER, building.5));
+                        if new_building_entity != Entity::PLACEHOLDER {
+                            if team != 1 {
+                                commands.entity(new_building_entity).try_insert(Visibility::Hidden);
+                            }
+
+                            let mut channel_id = 60;
+                            while channel_id <= 89 {
+                                if let Err(_) = endpoint.send_group_message_on(clients.0.0.keys(), channel_id, ServerMessage::BlueprintPlaced{
+                                    team: team,
+                                    name: name.clone(),
+                                    position: position,
+                                    angle: angle,
+                                    server_entity: new_building_entity,
+                                }){
+                                    channel_id += 1;
+                                } else {
+                                    break;
+                                }
+                            }
+
+                            if let GameStages::GameStarted = game_stage.0 {
+                                unactivated_blueprints.0.entry(team).or_insert_with(HashMap::new)
+                                .insert(new_building_entity, (position, Entity::PLACEHOLDER, building.5));
+                            }
                         }
                     }
                 },
@@ -1068,7 +1096,7 @@ pub fn client_messages_handler(
                     }
                 },
                 ClientMessage::ArtilleryDesignationRequest { artillery_entity, target_position: position } => {
-                    commands.entity(artillery_entity).insert(ArtilleryNeedsToFire(position));
+                    commands.entity(artillery_entity).try_insert(ArtilleryNeedsToFire(position));
                 },
                 ClientMessage::CancelArtilleryFire { artillery_entity } => {
                     if let Ok(mut unit) = queries.1.get_mut(artillery_entity) {
@@ -1078,7 +1106,7 @@ pub fn client_messages_handler(
                 },
                 ClientMessage::CoverAssignationRequest { units, cover_entity, cover_position } => {
                     for unit in units.iter() {
-                        commands.entity(*unit).insert(MovingToCover{
+                        commands.entity(*unit).try_insert(MovingToCover{
                             cover_entity: cover_entity,
                             cover_position: cover_position,
                         });
@@ -1130,7 +1158,7 @@ pub fn client_messages_handler(
                     }
                 },
                 ClientMessage::DeconstructionRequest { entity, team, deconstruction_distance } => {
-                    commands.entity(entity).insert(ToDeconstruct{
+                    commands.entity(entity).try_insert(ToDeconstruct{
                         team: team,
                         deconstructor_entity: Entity::PLACEHOLDER,
                         progress_bar_entity: Entity::PLACEHOLDER,
@@ -1158,7 +1186,7 @@ pub fn client_messages_handler(
                     }
 
                     if let Ok(construction_site) = queries.4.get(entity) {
-                        commands.entity(construction_site.current_builder).insert(BusyEngineer(
+                        commands.entity(construction_site.current_builder).try_insert(BusyEngineer(
                             EngineerActions::Construction((position, entity, construction_site.build_distance))
                         ));
                     }
@@ -1222,7 +1250,7 @@ pub fn client_messages_handler(
                                         transform: Transform::from_translation(apartment.1).with_rotation(Quat::from_rotation_y(apartment.2)),
                                         ..default()
                                     })
-                                    .insert(BuildingConstructionSite{
+                                    .try_insert(BuildingConstructionSite{
                                         team: team,
                                         building_bundle: BuildingsBundles::None,
                                         build_power_total: 200,
@@ -1231,7 +1259,7 @@ pub fn client_messages_handler(
                                         build_distance: 30.,
                                         current_builder: Entity::PLACEHOLDER,
                                         resource_cost: 0,
-                                    }).insert(CombatComponent{
+                                    }).try_insert(CombatComponent{
                                         team: team,
                                         current_health: 10,
                                         max_health: 10,
@@ -1253,7 +1281,7 @@ pub fn client_messages_handler(
                                             )
                                         ),
                                     })
-                                    .insert(DontTouch)
+                                    .try_insert(DontTouch)
                                     .id();
 
                                     apartment.0 = new_construction_site;
@@ -1277,7 +1305,7 @@ pub fn client_messages_handler(
                                         background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                         ..default()
                                     })
-                                    .insert(Visibility::Hidden)
+                                    .try_insert(Visibility::Hidden)
                                     .with_children(|parent| {
                                         parent.spawn(NodeBundle {
                                             style: Style {
@@ -1292,7 +1320,7 @@ pub fn client_messages_handler(
                                             background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
                                             ..default()
                                         })
-                                        .insert(ConstructionProgressBar {
+                                        .try_insert(ConstructionProgressBar {
                                             constrcution_entity: new_construction_site,
                                             max_width: bar_size,
                                         });
@@ -1318,7 +1346,7 @@ pub fn client_messages_handler(
                 },
                 ClientMessage::TransportAssignationRequest { units, transport_entity, transport_position } => {
                     for unit_entity in units.iter() {
-                        commands.entity(*unit_entity).insert(MovingToTransport{
+                        commands.entity(*unit_entity).try_insert(MovingToTransport{
                             transport_entity: transport_entity,
                             transport_position: transport_position,
                         });
@@ -2107,7 +2135,7 @@ pub fn server_messages_handler(
                     transform: Transform::from_translation(position).with_rotation(Quat::from_rotation_y(angle)),
                     ..default()
                 })
-                .insert(SettlementComponent(settlement.clone()))
+                .try_insert(SettlementComponent(settlement.clone()))
                 .id();
 
                 commands.spawn(CircleHolder(vec![
@@ -2130,7 +2158,7 @@ pub fn server_messages_handler(
                         highlight_color: Vec4::new(0., 1., 0., 1.),
                     },
                 ]))
-                .insert(TemporaryObject);
+                .try_insert(TemporaryObject);
 
                 entity_maps.client_to_server.insert(client_entity, server_entity);
                 entity_maps.server_to_client.insert(server_entity, client_entity);
@@ -2142,12 +2170,12 @@ pub fn server_messages_handler(
                     transform: Transform::from_translation(position).with_rotation(Quat::from_rotation_y(angle)),
                     ..default()
                 })
-                .insert(Collider::cuboid(18., 10., 8.))
-                .insert(CollisionGroups::new(Group::GROUP_2, Group::all()))
-                .insert(NavMeshAffector)
-                .insert(NavMeshAreaType(None))
-                .insert(ApartmentHouse)
-                .insert(CombatComponent{
+                .try_insert(Collider::cuboid(18., 10., 8.))
+                .try_insert(CollisionGroups::new(Group::GROUP_2, Group::all()))
+                .try_insert(NavMeshAffector)
+                .try_insert(NavMeshAreaType(None))
+                .try_insert(ApartmentHouse)
+                .try_insert(CombatComponent{
                     team: team,
                     current_health: 1000,
                     max_health: 1000,
@@ -2169,9 +2197,9 @@ pub fn server_messages_handler(
                         ),
                     ),
                 })
-                .insert(CoverComponent{
+                .try_insert(CoverComponent{
                     cover_efficiency: 0.5,
-                    points: vec![position, position, position, position, position, position, position, position, position],
+                    points: vec![Vec3::ZERO, Vec3::ZERO, Vec3::ZERO, Vec3::ZERO, Vec3::ZERO, Vec3::ZERO, Vec3::ZERO, Vec3::ZERO, Vec3::ZERO],
                     units_inside: HashSet::new(),
                 })
                 .id();
@@ -2181,7 +2209,7 @@ pub fn server_messages_handler(
             },
             ServerMessage::RoadGenerated { road_points, road_center, server_entity } => {
                 let raod_mesh = create_curved_mesh(
-                    5.,
+                    10.,
                     5.,
                     road_points,
                     -2.9,
@@ -2190,15 +2218,15 @@ pub fn server_messages_handler(
 
                 let client_entity = commands.spawn(MaterialMeshBundle{
                     mesh: meshes.add(raod_mesh.clone()),
-                    material: materials.0.add(Color::srgb(0.5, 0.5, 0.5)).into(),
+                    material: materials.1.road_material.clone(),
                     transform: Transform::from_translation(road_center),
                     ..default()
                 })
-                .insert(Collider::from_bevy_mesh(&raod_mesh, &ComputedColliderShape::TriMesh).unwrap())
-                .insert(NavMeshAffector)
-                .insert(NavMeshAreaType(Some(Area(1))))
-                .insert(NotShadowCaster)
-                .insert(CollisionGroups::new(Group::GROUP_2, Group::all()))
+                .try_insert(Collider::from_bevy_mesh(&raod_mesh, &ComputedColliderShape::TriMesh).unwrap())
+                .try_insert(NavMeshAffector)
+                .try_insert(NavMeshAreaType(Some(Area(1))))
+                .try_insert(NotShadowCaster)
+                .try_insert(CollisionGroups::new(Group::GROUP_2, Group::all()))
                 .id();
 
                 entity_maps.client_to_server.insert(client_entity, server_entity);
@@ -2208,11 +2236,11 @@ pub fn server_messages_handler(
                 let resource_zone_size = 30.;
 
                 let client_entity = commands.spawn(Transform::from_translation(position))
-                .insert(ResourceZone{
+                .try_insert(ResourceZone{
                     zone_radius: resource_zone_size,
                     current_miners: HashMap::new(),
                 })
-                .insert(CircleHolder(vec![
+                .try_insert(CircleHolder(vec![
                     CircleData{
                         circle_center: position.xz(),
                         inner_radius: resource_zone_size,
@@ -2244,7 +2272,7 @@ pub fn server_messages_handler(
                                 material: materials.1.blue_transparent.clone(),
                                 transform: transform,
                                 ..default()
-                            }).insert(BuildingBlueprint{
+                            }).try_insert(BuildingBlueprint{
                                 team: team,
                                 building_bundle: building.1.clone(),
                                 build_power_remaining: building.4,
@@ -2259,7 +2287,7 @@ pub fn server_messages_handler(
                                 material: materials.1.blue_transparent.clone(),
                                 transform: transform,
                                 ..default()
-                            }).insert(BuildingBlueprint{
+                            }).try_insert(BuildingBlueprint{
                                 team: team,
                                 building_bundle: building.1.clone(),
                                 build_power_remaining: building.4,
@@ -2274,7 +2302,7 @@ pub fn server_messages_handler(
                                 material: materials.1.blue_transparent.clone(),
                                 transform: transform,
                                 ..default()
-                            }).insert(BuildingBlueprint{
+                            }).try_insert(BuildingBlueprint{
                                 team: team,
                                 building_bundle: building.1.clone(),
                                 build_power_remaining: building.4,
@@ -2289,7 +2317,7 @@ pub fn server_messages_handler(
                                 material: materials.1.blue_transparent.clone(),
                                 transform: transform,
                                 ..default()
-                            }).insert(BuildingBlueprint{
+                            }).try_insert(BuildingBlueprint{
                                 team: team,
                                 building_bundle: building.1.clone(),
                                 build_power_remaining: building.4,
@@ -2322,7 +2350,37 @@ pub fn server_messages_handler(
                                 material: materials.1.blue_transparent.clone(),
                                 transform: transform,
                                 ..default()
-                            }).insert(BuildingBlueprint{
+                            }).try_insert(BuildingBlueprint{
+                                team: team,
+                                building_bundle: building.1.clone(),
+                                build_power_remaining: building.4,
+                                name: building.0.clone(),
+                                build_distance: building.5,
+                                resource_cost: building.6,
+                            }).id();
+                        },
+                        BuildingsBundles::WatchingTower(bundle) => {
+                            client_entity = commands.spawn(MaterialMeshBundle{
+                                mesh: bundle.model.mesh.clone(),
+                                material: materials.1.blue_transparent.clone(),
+                                transform: transform,
+                                ..default()
+                            }).try_insert(BuildingBlueprint{
+                                team: team,
+                                building_bundle: building.1.clone(),
+                                build_power_remaining: building.4,
+                                name: building.0.clone(),
+                                build_distance: building.5,
+                                resource_cost: building.6,
+                            }).id();
+                        },
+                        BuildingsBundles::Autoturret(bundle) => {
+                            client_entity = commands.spawn(MaterialMeshBundle{
+                                mesh: bundle.model.mesh.clone(),
+                                material: materials.1.blue_transparent.clone(),
+                                transform: transform,
+                                ..default()
+                            }).try_insert(BuildingBlueprint{
                                 team: team,
                                 building_bundle: building.1.clone(),
                                 build_power_remaining: building.4,
@@ -2334,8 +2392,14 @@ pub fn server_messages_handler(
                         BuildingsBundles::None => {},
                     }
 
-                    entity_maps.client_to_server.insert(client_entity, server_entity);
-                    entity_maps.server_to_client.insert(server_entity, client_entity);
+                    if client_entity != Entity::PLACEHOLDER {
+                        if team != other.1.team {
+                            commands.entity(client_entity).try_insert(Visibility::Hidden);
+                        }
+
+                        entity_maps.client_to_server.insert(client_entity, server_entity);
+                        entity_maps.server_to_client.insert(server_entity, client_entity);
+                    }
                 }
             },
             ServerMessage::ConstructionSiteBuilt { team, blueprint_server_entity, server_entity, name, position, angle } => {
@@ -2393,7 +2457,7 @@ pub fn server_messages_handler(
                                 material: material.clone(),
                                 transform: Transform::from_translation(position).with_rotation(Quat::from_rotation_y(angle)),
                                 ..default()
-                            }).insert(BuildingConstructionSite{
+                            }).try_insert(BuildingConstructionSite{
                                 team: team,
                                 building_bundle: building.1.clone(),
                                 build_power_total: building.4,
@@ -2402,7 +2466,7 @@ pub fn server_messages_handler(
                                 build_distance: building.5,
                                 current_builder: Entity::PLACEHOLDER,
                                 resource_cost: building.6,
-                            }).insert(CombatComponent{
+                            }).try_insert(CombatComponent{
                                 team: team,
                                 current_health: bundle.combat_component.current_health / 10,
                                 max_health: bundle.combat_component.current_health / 10,
@@ -2438,7 +2502,7 @@ pub fn server_messages_handler(
                                 background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                 ..default()
                             })
-                            .insert(Visibility::Hidden)
+                            .try_insert(Visibility::Hidden)
                             .with_children(|parent| {
                                 parent.spawn(NodeBundle {
                                     style: Style {
@@ -2453,7 +2517,7 @@ pub fn server_messages_handler(
                                     background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
                                     ..default()
                                 })
-                                .insert(ConstructionProgressBar {
+                                .try_insert(ConstructionProgressBar {
                                     constrcution_entity: client_entity,
                                     max_width: bar_size,
                                 });
@@ -2491,7 +2555,7 @@ pub fn server_messages_handler(
                                 material: material.clone(),
                                 transform: Transform::from_translation(position).with_rotation(Quat::from_rotation_y(angle)),
                                 ..default()
-                            }).insert(BuildingConstructionSite{
+                            }).try_insert(BuildingConstructionSite{
                                 team: team,
                                 building_bundle: building.1.clone(),
                                 build_power_total: building.4,
@@ -2500,7 +2564,7 @@ pub fn server_messages_handler(
                                 build_distance: building.5,
                                 current_builder: Entity::PLACEHOLDER,
                                 resource_cost: building.6,
-                            }).insert(CombatComponent{
+                            }).try_insert(CombatComponent{
                                 team: team,
                                 current_health: bundle.combat_component.current_health / 10,
                                 max_health: bundle.combat_component.current_health / 10,
@@ -2536,7 +2600,7 @@ pub fn server_messages_handler(
                                 background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                 ..default()
                             })
-                            .insert(Visibility::Hidden)
+                            .try_insert(Visibility::Hidden)
                             .with_children(|parent| {
                                 parent.spawn(NodeBundle {
                                     style: Style {
@@ -2551,7 +2615,7 @@ pub fn server_messages_handler(
                                     background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
                                     ..default()
                                 })
-                                .insert(ConstructionProgressBar {
+                                .try_insert(ConstructionProgressBar {
                                     constrcution_entity: client_entity,
                                     max_width: bar_size,
                                 });
@@ -2589,7 +2653,7 @@ pub fn server_messages_handler(
                                 material: material.clone(),
                                 transform: Transform::from_translation(position).with_rotation(Quat::from_rotation_y(angle)),
                                 ..default()
-                            }).insert(BuildingConstructionSite{
+                            }).try_insert(BuildingConstructionSite{
                                 team: team,
                                 building_bundle: building.1.clone(),
                                 build_power_total: building.4,
@@ -2598,7 +2662,7 @@ pub fn server_messages_handler(
                                 build_distance: building.5,
                                 current_builder: Entity::PLACEHOLDER,
                                 resource_cost: building.6,
-                            }).insert(CombatComponent{
+                            }).try_insert(CombatComponent{
                                 team: team,
                                 current_health: bundle.combat_component.current_health / 10,
                                 max_health: bundle.combat_component.current_health / 10,
@@ -2634,7 +2698,7 @@ pub fn server_messages_handler(
                                 background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                 ..default()
                             })
-                            .insert(Visibility::Hidden)
+                            .try_insert(Visibility::Hidden)
                             .with_children(|parent| {
                                 parent.spawn(NodeBundle {
                                     style: Style {
@@ -2649,7 +2713,7 @@ pub fn server_messages_handler(
                                     background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
                                     ..default()
                                 })
-                                .insert(ConstructionProgressBar {
+                                .try_insert(ConstructionProgressBar {
                                     constrcution_entity: client_entity,
                                     max_width: bar_size,
                                 });
@@ -2687,7 +2751,7 @@ pub fn server_messages_handler(
                                 material: material.clone(),
                                 transform: Transform::from_translation(position).with_rotation(Quat::from_rotation_y(angle)),
                                 ..default()
-                            }).insert(BuildingConstructionSite{
+                            }).try_insert(BuildingConstructionSite{
                                 team: team,
                                 building_bundle: building.1.clone(),
                                 build_power_total: building.4,
@@ -2696,7 +2760,7 @@ pub fn server_messages_handler(
                                 build_distance: building.5,
                                 current_builder: Entity::PLACEHOLDER,
                                 resource_cost: building.6,
-                            }).insert(CombatComponent{
+                            }).try_insert(CombatComponent{
                                 team: team,
                                 current_health: bundle.combat_component.current_health / 10,
                                 max_health: bundle.combat_component.current_health / 10,
@@ -2750,7 +2814,7 @@ pub fn server_messages_handler(
                                 background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                 ..default()
                             })
-                            .insert(Visibility::Hidden)
+                            .try_insert(Visibility::Hidden)
                             .with_children(|parent| {
                                 parent.spawn(NodeBundle {
                                     style: Style {
@@ -2765,7 +2829,7 @@ pub fn server_messages_handler(
                                     background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
                                     ..default()
                                 })
-                                .insert(ConstructionProgressBar {
+                                .try_insert(ConstructionProgressBar {
                                     constrcution_entity: client_entity,
                                     max_width: bar_size,
                                 });
@@ -2803,7 +2867,7 @@ pub fn server_messages_handler(
                                 material: material.clone(),
                                 transform: Transform::from_translation(position).with_rotation(Quat::from_rotation_y(angle)),
                                 ..default()
-                            }).insert(BuildingConstructionSite{
+                            }).try_insert(BuildingConstructionSite{
                                 team: team,
                                 building_bundle: building.1.clone(),
                                 build_power_total: building.4,
@@ -2812,7 +2876,7 @@ pub fn server_messages_handler(
                                 build_distance: building.5,
                                 current_builder: Entity::PLACEHOLDER,
                                 resource_cost: building.6,
-                            }).insert(CombatComponent{
+                            }).try_insert(CombatComponent{
                                 team: team,
                                 current_health: bundle.combat_component.current_health / 10,
                                 max_health: bundle.combat_component.current_health / 10,
@@ -2848,7 +2912,7 @@ pub fn server_messages_handler(
                                 background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                 ..default()
                             })
-                            .insert(Visibility::Hidden)
+                            .try_insert(Visibility::Hidden)
                             .with_children(|parent| {
                                 parent.spawn(NodeBundle {
                                     style: Style {
@@ -2863,12 +2927,219 @@ pub fn server_messages_handler(
                                     background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
                                     ..default()
                                 })
-                                .insert(ConstructionProgressBar {
+                                .try_insert(ConstructionProgressBar {
                                     constrcution_entity: client_entity,
                                     max_width: bar_size,
                                 });
                             });
                         }
+                        BuildingsBundles::WatchingTower(bundle) => {
+                            let material;
+
+                            if let Some(mat) = materials.1.team_materials.get(&(bundle.model.mesh.id(), team)) {
+                                material = mat.clone();
+                            } else {
+                                if let Some(original) = materials.0.get(bundle.model.material.id()) {
+                                    material = materials.2.add(ExtendedMaterial {
+                                        base: original.clone(),
+                                        extension: TeamMaterialExtension {
+                                            team_color: color,
+                                        },
+                                    });
+                                } else {
+                                    material = materials.2.add(ExtendedMaterial {
+                                        base: StandardMaterial{
+                                            ..default()
+                                        },
+                                        extension: TeamMaterialExtension {
+                                            team_color: color,
+                                        },
+                                    });
+                                }
+
+                                materials.1.team_materials.insert((bundle.model.mesh.id(), team), material.clone());
+                            }
+
+                            client_entity = commands.spawn(MaterialMeshBundle{
+                                mesh: bundle.model.mesh.clone(),
+                                material: material.clone(),
+                                transform: Transform::from_translation(position).with_rotation(Quat::from_rotation_y(angle)),
+                                ..default()
+                            }).try_insert(BuildingConstructionSite{
+                                team: team,
+                                building_bundle: building.1.clone(),
+                                build_power_total: building.4,
+                                build_power_remaining: building.4,
+                                name: name.clone(),
+                                build_distance: building.5,
+                                current_builder: Entity::PLACEHOLDER,
+                                resource_cost: building.6,
+                            }).try_insert(CombatComponent{
+                                team: team,
+                                current_health: bundle.combat_component.current_health / 10,
+                                max_health: bundle.combat_component.current_health / 10,
+                                unit_type: bundle.combat_component.unit_type.clone(),
+                                attack_type: bundle.combat_component.attack_type.clone(),
+                                attack_animation_type: bundle.combat_component.attack_animation_type.clone(),
+                                attack_frequency: bundle.combat_component.attack_frequency,
+                                attack_elapsed_time: bundle.combat_component.attack_elapsed_time,
+                                detection_range: bundle.combat_component.detection_range / 10.,
+                                attack_range: bundle.combat_component.attack_range,
+                                enemies: bundle.combat_component.enemies.clone(),
+                                is_static: bundle.combat_component.is_static,
+                                unit_data: (
+                                    new_construction_tile,
+                                    bundle.combat_component.unit_data.1.clone()
+                                ),
+                            })
+                            .id();
+    
+                            unit_type = bundle.combat_component.unit_type;
+
+                            commands.spawn(NodeBundle{
+                                style: Style {
+                                    position_type: PositionType::Relative,
+                                    width: Val::Px(bar_size),
+                                    height: Val::Px(bar_size / 4.),
+                                    flex_direction: FlexDirection::Column,
+                                    justify_content: JustifyContent::Start,
+                                    align_items: AlignItems::Start,
+                                    top: Val::Px(bar_size / 2. + bar_size / 4. / 2.),
+                                    ..default()
+                                },
+                                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                                ..default()
+                            })
+                            .try_insert(Visibility::Hidden)
+                            .with_children(|parent| {
+                                parent.spawn(NodeBundle {
+                                    style: Style {
+                                        position_type: PositionType::Relative,
+                                        width: Val::Px(0.),
+                                        height: Val::Px(bar_size / 4.),
+                                        flex_direction: FlexDirection::Column,
+                                        justify_content: JustifyContent::Start,
+                                        align_items: AlignItems::Start,
+                                        ..default()
+                                    },
+                                    background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
+                                    ..default()
+                                })
+                                .try_insert(ConstructionProgressBar {
+                                    constrcution_entity: client_entity,
+                                    max_width: bar_size,
+                                });
+                            });
+                        },
+                        BuildingsBundles::Autoturret(bundle) => {
+                            let material;
+
+                            if let Some(mat) = materials.1.team_materials.get(&(bundle.model.mesh.id(), team)) {
+                                material = mat.clone();
+                            } else {
+                                if let Some(original) = materials.0.get(bundle.model.material.id()) {
+                                    material = materials.2.add(ExtendedMaterial {
+                                        base: original.clone(),
+                                        extension: TeamMaterialExtension {
+                                            team_color: color,
+                                        },
+                                    });
+                                } else {
+                                    material = materials.2.add(ExtendedMaterial {
+                                        base: StandardMaterial{
+                                            ..default()
+                                        },
+                                        extension: TeamMaterialExtension {
+                                            team_color: color,
+                                        },
+                                    });
+                                }
+
+                                materials.1.team_materials.insert((bundle.model.mesh.id(), team), material.clone());
+                            }
+
+                            let simplified_material;
+                            if team == 1 {
+                                simplified_material = materials.1.blue_solid.clone();
+                            } else {
+                                simplified_material = materials.1.red_solid.clone();
+                            }
+
+                            client_entity = commands.spawn(MaterialMeshBundle{
+                                mesh: bundle.model.mesh.clone(),
+                                material: material.clone(),
+                                transform: Transform::from_translation(position).with_rotation(Quat::from_rotation_y(angle)),
+                                ..default()
+                            }).try_insert(BuildingConstructionSite{
+                                team: team,
+                                building_bundle: building.1.clone(),
+                                build_power_total: building.4,
+                                build_power_remaining: building.4,
+                                name: name.clone(),
+                                build_distance: building.5,
+                                current_builder: Entity::PLACEHOLDER,
+                                resource_cost: building.6,
+                            }).try_insert(CombatComponent{
+                                team: team,
+                                current_health: bundle.combat_component.current_health / 10,
+                                max_health: bundle.combat_component.current_health / 10,
+                                unit_type: bundle.combat_component.unit_type.clone(),
+                                attack_type: AttackTypes::None,
+                                attack_animation_type: AttackAnimationTypes::None(Vec3::ZERO),
+                                attack_frequency: 0,
+                                attack_elapsed_time: 0,
+                                detection_range: bundle.combat_component.detection_range / 5.,
+                                attack_range: 0.,
+                                enemies: bundle.combat_component.enemies.clone(),
+                                is_static: bundle.combat_component.is_static,
+                                unit_data: (
+                                    new_construction_tile,
+                                    bundle.combat_component.unit_data.1.clone()
+                                ),
+                            })
+                            .try_insert(LOD{
+                                detailed: (bundle.model.mesh.clone(), Some(material.clone()), None),
+                                simplified: (bundle.lod.mesh.clone(), simplified_material),
+                            })
+                            .id();
+    
+                            unit_type = bundle.combat_component.unit_type;
+
+                            commands.spawn(NodeBundle{
+                                style: Style {
+                                    position_type: PositionType::Relative,
+                                    width: Val::Px(bar_size),
+                                    height: Val::Px(bar_size / 4.),
+                                    flex_direction: FlexDirection::Column,
+                                    justify_content: JustifyContent::Start,
+                                    align_items: AlignItems::Start,
+                                    top: Val::Px(bar_size / 2. + bar_size / 4. / 2.),
+                                    ..default()
+                                },
+                                background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                                ..default()
+                            })
+                            .try_insert(Visibility::Hidden)
+                            .with_children(|parent| {
+                                parent.spawn(NodeBundle {
+                                    style: Style {
+                                        position_type: PositionType::Relative,
+                                        width: Val::Px(0.),
+                                        height: Val::Px(bar_size / 4.),
+                                        flex_direction: FlexDirection::Column,
+                                        justify_content: JustifyContent::Start,
+                                        align_items: AlignItems::Start,
+                                        ..default()
+                                    },
+                                    background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
+                                    ..default()
+                                })
+                                .try_insert(ConstructionProgressBar {
+                                    constrcution_entity: client_entity,
+                                    max_width: bar_size,
+                                });
+                            });
+                        },
                         BuildingsBundles::None => {},
                     }
 
@@ -2960,16 +3231,16 @@ pub fn server_messages_handler(
                                 bundle.producer.clone(),
                                 bundle.human_resource_storage.clone(),
                                 bundle.materials_storage.clone(),
-                            )).insert(NavMeshAffector)
-                            .insert(NavMeshAreaType(None))
-                            .insert(DeconstructableBuilding{
+                            )).try_insert(NavMeshAffector)
+                            .try_insert(NavMeshAreaType(None))
+                            .try_insert(DeconstructableBuilding{
                                 team: team,
                                 materials_spent: building.6,
                                 buildpower_to_deconstruct_total: building.4,
                                 buildpower_to_deconstruct_remaining: 0,
                                 deconstruction_distance: building.5,
                             })
-                            .insert(SwitchableBuilding(true))
+                            .try_insert(SwitchableBuilding(true))
                             .id();
     
                             unit_type = bundle.combat_component.unit_type;
@@ -2988,7 +3259,7 @@ pub fn server_messages_handler(
                                 background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                 ..default()
                             })
-                            .insert(Visibility::Hidden)
+                            .try_insert(Visibility::Hidden)
                             .with_children(|parent| {
                                 parent.spawn(NodeBundle {
                                     style: Style {
@@ -3003,7 +3274,7 @@ pub fn server_messages_handler(
                                     background_color: HUMAN_RESOURCE_COLOR.into(),
                                     ..default()
                                 })
-                                .insert(HumanResourcesDisplay {
+                                .try_insert(HumanResourcesDisplay {
                                     original_width: bar_size,
                                     storage_entity: client_entity,
                                 });
@@ -3023,7 +3294,7 @@ pub fn server_messages_handler(
                                 background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                 ..default()
                             })
-                            .insert(Visibility::Hidden)
+                            .try_insert(Visibility::Hidden)
                             .with_children(|parent| {
                                 parent.spawn(NodeBundle {
                                     style: Style {
@@ -3038,7 +3309,7 @@ pub fn server_messages_handler(
                                     background_color: MATERIALS_COLOR.into(),
                                     ..default()
                                 })
-                                .insert(MaterialsDisplay {
+                                .try_insert(MaterialsDisplay {
                                     original_width: bar_size,
                                     storage_entity: client_entity,
                                 });
@@ -3102,16 +3373,16 @@ pub fn server_messages_handler(
                                 bundle.producer.clone(),
                                 bundle.human_resource_storage.clone(),
                                 bundle.materials_storage.clone(),
-                            )).insert(NavMeshAffector)
-                            .insert(NavMeshAreaType(None))
-                            .insert(DeconstructableBuilding{
+                            )).try_insert(NavMeshAffector)
+                            .try_insert(NavMeshAreaType(None))
+                            .try_insert(DeconstructableBuilding{
                                 team: team,
                                 materials_spent: building.6,
                                 buildpower_to_deconstruct_total: building.4,
                                 buildpower_to_deconstruct_remaining: 0,
                                 deconstruction_distance: building.5,
                             })
-                            .insert(SwitchableBuilding(true))
+                            .try_insert(SwitchableBuilding(true))
                             .id();
     
                             unit_type = bundle.combat_component.unit_type;
@@ -3130,7 +3401,7 @@ pub fn server_messages_handler(
                                 background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                 ..default()
                             })
-                            .insert(Visibility::Hidden)
+                            .try_insert(Visibility::Hidden)
                             .with_children(|parent| {
                                 parent.spawn(NodeBundle {
                                     style: Style {
@@ -3145,7 +3416,7 @@ pub fn server_messages_handler(
                                     background_color: HUMAN_RESOURCE_COLOR.into(),
                                     ..default()
                                 })
-                                .insert(HumanResourcesDisplay {
+                                .try_insert(HumanResourcesDisplay {
                                     original_width: bar_size,
                                     storage_entity: client_entity,
                                 });
@@ -3165,7 +3436,7 @@ pub fn server_messages_handler(
                                 background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                 ..default()
                             })
-                            .insert(Visibility::Hidden)
+                            .try_insert(Visibility::Hidden)
                             .with_children(|parent| {
                                 parent.spawn(NodeBundle {
                                     style: Style {
@@ -3180,7 +3451,7 @@ pub fn server_messages_handler(
                                     background_color: MATERIALS_COLOR.into(),
                                     ..default()
                                 })
-                                .insert(MaterialsDisplay {
+                                .try_insert(MaterialsDisplay {
                                     original_width: bar_size,
                                     storage_entity: client_entity,
                                 });
@@ -3237,7 +3508,7 @@ pub fn server_messages_handler(
                                     max_health: bundle.combat_component.current_health,
                                     unit_type: bundle.combat_component.unit_type.clone(),
                                     attack_type: bundle.combat_component.attack_type.clone(),
-                                attack_animation_type: bundle.combat_component.attack_animation_type.clone(),
+                                    attack_animation_type: bundle.combat_component.attack_animation_type.clone(),
                                     attack_frequency: bundle.combat_component.attack_frequency,
                                     attack_elapsed_time: bundle.combat_component.attack_elapsed_time,
                                     detection_range: bundle.combat_component.detection_range,
@@ -3249,16 +3520,16 @@ pub fn server_messages_handler(
                                         bundle.combat_component.unit_data.1.clone()
                                     ),
                                 },
-                            )).insert(NavMeshAffector)
-                            .insert(NavMeshAreaType(None))
-                            .insert(DeconstructableBuilding{
+                            )).try_insert(NavMeshAffector)
+                            .try_insert(NavMeshAreaType(None))
+                            .try_insert(DeconstructableBuilding{
                                 team: team,
                                 materials_spent: building.6,
                                 buildpower_to_deconstruct_total: building.4,
                                 buildpower_to_deconstruct_remaining: 0,
                                 deconstruction_distance: building.5,
                             })
-                            .insert(SwitchableBuilding(true))
+                            .try_insert(SwitchableBuilding(true))
                             .id();
     
                             unit_type = bundle.combat_component.unit_type;
@@ -3277,7 +3548,7 @@ pub fn server_messages_handler(
                                 background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                 ..default()
                             })
-                            .insert(Visibility::Hidden)
+                            .try_insert(Visibility::Hidden)
                             .with_children(|parent| {
                                 parent.spawn(NodeBundle {
                                     style: Style {
@@ -3292,7 +3563,7 @@ pub fn server_messages_handler(
                                     background_color: MATERIALS_COLOR.into(),
                                     ..default()
                                 })
-                                .insert(MaterialsDisplay {
+                                .try_insert(MaterialsDisplay {
                                     original_width: bar_size,
                                     storage_entity: client_entity,
                                 });
@@ -3340,7 +3611,7 @@ pub fn server_messages_handler(
                                     max_health: bundle.combat_component.current_health,
                                     unit_type: bundle.combat_component.unit_type.clone(),
                                     attack_type: bundle.combat_component.attack_type.clone(),
-                                attack_animation_type: bundle.combat_component.attack_animation_type.clone(),
+                                    attack_animation_type: bundle.combat_component.attack_animation_type.clone(),
                                     attack_frequency: bundle.combat_component.attack_frequency,
                                     attack_elapsed_time: bundle.combat_component.attack_elapsed_time,
                                     detection_range: bundle.combat_component.detection_range,
@@ -3353,9 +3624,9 @@ pub fn server_messages_handler(
                                     ),
                                 },
                             ))
-                            .insert(NavMeshAffector)
-                            .insert(NavMeshAreaType(None))
-                            .insert(DeconstructableBuilding{
+                            .try_insert(NavMeshAffector)
+                            .try_insert(NavMeshAreaType(None))
+                            .try_insert(DeconstructableBuilding{
                                 team: team,
                                 materials_spent: building.6,
                                 buildpower_to_deconstruct_total: building.4,
@@ -3430,7 +3701,7 @@ pub fn server_messages_handler(
                                     max_health: bundle.combat_component.current_health,
                                     unit_type: bundle.combat_component.unit_type.clone(),
                                     attack_type: bundle.combat_component.attack_type.clone(),
-                                attack_animation_type: bundle.combat_component.attack_animation_type.clone(),
+                                    attack_animation_type: bundle.combat_component.attack_animation_type.clone(),
                                     attack_frequency: bundle.combat_component.attack_frequency,
                                     attack_elapsed_time: bundle.combat_component.attack_elapsed_time,
                                     detection_range: bundle.combat_component.detection_range,
@@ -3442,9 +3713,9 @@ pub fn server_messages_handler(
                                         bundle.combat_component.unit_data.1.clone()
                                     ),
                                 },
-                            )).insert(NavMeshAffector)
-                            .insert(NavMeshAreaType(None))
-                            .insert(DeconstructableBuilding{
+                            )).try_insert(NavMeshAffector)
+                            .try_insert(NavMeshAreaType(None))
+                            .try_insert(DeconstructableBuilding{
                                 team: team,
                                 materials_spent: building.6,
                                 buildpower_to_deconstruct_total: building.4,
@@ -3455,6 +3726,149 @@ pub fn server_messages_handler(
     
                             unit_type = bundle.combat_component.unit_type;
                         }
+                        BuildingsBundles::WatchingTower(bundle) => {
+                            let material;
+
+                            if let Some(mat) = materials.1.team_materials.get(&(bundle.model.mesh.id(), team)) {
+                                material = mat.clone();
+                            } else {
+                                if let Some(original) = materials.0.get(bundle.model.material.id()) {
+                                    material = materials.2.add(ExtendedMaterial {
+                                        base: original.clone(),
+                                        extension: TeamMaterialExtension {
+                                            team_color: color,
+                                        },
+                                    });
+                                } else {
+                                    material = materials.2.add(ExtendedMaterial {
+                                        base: StandardMaterial{
+                                            ..default()
+                                        },
+                                        extension: TeamMaterialExtension {
+                                            team_color: color,
+                                        },
+                                    });
+                                }
+
+                                materials.1.team_materials.insert((bundle.model.mesh.id(), team), material.clone());
+                            }
+
+                            client_entity = commands.spawn((
+                                MaterialMeshBundle{
+                                    mesh: bundle.model.mesh.clone(),
+                                    material: material.clone(),
+                                    transform: Transform::from_translation(position).with_rotation(Quat::from_rotation_y(angle)),
+                                    ..default()
+                                },
+                                bundle.collider.clone(), CollisionGroups::new(Group::GROUP_2, Group::all()),
+                                CombatComponent{
+                                    team: team,
+                                    current_health: bundle.combat_component.current_health,
+                                    max_health: bundle.combat_component.current_health,
+                                    unit_type: bundle.combat_component.unit_type.clone(),
+                                    attack_type: bundle.combat_component.attack_type.clone(),
+                                    attack_animation_type: bundle.combat_component.attack_animation_type.clone(),
+                                    attack_frequency: bundle.combat_component.attack_frequency,
+                                    attack_elapsed_time: bundle.combat_component.attack_elapsed_time,
+                                    detection_range: bundle.combat_component.detection_range,
+                                    attack_range: bundle.combat_component.attack_range,
+                                    enemies: bundle.combat_component.enemies.clone(),
+                                    is_static: bundle.combat_component.is_static,
+                                    unit_data: (
+                                        current_construction_site_tile,
+                                        bundle.combat_component.unit_data.1.clone()
+                                    ),
+                                },
+                            )).try_insert(NavMeshAffector)
+                            .try_insert(NavMeshAreaType(None))
+                            .try_insert(DeconstructableBuilding{
+                                team: team,
+                                materials_spent: building.6,
+                                buildpower_to_deconstruct_total: building.4,
+                                buildpower_to_deconstruct_remaining: 0,
+                                deconstruction_distance: building.5,
+                            })
+                            .id();
+    
+                            unit_type = bundle.combat_component.unit_type;
+                        },
+                        BuildingsBundles::Autoturret(bundle) => {
+                            let material;
+
+                            if let Some(mat) = materials.1.team_materials.get(&(bundle.model.mesh.id(), team)) {
+                                material = mat.clone();
+                            } else {
+                                if let Some(original) = materials.0.get(bundle.model.material.id()) {
+                                    material = materials.2.add(ExtendedMaterial {
+                                        base: original.clone(),
+                                        extension: TeamMaterialExtension {
+                                            team_color: color,
+                                        },
+                                    });
+                                } else {
+                                    material = materials.2.add(ExtendedMaterial {
+                                        base: StandardMaterial{
+                                            ..default()
+                                        },
+                                        extension: TeamMaterialExtension {
+                                            team_color: color,
+                                        },
+                                    });
+                                }
+
+                                materials.1.team_materials.insert((bundle.model.mesh.id(), team), material.clone());
+                            }
+
+                            let simplified_material;
+                            if team == 1 {
+                                simplified_material = materials.1.blue_solid.clone();
+                            } else {
+                                simplified_material = materials.1.red_solid.clone();
+                            }
+
+                            client_entity = commands.spawn((
+                                MaterialMeshBundle{
+                                    mesh: bundle.model.mesh.clone(),
+                                    material: material.clone(),
+                                    transform: Transform::from_translation(position).with_rotation(Quat::from_rotation_y(angle)),
+                                    ..default()
+                                },
+                                bundle.collider.clone(), CollisionGroups::new(Group::GROUP_2, Group::all()),
+                                CombatComponent{
+                                    team: team,
+                                    current_health: bundle.combat_component.current_health,
+                                    max_health: bundle.combat_component.current_health,
+                                    unit_type: bundle.combat_component.unit_type.clone(),
+                                    attack_type: bundle.combat_component.attack_type.clone(),
+                                    attack_animation_type: bundle.combat_component.attack_animation_type.clone(),
+                                    attack_frequency: bundle.combat_component.attack_frequency,
+                                    attack_elapsed_time: bundle.combat_component.attack_elapsed_time,
+                                    detection_range: bundle.combat_component.detection_range,
+                                    attack_range: bundle.combat_component.attack_range,
+                                    enemies: bundle.combat_component.enemies.clone(),
+                                    is_static: bundle.combat_component.is_static,
+                                    unit_data: (
+                                        current_construction_site_tile,
+                                        bundle.combat_component.unit_data.1.clone()
+                                    ),
+                                },
+                            )).try_insert(NavMeshAffector)
+                            .try_insert(NavMeshAreaType(None))
+                            .try_insert(DeconstructableBuilding{
+                                team: team,
+                                materials_spent: building.6,
+                                buildpower_to_deconstruct_total: building.4,
+                                buildpower_to_deconstruct_remaining: 0,
+                                deconstruction_distance: building.5,
+                            })
+                            .try_insert(LOD{
+                                detailed: (bundle.model.mesh.clone(), Some(material.clone()), None),
+                                simplified: (bundle.lod.mesh.clone(), simplified_material),
+                            })
+                            .id();
+    
+                            unit_type = bundle.combat_component.unit_type;
+                        },
                         BuildingsBundles::None => {},
                     }
 
@@ -4477,9 +4891,9 @@ pub fn server_messages_handler(
                                             transform: *transform,
                                             ..default()
                                         })
-                                        .insert(UnitRemains{
+                                        .try_insert(UnitRemains{
                                             number: resources.4.0,
-                                        }).insert(LOD{
+                                        }).try_insert(LOD{
                                             detailed: (mesh, Some(team_material), None),
                                             simplified: (resources.2.corpse_simplified_mesh.clone(), simplified_material),
                                         });
@@ -4491,9 +4905,9 @@ pub fn server_messages_handler(
                                             transform: *transform,
                                             ..default()
                                         })
-                                        .insert(UnitRemains{
+                                        .try_insert(UnitRemains{
                                             number: resources.4.0,
-                                        }).insert(LOD{
+                                        }).try_insert(LOD{
                                             detailed: (mesh, None, Some(material.clone())),
                                             simplified: (resources.2.vehicle_simplified_mesh.clone(), material),
                                         });
@@ -4571,7 +4985,7 @@ pub fn server_messages_handler(
                     transform: Transform::from_translation(position),
                     ..default()
                 })
-                .insert(TrailEmmiterComponent)
+                .try_insert(TrailEmmiterComponent)
                 .id();
 
                 let mesh_handle = meshes.add(Triangle3d{
@@ -4584,7 +4998,7 @@ pub fn server_messages_handler(
                     transform: Transform::from_translation(position),
                     ..default()
                 })
-                .insert(
+                .try_insert(
                     TrailComponent{
                         positions: vec![],
                         length: 10,
@@ -4622,7 +5036,7 @@ pub fn server_messages_handler(
                     transform: Transform::from_translation(position),
                     ..default()
                 })
-                .insert(TrailEmmiterComponent)
+                .try_insert(TrailEmmiterComponent)
                 .id();
 
                 let mesh_handle = meshes.add(Triangle3d{
@@ -4635,7 +5049,7 @@ pub fn server_messages_handler(
                     transform: Transform::from_translation(position),
                     ..default()
                 })
-                .insert(
+                .try_insert(
                     TrailComponent{
                         positions: vec![],
                         length: 10,
@@ -4691,7 +5105,7 @@ pub fn server_messages_handler(
                     transform: Transform::from_translation(position),
                     ..default()
                 })
-                .insert(UnitComponent{
+                .try_insert(UnitComponent{
                     path: Vec::new(),
                     start_position: Vec3::ZERO,
                     quantized_destination: None,
@@ -4702,7 +5116,7 @@ pub fn server_messages_handler(
                     last_position: Vec3::ZERO,
                     stuck_count: 0,
                 })
-                .insert(CombatComponent{
+                .try_insert(CombatComponent{
                     team: team,
                     current_health: 100,
                     max_health: 100,
@@ -4724,7 +5138,7 @@ pub fn server_messages_handler(
                         ),
                     ),
                 })
-                .insert(KinematicCharacterController{
+                .try_insert(KinematicCharacterController{
                     custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
                     up: Vec3::Y,
                     offset: CharacterLength::Absolute(0.1),
@@ -4734,7 +5148,7 @@ pub fn server_messages_handler(
                     snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                     ..default()
                 })
-                .insert(LOD{
+                .try_insert(LOD{
                     detailed: (resources.2.truck.0.clone(), Some(material.clone()), None),
                     simplified: (resources.2.truck.2.clone(), simplified_material.clone()),
                 })
@@ -4781,7 +5195,7 @@ pub fn server_messages_handler(
                                 apartment.team = team;
                             }
 
-                            commands.entity(*apartment_client_entity).insert(Visibility::Visible);
+                            commands.entity(*apartment_client_entity).try_insert(Visibility::Visible);
                         }
                     }
 
@@ -4818,7 +5232,7 @@ pub fn server_messages_handler(
                         materials.1.team_materials.insert((resources.0.town_hall.0.id(), team), material.clone());
                     }
 
-                    commands.entity(*client_entity).insert(material);
+                    commands.entity(*client_entity).try_insert(material);
                 }
             },
             ServerMessage::ExplosionOccured { position } => {
@@ -4835,7 +5249,7 @@ pub fn server_messages_handler(
             },
             ServerMessage::UnitCovered { server_entity, initial_unit_position_y } => {
                 if let Some(client_entity) = entity_maps.server_to_client.get(&server_entity) {
-                    commands.entity(*client_entity).insert(Covered{
+                    commands.entity(*client_entity).try_insert(Covered{
                         cover_efficiency: 0.,
                         cover_entity: Entity::PLACEHOLDER,
                         original_y: initial_unit_position_y,
@@ -4903,7 +5317,7 @@ pub fn server_messages_handler(
             },
             ServerMessage::DeconstructionAssigned { server_entity, team, deconstruction_distance } => {
                 if let Some(client_entity) = entity_maps.server_to_client.get(&server_entity) {
-                    commands.entity(*client_entity).insert(ToDeconstruct{
+                    commands.entity(*client_entity).try_insert(ToDeconstruct{
                         team: team,
                         deconstructor_entity: Entity::PLACEHOLDER,
                         progress_bar_entity: Entity::PLACEHOLDER,
@@ -4930,7 +5344,7 @@ pub fn server_messages_handler(
                             background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                             ..default()
                         })
-                        .insert(Visibility::Hidden)
+                        .try_insert(Visibility::Hidden)
                         .with_children(|parent| {
                             parent.spawn(NodeBundle {
                                 style: Style {
@@ -4945,7 +5359,7 @@ pub fn server_messages_handler(
                                 background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
                                 ..default()
                             })
-                            .insert(ConstructionProgressBar {
+                            .try_insert(ConstructionProgressBar {
                                 constrcution_entity: *client_entity,
                                 max_width: bar_size,
                             });
@@ -4973,7 +5387,7 @@ pub fn server_messages_handler(
                     transform: Transform::from_translation(position).with_rotation(Quat::from_rotation_y(angle)),
                     ..default()
                 })
-                .insert(BuildingConstructionSite{
+                .try_insert(BuildingConstructionSite{
                     team: team,
                     building_bundle: BuildingsBundles::None,
                     build_power_total: 200,
@@ -4982,7 +5396,7 @@ pub fn server_messages_handler(
                     build_distance: 30.,
                     current_builder: Entity::PLACEHOLDER,
                     resource_cost: 0,
-                }).insert(CombatComponent{
+                }).try_insert(CombatComponent{
                     team: team,
                     current_health: 10,
                     max_health: 10,
@@ -5004,7 +5418,7 @@ pub fn server_messages_handler(
                         )
                     ),
                 })
-                .insert(DontTouch)
+                .try_insert(DontTouch)
                 .id();
 
                 tile_map.tiles.entry(team).or_insert_with(HashMap::new).entry(new_construction_tile)
@@ -5026,7 +5440,7 @@ pub fn server_messages_handler(
                     background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                     ..default()
                 })
-                .insert(Visibility::Hidden)
+                .try_insert(Visibility::Hidden)
                 .with_children(|parent| {
                     parent.spawn(NodeBundle {
                         style: Style {
@@ -5041,7 +5455,7 @@ pub fn server_messages_handler(
                         background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
                         ..default()
                     })
-                    .insert(ConstructionProgressBar {
+                    .try_insert(ConstructionProgressBar {
                         constrcution_entity: client_entity,
                         max_width: bar_size,
                     });
@@ -5053,7 +5467,7 @@ pub fn server_messages_handler(
             ServerMessage::SettlementCaptureStarted { settlement_server_entity } => {
                 if let Some(client_entity) = entity_maps.server_to_client.get(&settlement_server_entity) {
                     if let Ok(mut settlement) = queries.8.get_mut(*client_entity) {
-                        commands.entity(*client_entity).insert(SettlementCaptureInProgress);
+                        commands.entity(*client_entity).try_insert(SettlementCaptureInProgress);
 
                         let bar_size = resources.3.button_size * 0.75;
 
@@ -5078,7 +5492,7 @@ pub fn server_messages_handler(
                             background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                             ..default()
                         })
-                        .insert(Visibility::Hidden)
+                        .try_insert(Visibility::Hidden)
                         .with_children(|parent| {
                             parent.spawn(NodeBundle {
                                 style: Style {
@@ -5093,7 +5507,7 @@ pub fn server_messages_handler(
                                 background_color: color.into(),
                                 ..default()
                             })
-                            .insert(SettlementCaptureProgressBar{
+                            .try_insert(SettlementCaptureProgressBar{
                                 constrcution_entity: *client_entity,
                                 max_width: bar_size,
                             });
@@ -5147,8 +5561,8 @@ pub fn server_messages_handler(
                                 if let Ok(mut unit_transform) = queries.1.get_mut(*client_unit_entity) {
                                     commands.entity(*client_unit_entity).remove::<MovingToTransport>();
                                     commands.entity(*client_unit_entity).remove::<NeedToMove>();
-                                    commands.entity(*client_unit_entity).insert(DisabledUnit);
-                                    commands.entity(*client_unit_entity).insert(InTransport{
+                                    commands.entity(*client_unit_entity).try_insert(DisabledUnit);
+                                    commands.entity(*client_unit_entity).try_insert(InTransport{
                                         transport_entity: *client_transport_entity,
                                     });
 
@@ -5198,19 +5612,19 @@ pub fn server_messages_handler(
 
                     for soldier in s_regular_platoon.1.0.0.0.iter() {
                         if let Some(client_entity) = entity_maps.server_to_client.get(soldier) {
-                            let _ = soldiers.insert(*client_entity);
+                            let _ = soldiers.insert(Entity::PLACEHOLDER);
                         }
                     }
 
                     for specialist in s_regular_platoon.1.0.0.1.iter() {
                         if let Some(client_entity) = entity_maps.server_to_client.get(specialist) {
-                            let _ = specialists.insert(*client_entity);
+                            let _ = specialists.insert(Entity::PLACEHOLDER);
                         }
                     }
 
                     let mut leader = Entity::PLACEHOLDER;
                     if let Some(client_entity) = entity_maps.server_to_client.get(&s_regular_platoon.1.2) {
-                        leader = *client_entity;
+                        leader = Entity::PLACEHOLDER;
                     }
 
                     regular_platoons.insert(s_regular_platoon.0, (RegularSquad((soldiers, specialists)), s_regular_platoon.1.1.clone(), leader));
@@ -5222,19 +5636,19 @@ pub fn server_messages_handler(
 
                     for soldier in s_shock_platoon.1.0.0.0.iter() {
                         if let Some(client_entity) = entity_maps.server_to_client.get(soldier) {
-                            let _ = soldiers.insert(*client_entity);
+                            let _ = soldiers.insert(Entity::PLACEHOLDER);
                         }
                     }
 
                     for specialist in s_shock_platoon.1.0.0.1.iter() {
                         if let Some(client_entity) = entity_maps.server_to_client.get(specialist) {
-                            let _ = specialists.insert(*client_entity);
+                            let _ = specialists.insert(Entity::PLACEHOLDER);
                         }
                     }
 
                     let mut leader = Entity::PLACEHOLDER;
                     if let Some(client_entity) = entity_maps.server_to_client.get(&s_shock_platoon.1.2) {
-                        leader = *client_entity;
+                        leader = Entity::PLACEHOLDER;
                     }
 
                     shock_platoons.insert(s_shock_platoon.0, (ShockSquad((soldiers, specialists)), s_shock_platoon.1.1.clone(), leader));
@@ -5245,13 +5659,13 @@ pub fn server_messages_handler(
 
                     for vehicle in s_armored_platoon.1.0.0.iter() {
                         if let Some(client_entity) = entity_maps.server_to_client.get(vehicle) {
-                            let _ = vehicles.insert(*client_entity);
+                            let _ = vehicles.insert(Entity::PLACEHOLDER);
                         }
                     }
 
                     let mut leader = Entity::PLACEHOLDER;
                     if let Some(client_entity) = entity_maps.server_to_client.get(&s_armored_platoon.1.2) {
-                        leader = *client_entity;
+                        leader = Entity::PLACEHOLDER;
                     }
 
                     armored_platoons.insert(s_armored_platoon.0, (ArmoredSquad(vehicles), s_armored_platoon.1.1.clone(), leader));
@@ -5262,7 +5676,7 @@ pub fn server_messages_handler(
                         if let Some(client_entity) = entity_maps.server_to_client.get(&server_entity) {
                             artillery_units.0.insert(s_artillery.0, (
                                 (
-                                    Some(*client_entity),
+                                    Some(Entity::PLACEHOLDER),
                                     s_artillery.1.0.1.clone(),
                                 ),
                                 s_artillery.1.1,
@@ -5278,7 +5692,7 @@ pub fn server_messages_handler(
                         if let Some(client_entity) = entity_maps.server_to_client.get(&server_entity) {
                             engineers.insert(s_engineer.0, (
                                 (
-                                    Some(*client_entity),
+                                    Some(Entity::PLACEHOLDER),
                                     s_engineer.1.0.1.clone(),
                                 ),
                                 s_engineer.1.1,

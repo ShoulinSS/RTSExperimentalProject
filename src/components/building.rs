@@ -97,12 +97,29 @@ pub struct PillboxBundle {
 }
 
 #[derive(Clone)]
+pub struct WatchingTowerBundle {
+    pub model: PbrBundle,
+    pub collider: Collider,
+    pub combat_component: CombatComponent,
+}
+
+#[derive(Clone)]
+pub struct AutoturretBundle {
+    pub model: PbrBundle,
+    pub lod: PbrBundle,
+    pub collider: Collider,
+    pub combat_component: CombatComponent,
+}
+
+#[derive(Clone)]
 pub enum BuildingsBundles {
     InfantryBarracks(InfantryBarracksBundle),
     VehicleFactory(VehicleFactoryBundle),
     LogisticHub(LogisticHubBundle),
     ResourceMiner(ResourceMinerBundle),
     Pillbox(PillboxBundle),
+    WatchingTower(WatchingTowerBundle),
+    Autoturret(AutoturretBundle),
     None,
 }
 
@@ -121,7 +138,7 @@ pub fn add_selected_buildings(
     for building in buildings {
         if buildings_q.get(building).is_ok() && !selected_buildings.buildings.contains(&building) {
             selected_buildings.buildings.push(building);
-            commands.entity(building).insert(SelectedBuilding);
+            commands.entity(building).try_insert(SelectedBuilding);
         }
     }
 }
@@ -1842,9 +1859,9 @@ pub fn unit_replenishment_system(
                                 transform: event.dead_unit_data.4,
                                 ..default()
                             })
-                            .insert(UnitRemains{
+                            .try_insert(UnitRemains{
                                 number: remains_count.0,
-                            }).insert(LOD{
+                            }).try_insert(LOD{
                                 detailed: (mesh, Some(team_material), None),
                                 simplified: (unit_assets.corpse_simplified_mesh.clone(), simplified_material),
                             });
@@ -1856,9 +1873,9 @@ pub fn unit_replenishment_system(
                                 transform: event.dead_unit_data.4,
                                 ..default()
                             })
-                            .insert(UnitRemains{
+                            .try_insert(UnitRemains{
                                 number: remains_count.0,
-                            }).insert(LOD{
+                            }).try_insert(LOD{
                                 detailed: (mesh, None, Some(material.clone())),
                                 simplified: (unit_assets.vehicle_simplified_mesh.clone(), material),
                             });
@@ -2394,14 +2411,14 @@ pub fn settlements_placement_system (
                     transform: Transform::from_translation(Vec3::new(ray_hit.x, ray_hit.y + 5., ray_hit.z)),
                     ..default()
                 })
-                .insert(NotShadowCaster)
-                .insert(DisplayedModelHolder);
+                .try_insert(NotShadowCaster)
+                .try_insert(DisplayedModelHolder);
             } else {
                 for mut displayed_model in displayed_models_and_terrain_q.0.iter_mut() {
                     displayed_model.1.translation = Vec3::new(ray_hit.x, ray_hit.y + 5., ray_hit.z);
 
                     if is_forbidden {
-                        commands.entity(displayed_model.0).insert(ForbiddenBlueprint);
+                        commands.entity(displayed_model.0).try_insert(ForbiddenBlueprint);
                     } else {
                         commands.entity(displayed_model.0).remove::<ForbiddenBlueprint>();
                     }
@@ -2458,7 +2475,7 @@ pub fn settlements_placement_system (
                                 transform: Transform::from_translation(ray_hit).with_rotation(Quat::from_rotation_y(angle)),
                                 ..default()
                             })
-                            .insert(SettlementComponent(remaining_settlements.0[0].0.clone()));
+                            .try_insert(SettlementComponent(remaining_settlements.0[0].0.clone()));
 
                             commands.spawn(CircleHolder(vec![
                                 CircleData{
@@ -2480,7 +2497,7 @@ pub fn settlements_placement_system (
                                     highlight_color: Vec4::new(0., 1., 0., 1.),
                                 },
                             ]))
-                            .insert(TemporaryObject);
+                            .try_insert(TemporaryObject);
                         },
                         NetworkStatuses::Host => {
                             let material;
@@ -2516,7 +2533,7 @@ pub fn settlements_placement_system (
                                 transform: Transform::from_translation(ray_hit).with_rotation(Quat::from_rotation_y(angle)),
                                 ..default()
                             })
-                            .insert(SettlementComponent(remaining_settlements.0[0].0.clone()))
+                            .try_insert(SettlementComponent(remaining_settlements.0[0].0.clone()))
                             .id();
 
                             commands.spawn(CircleHolder(vec![
@@ -2539,7 +2556,7 @@ pub fn settlements_placement_system (
                                     highlight_color: Vec4::new(0., 1., 0., 1.),
                                 },
                             ]))
-                            .insert(TemporaryObject);
+                            .try_insert(TemporaryObject);
 
                             let mut channel_id = 60;
                             while channel_id <= 89 {
@@ -2581,7 +2598,7 @@ pub fn settlements_placement_system (
                     highlight_color: Vec4::new(0., 1., 1., 1.),
                 },
             ]))
-            .insert(DeleteAfterStart);
+            .try_insert(DeleteAfterStart);
 
             match network_status.0 {
                 NetworkStatuses::SinglePlayer => {
@@ -2764,12 +2781,12 @@ pub fn apartments_generation_system(
                         transform: Transform::from_translation(position).with_rotation(Quat::from_rotation_y(angle)),
                         ..default()
                     })
-                    .insert(Collider::cuboid(18., 10., 8.))
-                    .insert(CollisionGroups::new(Group::GROUP_2, Group::all()))
-                    .insert(NavMeshAffector)
-                    .insert(NavMeshAreaType(None))
-                    .insert(ApartmentHouse)
-                    .insert(CombatComponent{
+                    .try_insert(Collider::cuboid(18., 10., 8.))
+                    .try_insert(CollisionGroups::new(Group::GROUP_2, Group::all()))
+                    .try_insert(NavMeshAffector)
+                    .try_insert(NavMeshAreaType(None))
+                    .try_insert(ApartmentHouse)
+                    .try_insert(CombatComponent{
                         team: settlement.2.0.team,
                         current_health: 1000,
                         max_health: 1000,
@@ -2791,9 +2808,9 @@ pub fn apartments_generation_system(
                             ),
                         ),
                     })
-                    .insert(CoverComponent{
+                    .try_insert(CoverComponent{
                         cover_efficiency: 0.5,
-                        points: vec![position, position, position, position, position, position, position, position, position],
+                        points: vec![Vec3::ZERO, Vec3::ZERO, Vec3::ZERO, Vec3::ZERO, Vec3::ZERO, Vec3::ZERO, Vec3::ZERO, Vec3::ZERO, Vec3::ZERO],
                         units_inside: HashSet::new(),
                     })
                     .id();
@@ -2885,11 +2902,11 @@ pub fn resource_zones_generation_system (
                 resource_zones_to_place -= 1;
 
                 let zone = commands.spawn(Transform::from_translation(spot))
-                .insert(ResourceZone{
+                .try_insert(ResourceZone{
                     zone_radius: resource_zone_size,
                     current_miners: HashMap::new(),
                 })
-                .insert(CircleHolder(vec![
+                .try_insert(CircleHolder(vec![
                     CircleData{
                         circle_center: spot.xz(),
                         inner_radius: resource_zone_size,
@@ -2956,11 +2973,11 @@ pub fn resource_zones_generation_system (
                 resource_zones_to_place -= 1;
 
                 let zone = commands.spawn(Transform::from_translation(spot))
-                .insert(ResourceZone{
+                .try_insert(ResourceZone{
                     zone_radius: resource_zone_size,
                     current_miners: HashMap::new(),
                 })
-                .insert(CircleHolder(vec![
+                .try_insert(CircleHolder(vec![
                     CircleData{
                         circle_center: spot.xz(),
                         inner_radius: resource_zone_size,
@@ -3143,7 +3160,7 @@ pub fn settlements_capturing_system (
             }
 
             if enemy_count as f32 > ally_count as f32 * 1.5 {
-                commands.entity(settlement.0).insert(SettlementCaptureInProgress);
+                commands.entity(settlement.0).try_insert(SettlementCaptureInProgress);
 
                 let bar_size = ui_button_nodes.button_size * 0.75;
 
@@ -3168,7 +3185,7 @@ pub fn settlements_capturing_system (
                     background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                     ..default()
                 })
-                .insert(Visibility::Hidden)
+                .try_insert(Visibility::Hidden)
                 .with_children(|parent| {
                     parent.spawn(NodeBundle {
                         style: Style {
@@ -3183,7 +3200,7 @@ pub fn settlements_capturing_system (
                         background_color: color.into(),
                         ..default()
                     })
-                    .insert(SettlementCaptureProgressBar{
+                    .try_insert(SettlementCaptureProgressBar{
                         constrcution_entity: settlement.0,
                         max_width: bar_size,
                     });
@@ -3227,7 +3244,7 @@ pub fn settlements_capturing_system (
                             apartment.team = enemy_team;
                         }
                         
-                        commands.entity(apartment_entity.0).insert(Visibility::Visible);
+                        commands.entity(apartment_entity.0).try_insert(Visibility::Visible);
                     }
 
                     let color;
@@ -3264,7 +3281,7 @@ pub fn settlements_capturing_system (
                         materials.1.team_materials.insert((buildings_assets.town_hall.0.id(), enemy_team), material.clone());
                     }
 
-                    commands.entity(settlement.0).insert(material);
+                    commands.entity(settlement.0).try_insert(material);
 
                     if matches!(network_status.0, NetworkStatuses::Host) {
                         let mut channel_id = 60;
@@ -3345,11 +3362,11 @@ pub fn resources_amount_displays_processing_system(
 
     if camera.1.translation().y > 500. {
         for material_display in material_displays_q.iter() {
-            commands.entity(**material_display.2).insert(Visibility::Hidden);
+            commands.entity(**material_display.2).try_insert(Visibility::Hidden);
         }
 
         for human_resource_display in human_resource_displays_q.iter() {
-            commands.entity(**human_resource_display.2).insert(Visibility::Hidden);
+            commands.entity(**human_resource_display.2).try_insert(Visibility::Hidden);
         }
 
         return;
@@ -3367,7 +3384,7 @@ pub fn resources_amount_displays_processing_system(
             if let Some(material_storage) = storage.2 {
                 if let Some(viewport_point) = camera.0.world_to_viewport(camera.1, storage.0.translation) {
                     if let Ok(mut holder) = display_bar_holders_q.get_mut(**material_display.2) {
-                        commands.entity(**material_display.2).insert(Visibility::Visible);
+                        commands.entity(**material_display.2).try_insert(Visibility::Visible);
 
                         holder.left = Val::Px(viewport_point.x - bar_left_offset);
                         holder.top = Val::Px(viewport_point.y);
@@ -3378,7 +3395,7 @@ pub fn resources_amount_displays_processing_system(
                         material_display.1.width = Val::Px(width);
                     }
                 } else {
-                    commands.entity(**material_display.2).insert(Visibility::Hidden);
+                    commands.entity(**material_display.2).try_insert(Visibility::Hidden);
                 }
             }
         } else {
@@ -3399,7 +3416,7 @@ pub fn resources_amount_displays_processing_system(
 
                 if let Some(viewport_point) = camera.0.world_to_viewport(camera.1, storage.0.translation) {
                     if let Ok(mut holder) = display_bar_holders_q.get_mut(**human_resource_display.2) {
-                        commands.entity(**human_resource_display.2).insert(Visibility::Visible);
+                        commands.entity(**human_resource_display.2).try_insert(Visibility::Visible);
 
                         holder.left = Val::Px(viewport_point.x - bar_left_offset);
                         holder.top = Val::Px(viewport_point.y + top_offset_add);
@@ -3410,7 +3427,7 @@ pub fn resources_amount_displays_processing_system(
                         human_resource_display.1.width = Val::Px(width);
                     }
                 } else {
-                    commands.entity(**human_resource_display.2).insert(Visibility::Hidden);
+                    commands.entity(**human_resource_display.2).try_insert(Visibility::Hidden);
                 }
             }
         } else {
@@ -3441,7 +3458,7 @@ pub fn construction_progress_displays_processing_system(
 
     if camera.1.translation().y > 500. {
         for progress_bar in progress_bars_q.iter() {
-            commands.entity(**progress_bar.2).insert(Visibility::Hidden);
+            commands.entity(**progress_bar.2).try_insert(Visibility::Hidden);
         }
 
         return;
@@ -3456,7 +3473,7 @@ pub fn construction_progress_displays_processing_system(
 
             if let Some(viewport_point) = camera.0.world_to_viewport(camera.1, site.0.translation) {
                 if let Ok(mut holder) = progress_bar_holders_q.get_mut(**progress_bar.2) {
-                    commands.entity(**progress_bar.2).insert(Visibility::Visible);
+                    commands.entity(**progress_bar.2).try_insert(Visibility::Visible);
 
                     holder.0.left = Val::Px(viewport_point.x - bar_left_offset);
                     holder.0.top = Val::Px(viewport_point.y);
@@ -3471,7 +3488,7 @@ pub fn construction_progress_displays_processing_system(
 
             if let Some(viewport_point) = camera.0.world_to_viewport(camera.1, building.0.translation) {
                 if let Ok(mut holder) = progress_bar_holders_q.get_mut(**progress_bar.2) {
-                    commands.entity(**progress_bar.2).insert(Visibility::Visible);
+                    commands.entity(**progress_bar.2).try_insert(Visibility::Visible);
 
                     holder.0.left = Val::Px(viewport_point.x - bar_left_offset);
                     holder.0.top = Val::Px(viewport_point.y);
@@ -3519,7 +3536,7 @@ pub fn buildings_deletion_activation_system(
 
             unit_selection.0 = true;
 
-            commands.entity(selection_box).insert(BackgroundColor(Color::srgba(0., 1., 1., 0.1).into()));
+            commands.entity(selection_box).try_insert(BackgroundColor(Color::srgba(0., 1., 1., 0.1).into()));
         } else {
             deletion_states.is_blueprints_deletion_active = true;
             deletion_states.is_buildings_deletion_active = false;
@@ -3527,7 +3544,7 @@ pub fn buildings_deletion_activation_system(
 
             unit_selection.0 = false;
             
-            commands.entity(selection_box).insert(BackgroundColor(Color::srgba(1., 0., 0., 0.1).into()));
+            commands.entity(selection_box).try_insert(BackgroundColor(Color::srgba(1., 0., 0., 0.1).into()));
         }
     }
 
@@ -3543,7 +3560,7 @@ pub fn buildings_deletion_activation_system(
 
             unit_selection.0 = true;
 
-            commands.entity(selection_box).insert(BackgroundColor(Color::srgba(0., 1., 1., 0.1).into()));
+            commands.entity(selection_box).try_insert(BackgroundColor(Color::srgba(0., 1., 1., 0.1).into()));
         } else {
             deletion_states.is_buildings_deletion_active = true;
             deletion_states.is_blueprints_deletion_active = false;
@@ -3551,7 +3568,7 @@ pub fn buildings_deletion_activation_system(
 
             unit_selection.0 = false;
 
-            commands.entity(selection_box).insert(BackgroundColor(Color::srgba(1., 0., 0., 0.1).into()));
+            commands.entity(selection_box).try_insert(BackgroundColor(Color::srgba(1., 0., 0., 0.1).into()));
         }
     }
 
@@ -3567,7 +3584,7 @@ pub fn buildings_deletion_activation_system(
 
             unit_selection.0 = true;
 
-            commands.entity(selection_box).insert(BackgroundColor(Color::srgba(0., 1., 1., 0.1).into()));
+            commands.entity(selection_box).try_insert(BackgroundColor(Color::srgba(0., 1., 1., 0.1).into()));
         } else {
             deletion_states.is_buildings_deletion_cancelation_active = true;
             deletion_states.is_blueprints_deletion_active = false;
@@ -3575,7 +3592,7 @@ pub fn buildings_deletion_activation_system(
 
             unit_selection.0 = false;
 
-            commands.entity(selection_box).insert(BackgroundColor(Color::srgba(0., 1., 0., 0.1).into()));
+            commands.entity(selection_box).try_insert(BackgroundColor(Color::srgba(0., 1., 0., 0.1).into()));
         }
     }
 
@@ -3588,7 +3605,7 @@ pub fn buildings_deletion_activation_system(
 
         unit_selection.0 = true;
 
-        commands.entity(selection_box).insert(BackgroundColor(Color::srgba(0., 1., 1., 0.1).into()));
+        commands.entity(selection_box).try_insert(BackgroundColor(Color::srgba(0., 1., 1., 0.1).into()));
     }
 }
 
@@ -3663,7 +3680,7 @@ pub fn blueprints_deletion_system(
 
             deletion_states.is_blueprints_deletion_active = false;
             let selection_box = selection_node.single();
-            commands.entity(selection_box).insert(BackgroundColor(Color::srgba(0., 1., 1., 0.1).into()));
+            commands.entity(selection_box).try_insert(BackgroundColor(Color::srgba(0., 1., 1., 0.1).into()));
             unit_selection.0 = true;
         }
     }
@@ -3750,7 +3767,7 @@ pub fn buildings_deletion_system(
                                     }
                                 }
 
-                                commands.entity(construction_site.0).insert(ToDeconstruct{
+                                commands.entity(construction_site.0).try_insert(ToDeconstruct{
                                     team: construction_site.2.team,
                                     deconstructor_entity: Entity::PLACEHOLDER,
                                     progress_bar_entity: Entity::PLACEHOLDER,
@@ -3758,7 +3775,7 @@ pub fn buildings_deletion_system(
                                 });
                             },
                             _ => {
-                                commands.entity(construction_site.0).insert(ToDeconstruct{
+                                commands.entity(construction_site.0).try_insert(ToDeconstruct{
                                     team: construction_site.2.team,
                                     deconstructor_entity: Entity::PLACEHOLDER,
                                     progress_bar_entity: Entity::PLACEHOLDER,
@@ -3808,7 +3825,7 @@ pub fn buildings_deletion_system(
                                     }
                                 }
 
-                                commands.entity(building.0).insert(ToDeconstruct{
+                                commands.entity(building.0).try_insert(ToDeconstruct{
                                     team: building.2.team,
                                     deconstructor_entity: Entity::PLACEHOLDER,
                                     progress_bar_entity: Entity::PLACEHOLDER,
@@ -3816,7 +3833,7 @@ pub fn buildings_deletion_system(
                                 });
                             },
                             _ => {
-                                commands.entity(building.0).insert(ToDeconstruct{
+                                commands.entity(building.0).try_insert(ToDeconstruct{
                                     team: building.2.team,
                                     deconstructor_entity: Entity::PLACEHOLDER,
                                     progress_bar_entity: Entity::PLACEHOLDER,
@@ -3830,7 +3847,7 @@ pub fn buildings_deletion_system(
 
             deletion_states.is_buildings_deletion_active = false;
             let selection_box = selection_node.single();
-            commands.entity(selection_box).insert(BackgroundColor(Color::srgba(0., 1., 1., 0.1).into()));
+            commands.entity(selection_box).try_insert(BackgroundColor(Color::srgba(0., 1., 1., 0.1).into()));
             unit_selection.0 = true;
         }
     }
@@ -3892,7 +3909,7 @@ pub fn buildings_deletion_cancelation_system(
                                 }
 
                                 if let Some(construction_site) = deconstruction_site.4 {
-                                    commands.entity(construction_site.current_builder).insert(BusyEngineer(
+                                    commands.entity(construction_site.current_builder).try_insert(BusyEngineer(
                                         EngineerActions::Construction((deconstruction_site.1.translation, deconstruction_site.0, construction_site.build_distance))
                                     ));
                                 }
@@ -3916,7 +3933,7 @@ pub fn buildings_deletion_cancelation_system(
                                 }
 
                                 if let Some(construction_site) = deconstruction_site.4 {
-                                    commands.entity(construction_site.current_builder).insert(BusyEngineer(
+                                    commands.entity(construction_site.current_builder).try_insert(BusyEngineer(
                                         EngineerActions::Construction((deconstruction_site.1.translation, deconstruction_site.0, construction_site.build_distance))
                                     ));
                                 }
@@ -3928,7 +3945,7 @@ pub fn buildings_deletion_cancelation_system(
 
             deletion_states.is_buildings_deletion_cancelation_active = false;
             let selection_box = selection_node.single();
-            commands.entity(selection_box).insert(BackgroundColor(Color::srgba(0., 1., 1., 0.1).into()));
+            commands.entity(selection_box).try_insert(BackgroundColor(Color::srgba(0., 1., 1., 0.1).into()));
             unit_selection.0 = true;
         }
     }
@@ -3983,7 +4000,7 @@ pub fn buildings_state_switcher(
                     },
                     background_color: color.into(),
                     ..default()
-                }).insert(ButtonAction{action: Actions::SwitchBuildingState(building.0)})
+                }).try_insert(ButtonAction{action: Actions::SwitchBuildingState(building.0)})
                 .with_children(|button_parent| {
                     button_parent.spawn(TextBundle {
                         text: Text{
@@ -4095,7 +4112,7 @@ pub fn rebuild_settlement_apartments_system (
                                     transform: Transform::from_translation(apartment.1).with_rotation(Quat::from_rotation_y(apartment.2)),
                                     ..default()
                                 })
-                                .insert(BuildingConstructionSite{
+                                .try_insert(BuildingConstructionSite{
                                     team: team,
                                     building_bundle: BuildingsBundles::None,
                                     build_power_total: 200,
@@ -4104,7 +4121,7 @@ pub fn rebuild_settlement_apartments_system (
                                     build_distance: 30.,
                                     current_builder: Entity::PLACEHOLDER,
                                     resource_cost: 0,
-                                }).insert(CombatComponent{
+                                }).try_insert(CombatComponent{
                                     team: team,
                                     current_health: 10,
                                     max_health: 10,
@@ -4126,7 +4143,7 @@ pub fn rebuild_settlement_apartments_system (
                                         )
                                     ),
                                 })
-                                .insert(DontTouch)
+                                .try_insert(DontTouch)
                                 .id();
 
                                 apartment.0 = new_construction_site;
@@ -4150,7 +4167,7 @@ pub fn rebuild_settlement_apartments_system (
                                     background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                     ..default()
                                 })
-                                .insert(Visibility::Hidden)
+                                .try_insert(Visibility::Hidden)
                                 .with_children(|parent| {
                                     parent.spawn(NodeBundle {
                                         style: Style {
@@ -4165,7 +4182,7 @@ pub fn rebuild_settlement_apartments_system (
                                         background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
                                         ..default()
                                     })
-                                    .insert(ConstructionProgressBar {
+                                    .try_insert(ConstructionProgressBar {
                                         constrcution_entity: new_construction_site,
                                         max_width: bar_size,
                                     });
@@ -4246,12 +4263,12 @@ pub fn apartments_rebuilding_system(
                             transform: Transform::from_translation(apartment.1).with_rotation(Quat::from_rotation_y(apartment.2)),
                             ..default()
                         })
-                        .insert(Collider::cuboid(18., 10., 8.))
-                        .insert(NavMeshAffector)
-                        .insert(NavMeshAreaType(None))
-                        .insert(ApartmentHouse)
-                        .insert(CollisionGroups::new(Group::GROUP_2, Group::all()))
-                        .insert(CombatComponent{
+                        .try_insert(Collider::cuboid(18., 10., 8.))
+                        .try_insert(NavMeshAffector)
+                        .try_insert(NavMeshAreaType(None))
+                        .try_insert(ApartmentHouse)
+                        .try_insert(CollisionGroups::new(Group::GROUP_2, Group::all()))
+                        .try_insert(CombatComponent{
                             team: team,
                             current_health: 1000,
                             max_health: 1000,
@@ -4273,9 +4290,9 @@ pub fn apartments_rebuilding_system(
                                 ),
                             ),
                         })
-                        .insert(CoverComponent{
+                        .try_insert(CoverComponent{
                             cover_efficiency: 0.5,
-                            points: vec![apartment.1, apartment.1, apartment.1, apartment.1, apartment.1, apartment.1, apartment.1, apartment.1, apartment.1],
+                            points: vec![Vec3::ZERO, Vec3::ZERO, Vec3::ZERO, Vec3::ZERO, Vec3::ZERO, Vec3::ZERO, Vec3::ZERO, Vec3::ZERO, Vec3::ZERO],
                             units_inside: HashSet::new(),
                         })
                         .id();
@@ -4344,7 +4361,7 @@ pub fn capturing_displays_processing_system(
 
     if camera.1.translation().y > 500. {
         for progress_bar in progress_bars_q.iter() {
-            commands.entity(**progress_bar.2).insert(Visibility::Hidden);
+            commands.entity(**progress_bar.2).try_insert(Visibility::Hidden);
         }
 
         return;
@@ -4357,7 +4374,7 @@ pub fn capturing_displays_processing_system(
         if let Ok(settlement) = settlements_q.get(progress_bar.0.constrcution_entity) {
             if let Some(viewport_point) = camera.0.world_to_viewport(camera.1, settlement.0.translation) {
                 if let Ok(mut holder) = progress_bar_holders_q.get_mut(**progress_bar.2) {
-                    commands.entity(**progress_bar.2).insert(Visibility::Visible);
+                    commands.entity(**progress_bar.2).try_insert(Visibility::Visible);
 
                     holder.0.left = Val::Px(viewport_point.x - bar_left_offset);
                     holder.0.top = Val::Px(viewport_point.y);
@@ -4392,6 +4409,7 @@ pub fn roads_generation_system(
     nav_mesh: Res<NavMesh>,
     nav_mesh_settings: Res<NavMeshSettings>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    instanced_materials: Res<InstancedMaterials>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut event_writer: EventWriter<AllRoadsGenerated>,
     mut commands: Commands,
@@ -4592,8 +4610,8 @@ pub fn roads_generation_system(
                     },
                     NeedToMove,
                 ))
-                .insert(Visibility::Hidden)
-                .insert(NotShadowCaster);
+                .try_insert(Visibility::Hidden)
+                .try_insert(NotShadowCaster);
             }
         }
 
@@ -4623,7 +4641,7 @@ pub fn roads_generation_system(
             let road_center = (road_builder.2.result_road_points[0] + road_builder.2.result_road_points[road_builder.2.result_road_points.len() - 1]) / 2.;
 
             let raod_mesh = create_curved_mesh(
-                5.,
+                10.,
                 5.,
                 road_builder.2.result_road_points.clone(),
                 -2.9,
@@ -4632,15 +4650,15 @@ pub fn roads_generation_system(
 
             let road_entity = commands.spawn(MaterialMeshBundle{
                 mesh: meshes.add(raod_mesh.clone()),
-                material: materials.add(Color::srgb(0.5, 0.5, 0.5)).into(),
+                material: instanced_materials.road_material.clone(),
                 transform: Transform::from_translation(road_center),
                 ..default()
             })
-            .insert(Collider::from_bevy_mesh(&raod_mesh, &ComputedColliderShape::TriMesh).unwrap())
-            .insert(NavMeshAffector)
-            .insert(NavMeshAreaType(Some(Area(1))))
-            .insert(NotShadowCaster)
-            .insert(CollisionGroups::new(Group::GROUP_2, Group::all()))
+            .try_insert(Collider::from_bevy_mesh(&raod_mesh, &ComputedColliderShape::TriMesh).unwrap())
+            .try_insert(NavMeshAffector)
+            .try_insert(NavMeshAreaType(Some(Area(1))))
+            .try_insert(NotShadowCaster)
+            .try_insert(CollisionGroups::new(Group::GROUP_2, Group::all()))
             .id();
 
             if matches!(network_status.0, NetworkStatuses::Host) {

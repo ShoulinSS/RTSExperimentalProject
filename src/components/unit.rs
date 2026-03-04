@@ -304,7 +304,7 @@ pub fn add_selected_units(
                     )
                 ).or_insert_with(Vec::new).push(unit.1);
 
-                commands.entity(unit.1).insert(SelectedUnit);
+                commands.entity(unit.1).try_insert(SelectedUnit);
             }
         }
     }
@@ -1616,6 +1616,8 @@ pub fn process_combat (
                                             if supplies_consumer.supplies > 0 {
                                                 attacks_to_simulate.push((unit.3, enemy.1.translation));
                                             }
+                                        } else {
+                                            attacks_to_simulate.push((unit.3, enemy.1.translation));
                                         }
 
                                         break;
@@ -1630,6 +1632,8 @@ pub fn process_combat (
                                             if supplies_consumer.supplies > 0 {
                                                 attacks_to_simulate.push((unit.3, enemy.1.translation));
                                             }
+                                        } else {
+                                            attacks_to_simulate.push((unit.3, enemy.1.translation));
                                         }
 
                                         entities_to_rotate.push((unit.3, enemy.1.translation));
@@ -1686,9 +1690,9 @@ pub fn process_combat (
                         AttackAnimationTypes::LowCaliber(p) => {
                             if rng.gen_range(1..=3) != 3 {
                                 commands.spawn(attack_visualisation_assets.bullet_low.0.clone())
-                                .insert(Transform::from_translation(unit.1.translation + p).looking_at(displaced_enemy_pos, Vec3::Y))
-                                .insert(NotShadowCaster)
-                                .insert(BulletSprite{
+                                .try_insert(Transform::from_translation(unit.1.translation + p).looking_at(displaced_enemy_pos, Vec3::Y))
+                                .try_insert(NotShadowCaster)
+                                .try_insert(BulletSprite{
                                     lifetime: 2000,
                                     elapsed_time: 0,
                                     speed: 50.,
@@ -1704,9 +1708,9 @@ pub fn process_combat (
                         },
                         AttackAnimationTypes::HighCaliber(p) => {
                             commands.spawn(attack_visualisation_assets.bullet_high.0.clone())
-                            .insert(Transform::from_translation(unit.1.translation + p).looking_at(displaced_enemy_pos, Vec3::Y))
-                            .insert(NotShadowCaster)
-                            .insert(BulletSprite{
+                            .try_insert(Transform::from_translation(unit.1.translation + p).looking_at(displaced_enemy_pos, Vec3::Y))
+                            .try_insert(NotShadowCaster)
+                            .try_insert(BulletSprite{
                                 lifetime: 2000,
                                 elapsed_time: 0,
                                 speed: 50.,
@@ -2076,9 +2080,9 @@ pub fn process_combat (
                                             material: attack_visualisation_assets.shell.1.clone(),
                                             ..default()
                                         })
-                                        .insert(Transform::from_translation(attacker_pos + spawn_pos).looking_at(end_point, Vec3::Y))
-                                        .insert(TrailEmmiterComponent)
-                                        .insert(BallisticProjectile{
+                                        .try_insert(Transform::from_translation(attacker_pos + spawn_pos).looking_at(end_point, Vec3::Y))
+                                        .try_insert(TrailEmmiterComponent)
+                                        .try_insert(BallisticProjectile{
                                             path: generate_parabolic_trajectory(
                                                 attacker_pos,
                                                 end_point,
@@ -2099,9 +2103,9 @@ pub fn process_combat (
                                             material: attack_visualisation_assets.shell.1.clone(),
                                             ..default()
                                         })
-                                        .insert(Transform::from_translation(attacker_pos + spawn_pos).looking_at(end_point, Vec3::Y))
-                                        .insert(TrailEmmiterComponent)
-                                        .insert(BallisticProjectile{
+                                        .try_insert(Transform::from_translation(attacker_pos + spawn_pos).looking_at(end_point, Vec3::Y))
+                                        .try_insert(TrailEmmiterComponent)
+                                        .try_insert(BallisticProjectile{
                                             path: vec![end_point + Vec3::new(0., 1., 0.)],
                                             speed: speed,
                                             start_position: attacker_pos,
@@ -2124,7 +2128,7 @@ pub fn process_combat (
                                         transform: Transform::from_translation(attacker_pos + spawn_pos),
                                         ..default()
                                     })
-                                    .insert(
+                                    .try_insert(
                                         TrailComponent{
                                             positions: vec![],
                                             length: 10,
@@ -2156,8 +2160,8 @@ pub fn process_combat (
                                         material: attack_visualisation_assets.shell.1.clone(),
                                         ..default()
                                     })
-                                    .insert(Transform::from_translation(attacker_pos + spawn_pos).looking_at(enemy.1.translation, Vec3::Y))
-                                    .insert(HomingProjectile{
+                                    .try_insert(Transform::from_translation(attacker_pos + spawn_pos).looking_at(enemy.1.translation, Vec3::Y))
+                                    .try_insert(HomingProjectile{
                                         speed: speed,
                                         hit_check_factor: waypoint_check_factor,
                                         target_entity: enemy.3,
@@ -2167,7 +2171,7 @@ pub fn process_combat (
                                         direct_damage: direct_damage,
                                         splash_damage: splash_damage,
                                     })
-                                    .insert(TrailEmmiterComponent)
+                                    .try_insert(TrailEmmiterComponent)
                                     .id();
 
                                     let mesh_handle = meshes.add(Triangle3d{
@@ -2180,7 +2184,7 @@ pub fn process_combat (
                                         transform: Transform::from_translation(attacker_pos + spawn_pos),
                                         ..default()
                                     })
-                                    .insert(
+                                    .try_insert(
                                         TrailComponent{
                                             positions: vec![],
                                             length: 10,
@@ -2221,9 +2225,9 @@ pub fn process_combat (
                                 AttackAnimationTypes::LowCaliber(p) => {
                                     if rng.gen_range(1..=3) != 3 {
                                         commands.spawn(attack_visualisation_assets.bullet_low.0.clone())
-                                        .insert(Transform::from_translation(attacker_pos + p).looking_at(displaced_enemy_pos, Vec3::Y))
-                                        .insert(NotShadowCaster)
-                                        .insert(BulletSprite{
+                                        .try_insert(Transform::from_translation(attacker_pos + p).looking_at(displaced_enemy_pos, Vec3::Y))
+                                        .try_insert(NotShadowCaster)
+                                        .try_insert(BulletSprite{
                                             lifetime: 2000,
                                             elapsed_time: 0,
                                             speed: 50.,
@@ -2239,9 +2243,9 @@ pub fn process_combat (
                                 },
                                 AttackAnimationTypes::HighCaliber(p) => {
                                     commands.spawn(attack_visualisation_assets.bullet_high.0.clone())
-                                    .insert(Transform::from_translation(attacker_pos + p).looking_at(displaced_enemy_pos, Vec3::Y))
-                                    .insert(NotShadowCaster)
-                                    .insert(BulletSprite{
+                                    .try_insert(Transform::from_translation(attacker_pos + p).looking_at(displaced_enemy_pos, Vec3::Y))
+                                    .try_insert(NotShadowCaster)
+                                    .try_insert(BulletSprite{
                                         lifetime: 2000,
                                         elapsed_time: 0,
                                         speed: 50.,
@@ -2287,7 +2291,7 @@ pub fn process_combat (
                         for source_entity in sounds_type.1.iter() {
                             counter += 1;
 
-                            commands.entity(source_entity.0).insert(
+                            commands.entity(source_entity.0).try_insert(
                                 AudioBundle{
                                     source: attack_visualisation_assets.bullet_low.1.clone(),
                                     settings: PlaybackSettings{
@@ -2308,7 +2312,7 @@ pub fn process_combat (
                         for source_entity in sounds_type.1.iter() {
                             counter += 1;
 
-                            commands.entity(source_entity.0).insert(
+                            commands.entity(source_entity.0).try_insert(
                                 AudioBundle{
                                     source: attack_visualisation_assets.bullet_high.1.clone(),
                                     settings: PlaybackSettings{
@@ -2329,7 +2333,7 @@ pub fn process_combat (
                         for source_entity in sounds_type.1.iter() {
                             counter += 1;
 
-                            commands.entity(source_entity.0).insert(
+                            commands.entity(source_entity.0).try_insert(
                                 AudioBundle{
                                     source: attack_visualisation_assets.missile_launch_sound.clone(),
                                     settings: PlaybackSettings{
@@ -2350,7 +2354,7 @@ pub fn process_combat (
                         for source_entity in sounds_type.1.iter() {
                             counter += 1;
 
-                            commands.entity(source_entity.0).insert(
+                            commands.entity(source_entity.0).try_insert(
                                 AudioBundle{
                                     source: attack_visualisation_assets.tank_shot_sound.clone(),
                                     settings: PlaybackSettings{
@@ -2527,7 +2531,7 @@ pub fn platoon_leaders_monitoring_system (
             //             if commands.get_entity(artillery_entity).is_some() {
             //                 artillery_battalion_leader = artillery_entity;
 
-            //                 commands.entity(artillery_battalion_leader).insert(PlatoonLeader((
+            //                 commands.entity(artillery_battalion_leader).try_insert(PlatoonLeader((
             //                     BattalionTypes::Artillery,
             //                     (0, 0, 0, 0, 0),
             //                 )));
@@ -2955,7 +2959,7 @@ pub fn cover_assignation_system (
                                 for _i in 0..cover.1.points.len() - cover.1.units_inside.len() {
                                     if let Some(unit) = selected_units_iter.next() {
                                         if unit.1.unit_data.1.0 != CompanyTypes::Armored {
-                                            commands.entity(unit.0).insert(MovingToCover{
+                                            commands.entity(unit.0).try_insert(MovingToCover{
                                                 cover_entity: cover.0,
                                                 cover_position: cover.2.translation,
                                             });
@@ -3003,7 +3007,7 @@ pub fn unit_covering_system (
                     cover.1.units_inside.insert(unit.0);
     
                     commands.entity(unit.0).remove::<MovingToCover>();
-                    commands.entity(unit.0).insert(Covered{
+                    commands.entity(unit.0).try_insert(Covered{
                         cover_efficiency: cover.1.cover_efficiency,
                         cover_entity: cover.0,
                         original_y: original_y,
@@ -3161,7 +3165,7 @@ pub fn engineer_to_blueprint_assignation_system (
                             if let Some(blueprint) = blueprints.next(){
                                 if commands.get_entity(blueprint.1.1).is_none() {
                                     blueprint.1.1 = engineer.0;
-                                    commands.entity(engineer.0).insert(
+                                    commands.entity(engineer.0).try_insert(
                                         BusyEngineer(EngineerActions::ActivateBlueprint((blueprint.1.0, *blueprint.0, blueprint.1.2)))
                                     );
 
@@ -3216,7 +3220,7 @@ pub fn engineer_to_blueprint_assignation_system (
                             if let Some(construction_site) = construction_sites.next() {
                                 if commands.get_entity(construction_site.1.current_builder).is_none() {
                                     construction_site.1.current_builder = engineer.0;
-                                    commands.entity(engineer.0).insert(BusyEngineer(
+                                    commands.entity(engineer.0).try_insert(BusyEngineer(
                                         EngineerActions::Construction((construction_site.2.translation, construction_site.0, construction_site.1.build_distance)))
                                     );
 
@@ -3276,7 +3280,7 @@ pub fn engineer_to_blueprint_assignation_system (
                                 if let Some(construction_site) = deconstruction_site.3 {
                                     if let Ok(current_enginer) = busy_engineers.get(construction_site.current_builder) {
                                         deconstruction_site.1.deconstructor_entity = current_enginer.0;
-                                        commands.entity(current_enginer.0).insert(BusyEngineer(
+                                        commands.entity(current_enginer.0).try_insert(BusyEngineer(
                                             EngineerActions::Deconstruction((deconstruction_site.2.translation, deconstruction_site.0, deconstruction_site.1.deconstruction_distance)))
                                         );
 
@@ -3295,7 +3299,7 @@ pub fn engineer_to_blueprint_assignation_system (
                                         continue;
                                     } else if let Ok(current_enginer) = free_engineers.get(construction_site.current_builder) {
                                         deconstruction_site.1.deconstructor_entity = current_enginer.0;
-                                        commands.entity(current_enginer.0).insert(BusyEngineer(
+                                        commands.entity(current_enginer.0).try_insert(BusyEngineer(
                                             EngineerActions::Deconstruction((deconstruction_site.2.translation, deconstruction_site.0, deconstruction_site.1.deconstruction_distance)))
                                         );
 
@@ -3316,7 +3320,7 @@ pub fn engineer_to_blueprint_assignation_system (
                                 }
 
                                 deconstruction_site.1.deconstructor_entity = engineer.0;
-                                commands.entity(engineer.0).insert(BusyEngineer(
+                                commands.entity(engineer.0).try_insert(BusyEngineer(
                                     EngineerActions::Deconstruction((deconstruction_site.2.translation, deconstruction_site.0, deconstruction_site.1.deconstruction_distance)))
                                 );
                 
@@ -3474,13 +3478,13 @@ pub fn process_busy_engineers (
 
                                                     materials.1.team_materials.insert((bundle.model.mesh.id(), current_blueprint.1.team), material.clone());
                                                 }
-                                                
+    
                                                 new_construction = commands.spawn(MaterialMeshBundle{
                                                     mesh: bundle.model.mesh.clone(),
                                                     material: material.clone(),
                                                     transform: *current_blueprint.2,
                                                     ..default()
-                                                }).insert(BuildingConstructionSite{
+                                                }).try_insert(BuildingConstructionSite{
                                                     team: current_blueprint.1.team,
                                                     building_bundle: current_blueprint.1.building_bundle.clone(),
                                                     build_power_total: current_blueprint.1.build_power_remaining,
@@ -3489,7 +3493,7 @@ pub fn process_busy_engineers (
                                                     build_distance: current_blueprint.1.build_distance,
                                                     current_builder: engineer.3,
                                                     resource_cost: current_blueprint.1.resource_cost,
-                                                }).insert(CombatComponent{
+                                                }).try_insert(CombatComponent{
                                                     team: current_blueprint.1.team,
                                                     current_health: bundle.combat_component.current_health / 10,
                                                     max_health: bundle.combat_component.current_health / 10,
@@ -3525,7 +3529,7 @@ pub fn process_busy_engineers (
                                                     background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                                     ..default()
                                                 })
-                                                .insert(Visibility::Hidden)
+                                                .try_insert(Visibility::Hidden)
                                                 .with_children(|parent| {
                                                     parent.spawn(NodeBundle {
                                                         style: Style {
@@ -3540,7 +3544,7 @@ pub fn process_busy_engineers (
                                                         background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
                                                         ..default()
                                                     })
-                                                    .insert(ConstructionProgressBar {
+                                                    .try_insert(ConstructionProgressBar {
                                                         constrcution_entity: new_construction,
                                                         max_width: bar_size,
                                                     });
@@ -3579,7 +3583,7 @@ pub fn process_busy_engineers (
                                                     material: material.clone(),
                                                     transform: *current_blueprint.2,
                                                     ..default()
-                                                }).insert(BuildingConstructionSite{
+                                                }).try_insert(BuildingConstructionSite{
                                                     team: current_blueprint.1.team,
                                                     building_bundle: current_blueprint.1.building_bundle.clone(),
                                                     build_power_total: current_blueprint.1.build_power_remaining,
@@ -3588,7 +3592,7 @@ pub fn process_busy_engineers (
                                                     build_distance: current_blueprint.1.build_distance,
                                                     current_builder: engineer.3,
                                                     resource_cost: current_blueprint.1.resource_cost,
-                                                }).insert(CombatComponent{
+                                                }).try_insert(CombatComponent{
                                                     team: current_blueprint.1.team,
                                                     current_health: bundle.combat_component.current_health / 10,
                                                     max_health: bundle.combat_component.current_health / 10,
@@ -3624,7 +3628,7 @@ pub fn process_busy_engineers (
                                                     background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                                     ..default()
                                                 })
-                                                .insert(Visibility::Hidden)
+                                                .try_insert(Visibility::Hidden)
                                                 .with_children(|parent| {
                                                     parent.spawn(NodeBundle {
                                                         style: Style {
@@ -3639,7 +3643,7 @@ pub fn process_busy_engineers (
                                                         background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
                                                         ..default()
                                                     })
-                                                    .insert(ConstructionProgressBar {
+                                                    .try_insert(ConstructionProgressBar {
                                                         constrcution_entity: new_construction,
                                                         max_width: bar_size,
                                                     });
@@ -3678,7 +3682,7 @@ pub fn process_busy_engineers (
                                                     material: material.clone(),
                                                     transform: *current_blueprint.2,
                                                     ..default()
-                                                }).insert(BuildingConstructionSite{
+                                                }).try_insert(BuildingConstructionSite{
                                                     team: current_blueprint.1.team,
                                                     building_bundle: current_blueprint.1.building_bundle.clone(),
                                                     build_power_total: current_blueprint.1.build_power_remaining,
@@ -3687,7 +3691,7 @@ pub fn process_busy_engineers (
                                                     build_distance: current_blueprint.1.build_distance,
                                                     current_builder: engineer.3,
                                                     resource_cost: current_blueprint.1.resource_cost,
-                                                }).insert(CombatComponent{
+                                                }).try_insert(CombatComponent{
                                                     team: current_blueprint.1.team,
                                                     current_health: bundle.combat_component.current_health / 10,
                                                     max_health: bundle.combat_component.current_health / 10,
@@ -3723,7 +3727,7 @@ pub fn process_busy_engineers (
                                                     background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                                     ..default()
                                                 })
-                                                .insert(Visibility::Hidden)
+                                                .try_insert(Visibility::Hidden)
                                                 .with_children(|parent| {
                                                     parent.spawn(NodeBundle {
                                                         style: Style {
@@ -3738,7 +3742,7 @@ pub fn process_busy_engineers (
                                                         background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
                                                         ..default()
                                                     })
-                                                    .insert(ConstructionProgressBar {
+                                                    .try_insert(ConstructionProgressBar {
                                                         constrcution_entity: new_construction,
                                                         max_width: bar_size,
                                                     });
@@ -3799,7 +3803,7 @@ pub fn process_busy_engineers (
                                                             material: material.clone(),
                                                             transform: *current_blueprint.2,
                                                             ..default()
-                                                        }).insert(BuildingConstructionSite{
+                                                        }).try_insert(BuildingConstructionSite{
                                                             team: current_blueprint.1.team,
                                                             building_bundle: current_blueprint.1.building_bundle.clone(),
                                                             build_power_total: current_blueprint.1.build_power_remaining,
@@ -3808,7 +3812,7 @@ pub fn process_busy_engineers (
                                                             build_distance: current_blueprint.1.build_distance,
                                                             current_builder: engineer.3,
                                                             resource_cost: current_blueprint.1.resource_cost,
-                                                        }).insert(CombatComponent{
+                                                        }).try_insert(CombatComponent{
                                                             team: current_blueprint.1.team,
                                                             current_health: bundle.combat_component.current_health / 10,
                                                             max_health: bundle.combat_component.current_health / 10,
@@ -3852,7 +3856,7 @@ pub fn process_busy_engineers (
                                                             background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                                             ..default()
                                                         })
-                                                        .insert(Visibility::Hidden)
+                                                        .try_insert(Visibility::Hidden)
                                                         .with_children(|parent| {
                                                             parent.spawn(NodeBundle {
                                                                 style: Style {
@@ -3867,7 +3871,7 @@ pub fn process_busy_engineers (
                                                                 background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
                                                                 ..default()
                                                             })
-                                                            .insert(ConstructionProgressBar {
+                                                            .try_insert(ConstructionProgressBar {
                                                                 constrcution_entity: new_construction,
                                                                 max_width: bar_size,
                                                             });
@@ -3908,7 +3912,7 @@ pub fn process_busy_engineers (
                                                     material: material.clone(),
                                                     transform: *current_blueprint.2,
                                                     ..default()
-                                                }).insert(BuildingConstructionSite{
+                                                }).try_insert(BuildingConstructionSite{
                                                     team: current_blueprint.1.team,
                                                     building_bundle: current_blueprint.1.building_bundle.clone(),
                                                     build_power_total: current_blueprint.1.build_power_remaining,
@@ -3917,7 +3921,7 @@ pub fn process_busy_engineers (
                                                     build_distance: current_blueprint.1.build_distance,
                                                     current_builder: engineer.3,
                                                     resource_cost: current_blueprint.1.resource_cost,
-                                                }).insert(CombatComponent{
+                                                }).try_insert(CombatComponent{
                                                     team: current_blueprint.1.team,
                                                     current_health: bundle.combat_component.current_health / 10,
                                                     max_health: bundle.combat_component.current_health / 10,
@@ -3953,7 +3957,7 @@ pub fn process_busy_engineers (
                                                     background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                                     ..default()
                                                 })
-                                                .insert(Visibility::Hidden)
+                                                .try_insert(Visibility::Hidden)
                                                 .with_children(|parent| {
                                                     parent.spawn(NodeBundle {
                                                         style: Style {
@@ -3968,7 +3972,216 @@ pub fn process_busy_engineers (
                                                         background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
                                                         ..default()
                                                     })
-                                                    .insert(ConstructionProgressBar {
+                                                    .try_insert(ConstructionProgressBar {
+                                                        constrcution_entity: new_construction,
+                                                        max_width: bar_size,
+                                                    });
+                                                });
+                                            },
+                                            BuildingsBundles::WatchingTower(bundle) => {
+                                                let material;
+
+                                                if let Some(mat) =
+                                                materials.1.team_materials.get(&(bundle.model.mesh.id(), current_blueprint.1.team)) {
+                                                    material = mat.clone();
+                                                } else {
+                                                    if let Some(original) = materials.0.get(bundle.model.material.id()) {
+                                                        material = materials.2.add(ExtendedMaterial {
+                                                            base: original.clone(),
+                                                            extension: TeamMaterialExtension {
+                                                                team_color: color,
+                                                            },
+                                                        });
+                                                    } else {
+                                                        material = materials.2.add(ExtendedMaterial {
+                                                            base: StandardMaterial{
+                                                                ..default()
+                                                            },
+                                                            extension: TeamMaterialExtension {
+                                                                team_color: color,
+                                                            },
+                                                        });
+                                                    }
+
+                                                    materials.1.team_materials.insert((bundle.model.mesh.id(), current_blueprint.1.team), material.clone());
+                                                }
+
+                                                new_construction = commands.spawn(MaterialMeshBundle{
+                                                    mesh: bundle.model.mesh.clone(),
+                                                    material: material.clone(),
+                                                    transform: *current_blueprint.2,
+                                                    ..default()
+                                                }).try_insert(BuildingConstructionSite{
+                                                    team: current_blueprint.1.team,
+                                                    building_bundle: current_blueprint.1.building_bundle.clone(),
+                                                    build_power_total: current_blueprint.1.build_power_remaining,
+                                                    build_power_remaining: current_blueprint.1.build_power_remaining,
+                                                    name: current_blueprint.1.name.clone(),
+                                                    build_distance: current_blueprint.1.build_distance,
+                                                    current_builder: engineer.3,
+                                                    resource_cost: current_blueprint.1.resource_cost,
+                                                }).try_insert(CombatComponent{
+                                                    team: current_blueprint.1.team,
+                                                    current_health: bundle.combat_component.current_health / 10,
+                                                    max_health: bundle.combat_component.current_health / 10,
+                                                    unit_type: bundle.combat_component.unit_type.clone(),
+                                                    attack_type: bundle.combat_component.attack_type.clone(),
+                                                    attack_animation_type: bundle.combat_component.attack_animation_type.clone(),
+                                                    attack_frequency: bundle.combat_component.attack_frequency,
+                                                    attack_elapsed_time: bundle.combat_component.attack_elapsed_time,
+                                                    detection_range: bundle.combat_component.detection_range / 10.,
+                                                    attack_range: bundle.combat_component.attack_range,
+                                                    enemies: bundle.combat_component.enemies.clone(),
+                                                    is_static: bundle.combat_component.is_static,
+                                                    unit_data: (
+                                                        new_construction_tile,
+                                                        bundle.combat_component.unit_data.1.clone()
+                                                    ),
+                                                })
+                                                .id();
+
+                                                unit_type = bundle.combat_component.unit_type;
+
+                                                commands.spawn(NodeBundle{
+                                                    style: Style {
+                                                        position_type: PositionType::Relative,
+                                                        width: Val::Px(bar_size),
+                                                        height: Val::Px(bar_size / 4.),
+                                                        flex_direction: FlexDirection::Column,
+                                                        justify_content: JustifyContent::Start,
+                                                        align_items: AlignItems::Start,
+                                                        top: Val::Px(bar_size / 2. + bar_size / 4. / 2.),
+                                                        ..default()
+                                                    },
+                                                    background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                                                    ..default()
+                                                })
+                                                .try_insert(Visibility::Hidden)
+                                                .with_children(|parent| {
+                                                    parent.spawn(NodeBundle {
+                                                        style: Style {
+                                                            position_type: PositionType::Relative,
+                                                            width: Val::Px(0.),
+                                                            height: Val::Px(bar_size / 4.),
+                                                            flex_direction: FlexDirection::Column,
+                                                            justify_content: JustifyContent::Start,
+                                                            align_items: AlignItems::Start,
+                                                            ..default()
+                                                        },
+                                                        background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
+                                                        ..default()
+                                                    })
+                                                    .try_insert(ConstructionProgressBar {
+                                                        constrcution_entity: new_construction,
+                                                        max_width: bar_size,
+                                                    });
+                                                });
+                                            },
+                                            BuildingsBundles::Autoturret(bundle) => {
+                                                let material;
+
+                                                if let Some(mat) =
+                                                materials.1.team_materials.get(&(bundle.model.mesh.id(), current_blueprint.1.team)) {
+                                                    material = mat.clone();
+                                                } else {
+                                                    if let Some(original) = materials.0.get(bundle.model.material.id()) {
+                                                        material = materials.2.add(ExtendedMaterial {
+                                                            base: original.clone(),
+                                                            extension: TeamMaterialExtension {
+                                                                team_color: color,
+                                                            },
+                                                        });
+                                                    } else {
+                                                        material = materials.2.add(ExtendedMaterial {
+                                                            base: StandardMaterial{
+                                                                ..default()
+                                                            },
+                                                            extension: TeamMaterialExtension {
+                                                                team_color: color,
+                                                            },
+                                                        });
+                                                    }
+
+                                                    materials.1.team_materials.insert((bundle.model.mesh.id(), current_blueprint.1.team), material.clone());
+                                                }
+
+                                                let simplified_material;
+                                                if current_blueprint.1.team == 1 {
+                                                    simplified_material = materials.1.blue_solid.clone();
+                                                } else {
+                                                    simplified_material = materials.1.red_solid.clone();
+                                                }
+
+                                                new_construction = commands.spawn(MaterialMeshBundle{
+                                                    mesh: bundle.model.mesh.clone(),
+                                                    material: material.clone(),
+                                                    transform: *current_blueprint.2,
+                                                    ..default()
+                                                }).try_insert(BuildingConstructionSite{
+                                                    team: current_blueprint.1.team,
+                                                    building_bundle: current_blueprint.1.building_bundle.clone(),
+                                                    build_power_total: current_blueprint.1.build_power_remaining,
+                                                    build_power_remaining: current_blueprint.1.build_power_remaining,
+                                                    name: current_blueprint.1.name.clone(),
+                                                    build_distance: current_blueprint.1.build_distance,
+                                                    current_builder: engineer.3,
+                                                    resource_cost: current_blueprint.1.resource_cost,
+                                                }).try_insert(CombatComponent{
+                                                    team: current_blueprint.1.team,
+                                                    current_health: bundle.combat_component.current_health / 10,
+                                                    max_health: bundle.combat_component.current_health / 10,
+                                                    unit_type: bundle.combat_component.unit_type.clone(),
+                                                    attack_type: AttackTypes::None,
+                                                    attack_animation_type: AttackAnimationTypes::None(Vec3::ZERO),
+                                                    attack_frequency: 0,
+                                                    attack_elapsed_time: 0,
+                                                    detection_range: bundle.combat_component.detection_range / 5.,
+                                                    attack_range: 0.,
+                                                    enemies: bundle.combat_component.enemies.clone(),
+                                                    is_static: bundle.combat_component.is_static,
+                                                    unit_data: (
+                                                        new_construction_tile,
+                                                        bundle.combat_component.unit_data.1.clone()
+                                                    ),
+                                                })
+                                                .try_insert(LOD{
+                                                    detailed: (bundle.model.mesh.clone(), Some(material.clone()), None),
+                                                    simplified: (bundle.lod.mesh.clone(), simplified_material),
+                                                })
+                                                .id();
+
+                                                unit_type = bundle.combat_component.unit_type;
+
+                                                commands.spawn(NodeBundle{
+                                                    style: Style {
+                                                        position_type: PositionType::Relative,
+                                                        width: Val::Px(bar_size),
+                                                        height: Val::Px(bar_size / 4.),
+                                                        flex_direction: FlexDirection::Column,
+                                                        justify_content: JustifyContent::Start,
+                                                        align_items: AlignItems::Start,
+                                                        top: Val::Px(bar_size / 2. + bar_size / 4. / 2.),
+                                                        ..default()
+                                                    },
+                                                    background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
+                                                    ..default()
+                                                })
+                                                .try_insert(Visibility::Hidden)
+                                                .with_children(|parent| {
+                                                    parent.spawn(NodeBundle {
+                                                        style: Style {
+                                                            position_type: PositionType::Relative,
+                                                            width: Val::Px(0.),
+                                                            height: Val::Px(bar_size / 4.),
+                                                            flex_direction: FlexDirection::Column,
+                                                            justify_content: JustifyContent::Start,
+                                                            align_items: AlignItems::Start,
+                                                            ..default()
+                                                        },
+                                                        background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
+                                                        ..default()
+                                                    })
+                                                    .try_insert(ConstructionProgressBar {
                                                         constrcution_entity: new_construction,
                                                         max_width: bar_size,
                                                     });
@@ -3983,7 +4196,7 @@ pub fn process_busy_engineers (
 
                                         if new_construction != Entity::PLACEHOLDER {
                                             commands.entity(current_blueprint.0).despawn();
-                                            commands.entity(engineer.3).insert(BusyEngineer(EngineerActions::Construction((action.0, new_construction, action.2))));
+                                            commands.entity(engineer.3).try_insert(BusyEngineer(EngineerActions::Construction((action.0, new_construction, action.2))));
 
                                             tile_map.tiles.entry(current_blueprint.1.team).or_insert_with(HashMap::new).entry(new_construction_tile)
                                             .or_insert_with(HashMap::new).insert(new_construction, (current_blueprint.2.translation, unit_type));
@@ -4103,7 +4316,7 @@ pub fn process_busy_engineers (
 
                                                         materials.1.team_materials.insert((bundle.model.mesh.id(), current_construction_site.1.team), material.clone());
                                                     }
-                                                    
+    
                                                     new_building = commands.spawn((
                                                         MaterialMeshBundle{
                                                             mesh: bundle.model.mesh.clone(),
@@ -4136,16 +4349,16 @@ pub fn process_busy_engineers (
                                                         bundle.human_resource_storage.clone(),
                                                         bundle.materials_storage.clone(),
                                                     ))
-                                                    .insert(NavMeshAffector)
-                                                    .insert(NavMeshAreaType(None))
-                                                    .insert(DeconstructableBuilding{
+                                                    .try_insert(NavMeshAffector)
+                                                    .try_insert(NavMeshAreaType(None))
+                                                    .try_insert(DeconstructableBuilding{
                                                         team: current_construction_site.1.team,
                                                         materials_spent: current_construction_site.1.resource_cost,
                                                         buildpower_to_deconstruct_total: current_construction_site.1.build_power_total,
                                                         buildpower_to_deconstruct_remaining: 0,
                                                         deconstruction_distance: action.2,
                                                     })
-                                                    .insert(SwitchableBuilding(true))
+                                                    .try_insert(SwitchableBuilding(true))
                                                     .id();
 
                                                     unit_type = bundle.combat_component.unit_type;
@@ -4164,7 +4377,7 @@ pub fn process_busy_engineers (
                                                         background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                                         ..default()
                                                     })
-                                                    .insert(Visibility::Hidden)
+                                                    .try_insert(Visibility::Hidden)
                                                     .with_children(|parent| {
                                                         parent.spawn(NodeBundle {
                                                             style: Style {
@@ -4179,7 +4392,7 @@ pub fn process_busy_engineers (
                                                             background_color: HUMAN_RESOURCE_COLOR.into(),
                                                             ..default()
                                                         })
-                                                        .insert(HumanResourcesDisplay {
+                                                        .try_insert(HumanResourcesDisplay {
                                                             original_width: bar_size,
                                                             storage_entity: new_building,
                                                         });
@@ -4199,7 +4412,7 @@ pub fn process_busy_engineers (
                                                         background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                                         ..default()
                                                     })
-                                                    .insert(Visibility::Hidden)
+                                                    .try_insert(Visibility::Hidden)
                                                     .with_children(|parent| {
                                                         parent.spawn(NodeBundle {
                                                             style: Style {
@@ -4214,7 +4427,7 @@ pub fn process_busy_engineers (
                                                             background_color: MATERIALS_COLOR.into(),
                                                             ..default()
                                                         })
-                                                        .insert(MaterialsDisplay {
+                                                        .try_insert(MaterialsDisplay {
                                                             original_width: bar_size,
                                                             storage_entity: new_building,
                                                         });
@@ -4279,16 +4492,16 @@ pub fn process_busy_engineers (
                                                         bundle.producer.clone(),
                                                         bundle.human_resource_storage.clone(),
                                                         bundle.materials_storage.clone(),
-                                                    )).insert(NavMeshAffector)
-                                                    .insert(NavMeshAreaType(None))
-                                                    .insert(DeconstructableBuilding{
+                                                    )).try_insert(NavMeshAffector)
+                                                    .try_insert(NavMeshAreaType(None))
+                                                    .try_insert(DeconstructableBuilding{
                                                         team: current_construction_site.1.team,
                                                         materials_spent: current_construction_site.1.resource_cost,
                                                         buildpower_to_deconstruct_total: current_construction_site.1.build_power_total,
                                                         buildpower_to_deconstruct_remaining: 0,
                                                         deconstruction_distance: action.2,
                                                     })
-                                                    .insert(SwitchableBuilding(true))
+                                                    .try_insert(SwitchableBuilding(true))
                                                     .id();
 
                                                     unit_type = bundle.combat_component.unit_type;
@@ -4307,7 +4520,7 @@ pub fn process_busy_engineers (
                                                         background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                                         ..default()
                                                     })
-                                                    .insert(Visibility::Hidden)
+                                                    .try_insert(Visibility::Hidden)
                                                     .with_children(|parent| {
                                                         parent.spawn(NodeBundle {
                                                             style: Style {
@@ -4322,7 +4535,7 @@ pub fn process_busy_engineers (
                                                             background_color: HUMAN_RESOURCE_COLOR.into(),
                                                             ..default()
                                                         })
-                                                        .insert(HumanResourcesDisplay {
+                                                        .try_insert(HumanResourcesDisplay {
                                                             original_width: bar_size,
                                                             storage_entity: new_building,
                                                         });
@@ -4342,7 +4555,7 @@ pub fn process_busy_engineers (
                                                         background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                                         ..default()
                                                     })
-                                                    .insert(Visibility::Hidden)
+                                                    .try_insert(Visibility::Hidden)
                                                     .with_children(|parent| {
                                                         parent.spawn(NodeBundle {
                                                             style: Style {
@@ -4357,7 +4570,7 @@ pub fn process_busy_engineers (
                                                             background_color: MATERIALS_COLOR.into(),
                                                             ..default()
                                                         })
-                                                        .insert(MaterialsDisplay {
+                                                        .try_insert(MaterialsDisplay {
                                                             original_width: bar_size,
                                                             storage_entity: new_building,
                                                         });
@@ -4428,16 +4641,16 @@ pub fn process_busy_engineers (
                                                             ),
                                                         },
                                                     ))
-                                                    .insert(NavMeshAffector)
-                                                    .insert(NavMeshAreaType(None))
-                                                    .insert(DeconstructableBuilding{
+                                                    .try_insert(NavMeshAffector)
+                                                    .try_insert(NavMeshAreaType(None))
+                                                    .try_insert(DeconstructableBuilding{
                                                         team: current_construction_site.1.team,
                                                         materials_spent: current_construction_site.1.resource_cost,
                                                         buildpower_to_deconstruct_total: current_construction_site.1.build_power_total,
                                                         buildpower_to_deconstruct_remaining: 0,
                                                         deconstruction_distance: action.2,
                                                     })
-                                                    .insert(SwitchableBuilding(true))
+                                                    .try_insert(SwitchableBuilding(true))
                                                     .id();
 
                                                     unit_type = bundle.combat_component.unit_type;
@@ -4456,7 +4669,7 @@ pub fn process_busy_engineers (
                                                         background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                                         ..default()
                                                     })
-                                                    .insert(Visibility::Hidden)
+                                                    .try_insert(Visibility::Hidden)
                                                     .with_children(|parent| {
                                                         parent.spawn(NodeBundle {
                                                             style: Style {
@@ -4471,7 +4684,7 @@ pub fn process_busy_engineers (
                                                             background_color: MATERIALS_COLOR.into(),
                                                             ..default()
                                                         })
-                                                        .insert(MaterialsDisplay {
+                                                        .try_insert(MaterialsDisplay {
                                                             original_width: bar_size,
                                                             storage_entity: new_building,
                                                         });
@@ -4555,9 +4768,9 @@ pub fn process_busy_engineers (
                                                                     ),
                                                                 },
                                                             ))
-                                                            .insert(NavMeshAffector)
-                                                            .insert(NavMeshAreaType(None))
-                                                            .insert(DeconstructableBuilding{
+                                                            .try_insert(NavMeshAffector)
+                                                            .try_insert(NavMeshAreaType(None))
+                                                            .try_insert(DeconstructableBuilding{
                                                                 team: current_construction_site.1.team,
                                                                 materials_spent: current_construction_site.1.resource_cost,
                                                                 buildpower_to_deconstruct_total: current_construction_site.1.build_power_total,
@@ -4638,14 +4851,161 @@ pub fn process_busy_engineers (
                                                             ),
                                                         },
                                                     ))
-                                                    .insert(NavMeshAffector)
-                                                    .insert(NavMeshAreaType(None))
-                                                    .insert(DeconstructableBuilding{
+                                                    .try_insert(NavMeshAffector)
+                                                    .try_insert(NavMeshAreaType(None))
+                                                    .try_insert(DeconstructableBuilding{
                                                         team: current_construction_site.1.team,
                                                         materials_spent: current_construction_site.1.resource_cost,
                                                         buildpower_to_deconstruct_total: current_construction_site.1.build_power_total,
                                                         buildpower_to_deconstruct_remaining: 0,
                                                         deconstruction_distance: action.2,
+                                                    })
+                                                    .id();
+
+                                                    unit_type = bundle.combat_component.unit_type;
+                                                },
+                                                BuildingsBundles::WatchingTower(bundle) => {
+                                                    let material;
+
+                                                    if let Some(mat) =
+                                                    materials.1.team_materials.get(&(bundle.model.mesh.id(), current_construction_site.1.team)) {
+                                                        material = mat.clone();
+                                                    } else {
+                                                        if let Some(original) = materials.0.get(bundle.model.material.id()) {
+                                                            material = materials.2.add(ExtendedMaterial {
+                                                                base: original.clone(),
+                                                                extension: TeamMaterialExtension {
+                                                                    team_color: color,
+                                                                },
+                                                            });
+                                                        } else {
+                                                            material = materials.2.add(ExtendedMaterial {
+                                                                base: StandardMaterial{
+                                                                    ..default()
+                                                                },
+                                                                extension: TeamMaterialExtension {
+                                                                    team_color: color,
+                                                                },
+                                                            });
+                                                        }
+
+                                                        materials.1.team_materials.insert((bundle.model.mesh.id(), current_construction_site.1.team), material.clone());
+                                                    }
+
+                                                    new_building = commands.spawn((
+                                                        MaterialMeshBundle{
+                                                            mesh: bundle.model.mesh.clone(),
+                                                            material: material.clone(),
+                                                            transform: *current_construction_site.2,
+                                                            ..default()
+                                                        },
+                                                        bundle.collider.clone(), CollisionGroups::new(Group::GROUP_2, Group::all()),
+                                                        CombatComponent{
+                                                            team: current_construction_site.1.team,
+                                                            current_health: bundle.combat_component.current_health,
+                                                            max_health: bundle.combat_component.current_health,
+                                                            unit_type: bundle.combat_component.unit_type.clone(),
+                                                            attack_type: bundle.combat_component.attack_type.clone(),
+                                                            attack_animation_type: bundle.combat_component.attack_animation_type.clone(),
+                                                            attack_frequency: bundle.combat_component.attack_frequency,
+                                                            attack_elapsed_time: bundle.combat_component.attack_elapsed_time,
+                                                            detection_range: bundle.combat_component.detection_range,
+                                                            attack_range: bundle.combat_component.attack_range,
+                                                            enemies: bundle.combat_component.enemies.clone(),
+                                                            is_static: bundle.combat_component.is_static,
+                                                            unit_data: (
+                                                                current_construction_site_tile,
+                                                                bundle.combat_component.unit_data.1.clone()
+                                                            ),
+                                                        },
+                                                    ))
+                                                    .try_insert(NavMeshAffector)
+                                                    .try_insert(NavMeshAreaType(None))
+                                                    .try_insert(DeconstructableBuilding{
+                                                        team: current_construction_site.1.team,
+                                                        materials_spent: current_construction_site.1.resource_cost,
+                                                        buildpower_to_deconstruct_total: current_construction_site.1.build_power_total,
+                                                        buildpower_to_deconstruct_remaining: 0,
+                                                        deconstruction_distance: action.2,
+                                                    })
+                                                    .id();
+
+                                                    unit_type = bundle.combat_component.unit_type;
+                                                },
+                                                BuildingsBundles::Autoturret(bundle) => {
+                                                    let material;
+
+                                                    if let Some(mat) =
+                                                    materials.1.team_materials.get(&(bundle.model.mesh.id(), current_construction_site.1.team)) {
+                                                        material = mat.clone();
+                                                    } else {
+                                                        if let Some(original) = materials.0.get(bundle.model.material.id()) {
+                                                            material = materials.2.add(ExtendedMaterial {
+                                                                base: original.clone(),
+                                                                extension: TeamMaterialExtension {
+                                                                    team_color: color,
+                                                                },
+                                                            });
+                                                        } else {
+                                                            material = materials.2.add(ExtendedMaterial {
+                                                                base: StandardMaterial{
+                                                                    ..default()
+                                                                },
+                                                                extension: TeamMaterialExtension {
+                                                                    team_color: color,
+                                                                },
+                                                            });
+                                                        }
+
+                                                        materials.1.team_materials.insert((bundle.model.mesh.id(), current_construction_site.1.team), material.clone());
+                                                    }
+
+                                                    let simplified_material;
+                                                    if current_construction_site.1.team == 1 {
+                                                        simplified_material = materials.1.blue_solid.clone();
+                                                    } else {
+                                                        simplified_material = materials.1.red_solid.clone();
+                                                    }
+
+                                                    new_building = commands.spawn((
+                                                        MaterialMeshBundle{
+                                                            mesh: bundle.model.mesh.clone(),
+                                                            material: material.clone(),
+                                                            transform: *current_construction_site.2,
+                                                            ..default()
+                                                        },
+                                                        bundle.collider.clone(), CollisionGroups::new(Group::GROUP_2, Group::all()),
+                                                        CombatComponent{
+                                                            team: current_construction_site.1.team,
+                                                            current_health: bundle.combat_component.current_health,
+                                                            max_health: bundle.combat_component.current_health,
+                                                            unit_type: bundle.combat_component.unit_type.clone(),
+                                                            attack_type: bundle.combat_component.attack_type.clone(),
+                                                            attack_animation_type: bundle.combat_component.attack_animation_type.clone(),
+                                                            attack_frequency: bundle.combat_component.attack_frequency,
+                                                            attack_elapsed_time: bundle.combat_component.attack_elapsed_time,
+                                                            detection_range: bundle.combat_component.detection_range,
+                                                            attack_range: bundle.combat_component.attack_range,
+                                                            enemies: bundle.combat_component.enemies.clone(),
+                                                            is_static: bundle.combat_component.is_static,
+                                                            unit_data: (
+                                                                current_construction_site_tile,
+                                                                bundle.combat_component.unit_data.1.clone()
+                                                            ),
+                                                        },
+                                                    ))
+                                                    .try_insert(NavMeshAffector)
+                                                    .try_insert(NavMeshAreaType(None))
+                                                    .try_insert(DeconstructableBuilding{
+                                                        team: current_construction_site.1.team,
+                                                        materials_spent: current_construction_site.1.resource_cost,
+                                                        buildpower_to_deconstruct_total: current_construction_site.1.build_power_total,
+                                                        buildpower_to_deconstruct_remaining: 0,
+                                                        deconstruction_distance: action.2,
+                                                    })
+                                                    .try_insert(LOD{
+                                                        detailed: (bundle.model.mesh.clone(), Some(material.clone()), None),
+                                                        simplified: (bundle.lod.mesh.clone(), simplified_material),
                                                     })
                                                     .id();
 
@@ -4838,7 +5198,7 @@ pub fn process_busy_engineers (
                                                 background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                                                 ..default()
                                             })
-                                            .insert(Visibility::Hidden)
+                                            .try_insert(Visibility::Hidden)
                                             .with_children(|parent| {
                                                 parent.spawn(NodeBundle {
                                                     style: Style {
@@ -4853,7 +5213,7 @@ pub fn process_busy_engineers (
                                                     background_color: CONSTRUCTION_PROGRESS_COLOR.into(),
                                                     ..default()
                                                 })
-                                                .insert(ConstructionProgressBar {
+                                                .try_insert(ConstructionProgressBar {
                                                     constrcution_entity: current_building.0,
                                                     max_width: bar_size,
                                                 });
@@ -5034,7 +5394,7 @@ pub fn process_busy_engineers (
 
                             materials.1.team_materials.insert((bundle.model.mesh.id(), blueprint.1.team), material.clone());
                         }
-                        
+    
                         new_building = commands.spawn((
                             MaterialMeshBundle{
                                 mesh: bundle.model.mesh.clone(),
@@ -5067,16 +5427,16 @@ pub fn process_busy_engineers (
                             bundle.human_resource_storage.clone(),
                             bundle.materials_storage.clone(),
                         ))
-                        .insert(NavMeshAffector)
-                        .insert(NavMeshAreaType(None))
-                        .insert(DeconstructableBuilding{
+                        .try_insert(NavMeshAffector)
+                        .try_insert(NavMeshAreaType(None))
+                        .try_insert(DeconstructableBuilding{
                             team: blueprint.1.team,
                             materials_spent: blueprint.1.resource_cost,
                             buildpower_to_deconstruct_total: blueprint.1.build_power_remaining,
                             buildpower_to_deconstruct_remaining: 0,
                             deconstruction_distance: blueprint.1.build_distance,
                         })
-                        .insert(SwitchableBuilding(true))
+                        .try_insert(SwitchableBuilding(true))
                         .id();
 
                         unit_type = bundle.combat_component.unit_type;
@@ -5095,7 +5455,7 @@ pub fn process_busy_engineers (
                             background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                             ..default()
                         })
-                        .insert(Visibility::Hidden)
+                        .try_insert(Visibility::Hidden)
                         .with_children(|parent| {
                             parent.spawn(NodeBundle {
                                 style: Style {
@@ -5110,7 +5470,7 @@ pub fn process_busy_engineers (
                                 background_color: HUMAN_RESOURCE_COLOR.into(),
                                 ..default()
                             })
-                            .insert(HumanResourcesDisplay {
+                            .try_insert(HumanResourcesDisplay {
                                 original_width: bar_size,
                                 storage_entity: new_building,
                             });
@@ -5130,7 +5490,7 @@ pub fn process_busy_engineers (
                             background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                             ..default()
                         })
-                        .insert(Visibility::Hidden)
+                        .try_insert(Visibility::Hidden)
                         .with_children(|parent| {
                             parent.spawn(NodeBundle {
                                 style: Style {
@@ -5145,7 +5505,7 @@ pub fn process_busy_engineers (
                                 background_color: MATERIALS_COLOR.into(),
                                 ..default()
                             })
-                            .insert(MaterialsDisplay {
+                            .try_insert(MaterialsDisplay {
                                 original_width: bar_size,
                                 storage_entity: new_building,
                             });
@@ -5211,16 +5571,16 @@ pub fn process_busy_engineers (
                             bundle.human_resource_storage.clone(),
                             bundle.materials_storage.clone(),
                         ))
-                        .insert(NavMeshAffector)
-                        .insert(NavMeshAreaType(None))
-                        .insert(DeconstructableBuilding{
+                        .try_insert(NavMeshAffector)
+                        .try_insert(NavMeshAreaType(None))
+                        .try_insert(DeconstructableBuilding{
                             team: blueprint.1.team,
                             materials_spent: blueprint.1.resource_cost,
                             buildpower_to_deconstruct_total: blueprint.1.build_power_remaining,
                             buildpower_to_deconstruct_remaining: 0,
                             deconstruction_distance: blueprint.1.build_distance,
                         })
-                        .insert(SwitchableBuilding(true))
+                        .try_insert(SwitchableBuilding(true))
                         .id();
 
                         unit_type = bundle.combat_component.unit_type;
@@ -5239,7 +5599,7 @@ pub fn process_busy_engineers (
                             background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                             ..default()
                         })
-                        .insert(Visibility::Hidden)
+                        .try_insert(Visibility::Hidden)
                         .with_children(|parent| {
                             parent.spawn(NodeBundle {
                                 style: Style {
@@ -5254,7 +5614,7 @@ pub fn process_busy_engineers (
                                 background_color: HUMAN_RESOURCE_COLOR.into(),
                                 ..default()
                             })
-                            .insert(HumanResourcesDisplay {
+                            .try_insert(HumanResourcesDisplay {
                                 original_width: bar_size,
                                 storage_entity: new_building,
                             });
@@ -5274,7 +5634,7 @@ pub fn process_busy_engineers (
                             background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                             ..default()
                         })
-                        .insert(Visibility::Hidden)
+                        .try_insert(Visibility::Hidden)
                         .with_children(|parent| {
                             parent.spawn(NodeBundle {
                                 style: Style {
@@ -5289,7 +5649,7 @@ pub fn process_busy_engineers (
                                 background_color: MATERIALS_COLOR.into(),
                                 ..default()
                             })
-                            .insert(MaterialsDisplay {
+                            .try_insert(MaterialsDisplay {
                                 original_width: bar_size,
                                 storage_entity: new_building,
                             });
@@ -5360,16 +5720,16 @@ pub fn process_busy_engineers (
                                 ),
                             },
                         ))
-                        .insert(NavMeshAffector)
-                        .insert(NavMeshAreaType(None))
-                        .insert(DeconstructableBuilding{
+                        .try_insert(NavMeshAffector)
+                        .try_insert(NavMeshAreaType(None))
+                        .try_insert(DeconstructableBuilding{
                             team: blueprint.1.team,
                             materials_spent: blueprint.1.resource_cost,
                             buildpower_to_deconstruct_total: blueprint.1.build_power_remaining,
                             buildpower_to_deconstruct_remaining: 0,
                             deconstruction_distance: blueprint.1.build_distance,
                         })
-                        .insert(SwitchableBuilding(true))
+                        .try_insert(SwitchableBuilding(true))
                         .id();
 
                         unit_type = bundle.combat_component.unit_type;
@@ -5388,7 +5748,7 @@ pub fn process_busy_engineers (
                             background_color: Color::srgba(0.1, 0.1, 0.1, 1.).into(),
                             ..default()
                         })
-                        .insert(Visibility::Hidden)
+                        .try_insert(Visibility::Hidden)
                         .with_children(|parent| {
                             parent.spawn(NodeBundle {
                                 style: Style {
@@ -5403,7 +5763,7 @@ pub fn process_busy_engineers (
                                 background_color: MATERIALS_COLOR.into(),
                                 ..default()
                             })
-                            .insert(MaterialsDisplay {
+                            .try_insert(MaterialsDisplay {
                                 original_width: bar_size,
                                 storage_entity: new_building,
                             });
@@ -5486,9 +5846,9 @@ pub fn process_busy_engineers (
                                     ),
                                 },
                             ))
-                            .insert(NavMeshAffector)
-                            .insert(NavMeshAreaType(None))
-                            .insert(DeconstructableBuilding{
+                            .try_insert(NavMeshAffector)
+                            .try_insert(NavMeshAreaType(None))
+                            .try_insert(DeconstructableBuilding{
                                 team: blueprint.1.team,
                                 materials_spent: blueprint.1.resource_cost,
                                 buildpower_to_deconstruct_total: blueprint.1.build_power_remaining,
@@ -5568,14 +5928,161 @@ pub fn process_busy_engineers (
                                 ),
                             },
                         ))
-                        .insert(NavMeshAffector)
-                        .insert(NavMeshAreaType(None))
-                        .insert(DeconstructableBuilding{
+                        .try_insert(NavMeshAffector)
+                        .try_insert(NavMeshAreaType(None))
+                        .try_insert(DeconstructableBuilding{
                             team: blueprint.1.team,
                             materials_spent: blueprint.1.resource_cost,
                             buildpower_to_deconstruct_total: blueprint.1.build_power_remaining,
                             buildpower_to_deconstruct_remaining: 0,
                             deconstruction_distance: blueprint.1.build_distance,
+                        })
+                        .id();
+
+                        unit_type = bundle.combat_component.unit_type;
+                    },
+                    BuildingsBundles::WatchingTower(bundle) => {
+                        let material;
+
+                        if let Some(mat) =
+                        materials.1.team_materials.get(&(bundle.model.mesh.id(), blueprint.1.team)) {
+                            material = mat.clone();
+                        } else {
+                            if let Some(original) = materials.0.get(bundle.model.material.id()) {
+                                material = materials.2.add(ExtendedMaterial {
+                                    base: original.clone(),
+                                    extension: TeamMaterialExtension {
+                                        team_color: color,
+                                    },
+                                });
+                            } else {
+                                material = materials.2.add(ExtendedMaterial {
+                                    base: StandardMaterial{
+                                        ..default()
+                                    },
+                                    extension: TeamMaterialExtension {
+                                        team_color: color,
+                                    },
+                                });
+                            }
+
+                            materials.1.team_materials.insert((bundle.model.mesh.id(), blueprint.1.team), material.clone());
+                        }
+
+                        new_building = commands.spawn((
+                            MaterialMeshBundle{
+                                mesh: bundle.model.mesh.clone(),
+                                material: material.clone(),
+                                transform: *blueprint.2,
+                                ..default()
+                            },
+                            bundle.collider.clone(), CollisionGroups::new(Group::GROUP_2, Group::all()),
+                            CombatComponent{
+                                team: blueprint.1.team,
+                                current_health: bundle.combat_component.current_health,
+                                max_health: bundle.combat_component.current_health,
+                                unit_type: bundle.combat_component.unit_type.clone(),
+                                attack_type: bundle.combat_component.attack_type.clone(),
+                                attack_animation_type: bundle.combat_component.attack_animation_type.clone(),
+                                attack_frequency: bundle.combat_component.attack_frequency,
+                                attack_elapsed_time: bundle.combat_component.attack_elapsed_time,
+                                detection_range: bundle.combat_component.detection_range,
+                                attack_range: bundle.combat_component.attack_range,
+                                enemies: bundle.combat_component.enemies.clone(),
+                                is_static: bundle.combat_component.is_static,
+                                unit_data: (
+                                    current_construction_site_tile,
+                                    bundle.combat_component.unit_data.1.clone()
+                                ),
+                            },
+                        ))
+                        .try_insert(NavMeshAffector)
+                        .try_insert(NavMeshAreaType(None))
+                        .try_insert(DeconstructableBuilding{
+                            team: blueprint.1.team,
+                            materials_spent: blueprint.1.resource_cost,
+                            buildpower_to_deconstruct_total: blueprint.1.build_power_remaining,
+                            buildpower_to_deconstruct_remaining: 0,
+                            deconstruction_distance: blueprint.1.build_distance,
+                        })
+                        .id();
+
+                        unit_type = bundle.combat_component.unit_type;
+                    },
+                    BuildingsBundles::Autoturret(bundle) => {
+                        let material;
+
+                        if let Some(mat) =
+                        materials.1.team_materials.get(&(bundle.model.mesh.id(), blueprint.1.team)) {
+                            material = mat.clone();
+                        } else {
+                            if let Some(original) = materials.0.get(bundle.model.material.id()) {
+                                material = materials.2.add(ExtendedMaterial {
+                                    base: original.clone(),
+                                    extension: TeamMaterialExtension {
+                                        team_color: color,
+                                    },
+                                });
+                            } else {
+                                material = materials.2.add(ExtendedMaterial {
+                                    base: StandardMaterial{
+                                        ..default()
+                                    },
+                                    extension: TeamMaterialExtension {
+                                        team_color: color,
+                                    },
+                                });
+                            }
+
+                            materials.1.team_materials.insert((bundle.model.mesh.id(), blueprint.1.team), material.clone());
+                        }
+
+                        let simplified_material;
+                        if blueprint.1.team == 1 {
+                            simplified_material = materials.1.blue_solid.clone();
+                        } else {
+                            simplified_material = materials.1.red_solid.clone();
+                        }
+
+                        new_building = commands.spawn((
+                            MaterialMeshBundle{
+                                mesh: bundle.model.mesh.clone(),
+                                material: material.clone(),
+                                transform: *blueprint.2,
+                                ..default()
+                            },
+                            bundle.collider.clone(), CollisionGroups::new(Group::GROUP_2, Group::all()),
+                            CombatComponent{
+                                team: blueprint.1.team,
+                                current_health: bundle.combat_component.current_health,
+                                max_health: bundle.combat_component.current_health,
+                                unit_type: bundle.combat_component.unit_type.clone(),
+                                attack_type: bundle.combat_component.attack_type.clone(),
+                                attack_animation_type: bundle.combat_component.attack_animation_type.clone(),
+                                attack_frequency: bundle.combat_component.attack_frequency,
+                                attack_elapsed_time: bundle.combat_component.attack_elapsed_time,
+                                detection_range: bundle.combat_component.detection_range,
+                                attack_range: bundle.combat_component.attack_range,
+                                enemies: bundle.combat_component.enemies.clone(),
+                                is_static: bundle.combat_component.is_static,
+                                unit_data: (
+                                    current_construction_site_tile,
+                                    bundle.combat_component.unit_data.1.clone()
+                                ),
+                            },
+                        ))
+                        .try_insert(NavMeshAffector)
+                        .try_insert(NavMeshAreaType(None))
+                        .try_insert(DeconstructableBuilding{
+                            team: blueprint.1.team,
+                            materials_spent: blueprint.1.resource_cost,
+                            buildpower_to_deconstruct_total: blueprint.1.build_power_remaining,
+                            buildpower_to_deconstruct_remaining: 0,
+                            deconstruction_distance: blueprint.1.build_distance,
+                        })
+                        .try_insert(LOD{
+                            detailed: (bundle.model.mesh.clone(), Some(material.clone()), None),
+                            simplified: (bundle.lod.mesh.clone(), simplified_material),
                         })
                         .id();
 
@@ -5762,7 +6269,7 @@ pub fn artillery_designation_system (
                         }
                     } else {
                         for mut artillery_unit in artillery_units_q.iter_mut() {
-                            commands.entity(artillery_unit.0).insert(ArtilleryNeedsToFire(hits[0].1.position()));
+                            commands.entity(artillery_unit.0).try_insert(ArtilleryNeedsToFire(hits[0].1.position()));
 
                             artillery_unit.1.look_at(
                                 Vec3::new(
@@ -5851,8 +6358,8 @@ pub fn artillery_firing_system(
                         transform: Transform::from_translation(artillery_unit.0.translation).looking_at(path[1], Vec3::Y),
                         ..default()
                     })
-                    .insert(TrailEmmiterComponent)
-                    .insert(BallisticProjectile{
+                    .try_insert(TrailEmmiterComponent)
+                    .try_insert(BallisticProjectile{
                         path: path,
                         speed: artillery_unit.1.shell_speed,
                         start_position: artillery_unit.0.translation,
@@ -5875,7 +6382,7 @@ pub fn artillery_firing_system(
                         transform: Transform::from_translation(artillery_unit.0.translation),
                         ..default()
                     })
-                    .insert(
+                    .try_insert(
                         TrailComponent{
                             positions: vec![],
                             length: 10,
@@ -5888,7 +6395,7 @@ pub fn artillery_firing_system(
                     counter += 1;
 
                     if counter <= 3 {
-                        commands.entity(artillery_unit.3).insert(
+                        commands.entity(artillery_unit.3).try_insert(
                             AudioBundle{
                                 source: attack_visualisation_assets.tank_shot_sound.clone(),
                                 settings: PlaybackSettings{
@@ -7611,7 +8118,7 @@ pub fn explosion_processing_system (
             transform: Transform::from_translation(event.0.0),
             ..default()
         })
-        .insert(ExplosionComponent((0, 0)))
+        .try_insert(ExplosionComponent((0, 0)))
         .try_insert(AudioBundle{
             source: assets.explosion_small_sound.clone(),
             settings: PlaybackSettings{
@@ -7914,7 +8421,17 @@ pub fn update_fog_of_war(
     player_data: Res<PlayerData>,
     mut commands: Commands,
     game_stage: Res<GameStage>,
+    time: Res<Time>,
+    mut time_elapsed: Local<u128>,
 ) {
+    *time_elapsed += time.delta().as_millis();
+
+    if *time_elapsed < 500 {
+        return;
+    }
+
+    *time_elapsed = 0;
+
     if !matches!(game_stage.0, GameStages::GameStarted) {
         return;
     }
@@ -8135,8 +8652,8 @@ pub fn transport_assignation_system(
             if let Some(cursor_ray) = **cursor_ray {
                 let hits = raycast.cast_ray(cursor_ray, &default());
         
-                if hits.len() > 0 {
-                    if let Ok(transport) = transports_q.get(hits[0].0) {
+                for hit in hits.iter() {
+                    if let Ok(transport) = transports_q.get(hit.0) {
                         if transport.3.team != player_data.team || transport.1.max_units <= transport.1.units_inside.len() {
                             return;
                         }
@@ -8149,7 +8666,7 @@ pub fn transport_assignation_system(
                                 if unit.1.unit_data.1.0 != CompanyTypes::Armored {
                                     match network_status.0 {
                                         NetworkStatuses::Client => {
-                                            commands.entity(unit.0).insert(MovingToTransport{
+                                            commands.entity(unit.0).try_insert(MovingToTransport{
                                                 transport_entity: transport.0,
                                                 transport_position: transport.2.translation,
                                             });
@@ -8169,7 +8686,7 @@ pub fn transport_assignation_system(
                                             }
                                         }
                                         _ => {
-                                            commands.entity(unit.0).insert(MovingToTransport{
+                                            commands.entity(unit.0).try_insert(MovingToTransport{
                                                 transport_entity: transport.0,
                                                 transport_position: transport.2.translation,
                                             });
@@ -8208,6 +8725,8 @@ pub fn transport_assignation_system(
                                 }
                             }
                         }
+
+                        break;
                     }
                 }
             }
@@ -8316,8 +8835,8 @@ pub fn transport_embark_system (
                     } else if transport.1.translation == unit.2.transport_position {
                         commands.entity(unit.0).remove::<MovingToTransport>();
                         commands.entity(unit.0).remove::<NeedToMove>();
-                        commands.entity(unit.0).insert(DisabledUnit);
-                        commands.entity(unit.0).insert(InTransport{
+                        commands.entity(unit.0).try_insert(DisabledUnit);
+                        commands.entity(unit.0).try_insert(InTransport{
                             transport_entity: transport.0,
                         });
 

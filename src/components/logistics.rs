@@ -111,11 +111,16 @@ pub fn create_curved_mesh(
 ) -> Mesh {
     let mut mesh = Mesh::new(bevy::render::mesh::PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD);
 
+    if path.len() < 2 {
+        return mesh;
+    }
+
     let half_width = width / 2.0;
     let half_height = height / 2.0;
 
     let mut vertices = Vec::new();
     let mut normals = Vec::new();
+    let mut uvs = Vec::new();
     let mut indices = Vec::new();
 
     let offset_path: Vec<Vec3> = path.iter().map(|point| *point + Vec3::Y * vertical_offset).collect();
@@ -125,6 +130,11 @@ pub fn create_curved_mesh(
         .map(|point| entity_transform.compute_matrix().inverse() * point.extend(1.0))
         .map(|point| point.truncate())
         .collect();
+
+    let mut segment_distances = vec![0.0; local_path.len()];
+    for i in 1..local_path.len() {
+        segment_distances[i] = segment_distances[i - 1] + (local_path[i] - local_path[i - 1]).length();
+    }
 
     for i in 0..local_path.len() {
         let current_point = local_path[i];
@@ -147,11 +157,27 @@ pub fn create_curved_mesh(
         let v3 = current_point - normal * half_width - binormal * half_height;
         let v4 = current_point - normal * half_width + binormal * half_height;
 
+        let u = if width > f32::EPSILON {
+            segment_distances[i] / width
+        } else {
+            0.0
+        };
+
+        let v_left = 0.0;
+        let v_right = 1.0;
+
         let base_index = vertices.len() as u32;
         vertices.extend_from_slice(&[v1, v2, v3, v4]);
 
         normals.extend_from_slice(&[
             normal, normal, normal, normal,
+        ]);
+
+        uvs.extend_from_slice(&[
+            [u, v_right],
+            [u, v_right],
+            [u, v_left],
+            [u, v_left],
         ]);
 
         if i > 0 {
@@ -179,7 +205,10 @@ pub fn create_curved_mesh(
 
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vertices);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
-    mesh.insert_indices(Indices::U32(indices));
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    if !indices.is_empty() {
+        mesh.insert_indices(Indices::U32(indices));
+    }
 
     mesh
 }
@@ -288,7 +317,7 @@ pub fn assign_supply_tasks (
                                         material: material.clone(),
                                         transform: Transform::from_translation(start_point),
                                         ..default()
-                                    }).insert(UnitComponent {
+                                    }).try_insert(UnitComponent {
                                         path: vec![start_point],
                                         start_position: Vec3::ZERO,
                                         quantized_destination: quantized_destination,
@@ -298,7 +327,7 @@ pub fn assign_supply_tasks (
                                         inv_duration: 0.,
                                         last_position: Vec3::ZERO,
                                         stuck_count: 0,
-                                    }).insert(LogisticUnitComponent {
+                                    }).try_insert(LogisticUnitComponent {
                                         storage_capacity: supplies_needed,
                                         storage: ResourceTypes::Supplies(supplies_needed),
                                         destination: (supply_consumer.0, Some((CompanyTypes::Regular, *regular_platoon.0))),
@@ -308,7 +337,7 @@ pub fn assign_supply_tasks (
                                         destination_completion_range: supply_consumer.2.supply_range,
                                         last_pos: start_point,
                                         stuck_time: 0,
-                                    }).insert(KinematicCharacterController{
+                                    }).try_insert(KinematicCharacterController{
                                         custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
                                         up: Vec3::Y,
                                         offset: CharacterLength::Absolute(0.1),
@@ -317,10 +346,10 @@ pub fn assign_supply_tasks (
                                         apply_impulse_to_dynamic_bodies: false,
                                         snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                                         ..default()
-                                    }).insert(LOD{
+                                    }).try_insert(LOD{
                                         detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
                                         simplified: (units_assets.truck.2.clone(), simplified_material.clone()),
-                                    }).insert(CombatComponent{
+                                    }).try_insert(CombatComponent{
                                         team: supply_producer.2.team,
                                         current_health: 100,
                                         max_health: 100,
@@ -450,7 +479,7 @@ pub fn assign_supply_tasks (
                                             material: material.clone(),
                                             transform: Transform::from_translation(start_point),
                                             ..default()
-                                        }).insert(UnitComponent {
+                                        }).try_insert(UnitComponent {
                                             path: vec![start_point],
                                             start_position: Vec3::ZERO,
                                             quantized_destination: quantized_destination,
@@ -460,7 +489,7 @@ pub fn assign_supply_tasks (
                                             inv_duration: 0.,
                                         last_position: Vec3::ZERO,
                                         stuck_count: 0,
-                                        }).insert(LogisticUnitComponent {
+                                        }).try_insert(LogisticUnitComponent {
                                             storage_capacity: supplies_needed,
                                             storage: ResourceTypes::Supplies(supplies_needed),
                                             destination: (supply_consumer.0, Some((CompanyTypes::Shock, *shock_platoon.0))),
@@ -470,7 +499,7 @@ pub fn assign_supply_tasks (
                                             destination_completion_range: supply_consumer.2.supply_range,
                                             last_pos: start_point,
                                             stuck_time: 0,
-                                        }).insert(KinematicCharacterController{
+                                        }).try_insert(KinematicCharacterController{
                                             custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
                                             up: Vec3::Y,
                                             offset: CharacterLength::Absolute(0.1),
@@ -479,10 +508,10 @@ pub fn assign_supply_tasks (
                                             apply_impulse_to_dynamic_bodies: false,
                                             snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                                             ..default()
-                                        }).insert(LOD{
+                                        }).try_insert(LOD{
                                             detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
                                             simplified: (units_assets.truck.2.clone(), simplified_material.clone()),
-                                        }).insert(CombatComponent{
+                                        }).try_insert(CombatComponent{
                                             team: supply_producer.2.team,
                                             current_health: 100,
                                             max_health: 100,
@@ -612,7 +641,7 @@ pub fn assign_supply_tasks (
                                                 material: material.clone(),
                                                 transform: Transform::from_translation(start_point),
                                                 ..default()
-                                            }).insert(UnitComponent {
+                                            }).try_insert(UnitComponent {
                                                 path: vec![start_point],
                                                 start_position: Vec3::ZERO,
                                                 quantized_destination: quantized_destination,
@@ -622,7 +651,7 @@ pub fn assign_supply_tasks (
                                                 inv_duration: 0.,
                                                 last_position: Vec3::ZERO,
                                                 stuck_count: 0,
-                                            }).insert(LogisticUnitComponent {
+                                            }).try_insert(LogisticUnitComponent {
                                                 storage_capacity: supplies_needed,
                                                 storage: ResourceTypes::Supplies(supplies_needed),
                                                 destination: (supply_consumer.0, Some((CompanyTypes::Armored, *armored_platoon.0))),
@@ -632,7 +661,7 @@ pub fn assign_supply_tasks (
                                                 destination_completion_range: supply_consumer.2.supply_range,
                                                 last_pos: start_point,
                                                 stuck_time: 0,
-                                            }).insert(KinematicCharacterController{
+                                            }).try_insert(KinematicCharacterController{
                                                 custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
                                                 up: Vec3::Y,
                                                 offset: CharacterLength::Absolute(0.1),
@@ -641,10 +670,10 @@ pub fn assign_supply_tasks (
                                                 apply_impulse_to_dynamic_bodies: false,
                                                 snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                                                 ..default()
-                                            }).insert(LOD{
+                                            }).try_insert(LOD{
                                                 detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
                                                 simplified: (units_assets.truck.2.clone(), simplified_material.clone()),
-                                            }).insert(CombatComponent{
+                                            }).try_insert(CombatComponent{
                                                 team: supply_producer.2.team,
                                                 current_health: 100,
                                                 max_health: 100,
@@ -776,7 +805,7 @@ pub fn assign_supply_tasks (
                                                         material: material.clone(),
                                                         transform: Transform::from_translation(start_point),
                                                         ..default()
-                                                    }).insert(UnitComponent {
+                                                    }).try_insert(UnitComponent {
                                                         path: vec![start_point],
                                                         start_position: Vec3::ZERO,
                                                         quantized_destination: quantized_destination,
@@ -786,7 +815,7 @@ pub fn assign_supply_tasks (
                                                         inv_duration: 0.,
                                                         last_position: Vec3::ZERO,
                                                         stuck_count: 0,
-                                                    }).insert(LogisticUnitComponent {
+                                                    }).try_insert(LogisticUnitComponent {
                                                         storage_capacity: supplies_needed,
                                                         storage: ResourceTypes::Supplies(supplies_needed),
                                                         destination: (supply_consumer.0, None),
@@ -796,7 +825,7 @@ pub fn assign_supply_tasks (
                                                         destination_completion_range: supply_consumer.2.supply_range,
                                                         last_pos: start_point,
                                                         stuck_time: 0,
-                                                    }).insert(KinematicCharacterController{
+                                                    }).try_insert(KinematicCharacterController{
                                                         custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
                                                         up: Vec3::Y,
                                                         offset: CharacterLength::Absolute(0.1),
@@ -805,10 +834,10 @@ pub fn assign_supply_tasks (
                                                         apply_impulse_to_dynamic_bodies: false,
                                                         snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                                                         ..default()
-                                                    }).insert(LOD{
+                                                    }).try_insert(LOD{
                                                         detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
                                                         simplified: (units_assets.truck.2.clone(), simplified_material.clone()),
-                                                    }).insert(CombatComponent{
+                                                    }).try_insert(CombatComponent{
                                                         team: supply_producer.2.team,
                                                         current_health: 100,
                                                         max_health: 100,
@@ -929,6 +958,22 @@ pub fn logistic_convoys_processing_system(
                                     .send_group_message_on(clients.0.keys(), channel_id, ServerMessage::MaterialsDelivered {
                                         server_entity: logistic_unit.2.destination.0,
                                         amount: amount,
+                                    }){
+                                        channel_id += 1;
+                                    } else {
+                                        break;
+                                    }
+                                }
+                            }
+                        } else {
+                            commands.entity(logistic_unit.0).despawn();
+
+                            if matches!(network_status.0, NetworkStatuses::Host){
+                                let mut channel_id = 60;
+                                while channel_id <= 89 {
+                                    if let Err(_) = server.endpoint_mut()
+                                    .send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnspecifiedEntityRemoved {
+                                        server_entity: logistic_unit.0,
                                     }){
                                         channel_id += 1;
                                     } else {
@@ -1293,6 +1338,22 @@ pub fn logistic_convoys_processing_system(
                                     }
                                 }
                             }
+                        } else {
+                            commands.entity(logistic_unit.0).despawn();
+
+                            if matches!(network_status.0, NetworkStatuses::Host){
+                                let mut channel_id = 60;
+                                while channel_id <= 89 {
+                                    if let Err(_) = server.endpoint_mut()
+                                    .send_group_message_on(clients.0.keys(), channel_id, ServerMessage::UnspecifiedEntityRemoved {
+                                        server_entity: logistic_unit.0,
+                                    }){
+                                        channel_id += 1;
+                                    } else {
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
                 },
@@ -1407,7 +1468,7 @@ pub fn material_producers_processing_system(
                                     material: material.clone(),
                                     transform: Transform::from_translation(start_point),
                                     ..default()
-                                }).insert(UnitComponent {
+                                }).try_insert(UnitComponent {
                                     path: vec![start_point],
                                     start_position: Vec3::ZERO,
                                     quantized_destination: quantized_destination,
@@ -1417,7 +1478,7 @@ pub fn material_producers_processing_system(
                                     inv_duration: 0.,
                                     last_position: Vec3::ZERO,
                                     stuck_count: 0,
-                                }).insert(LogisticUnitComponent {
+                                }).try_insert(LogisticUnitComponent {
                                     storage_capacity: material_consumer.2.replenishment_amount,
                                     storage: ResourceTypes::Materials(material_consumer.2.replenishment_amount),
                                     destination: (material_consumer.0, None),
@@ -1427,7 +1488,7 @@ pub fn material_producers_processing_system(
                                     destination_completion_range: material_consumer.2.replenishment_range,
                                     last_pos: start_point,
                                     stuck_time: 0,
-                                }).insert(KinematicCharacterController{
+                                }).try_insert(KinematicCharacterController{
                                     custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
                                     up: Vec3::Y,
                                     offset: CharacterLength::Absolute(0.1),
@@ -1436,10 +1497,10 @@ pub fn material_producers_processing_system(
                                     apply_impulse_to_dynamic_bodies: false,
                                     snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                                     ..default()
-                                }).insert(LOD{
+                                }).try_insert(LOD{
                                     detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
                                     simplified: (units_assets.truck.2.clone(), simplified_material.clone()),
-                                }).insert(CombatComponent{
+                                }).try_insert(CombatComponent{
                                     team: material_producer.2.team,
                                     current_health: 100,
                                     max_health: 100,
@@ -1611,7 +1672,7 @@ pub fn human_resource_producers_processing_system(
                                     material: material.clone(),
                                     transform: Transform::from_translation(start_point),
                                     ..default()
-                                }).insert(UnitComponent {
+                                }).try_insert(UnitComponent {
                                     path: vec![start_point],
                                     start_position: Vec3::ZERO,
                                     quantized_destination: quantized_destination,
@@ -1621,7 +1682,7 @@ pub fn human_resource_producers_processing_system(
                                     inv_duration: 0.,
                                     last_position: Vec3::ZERO,
                                     stuck_count: 0,
-                                }).insert(LogisticUnitComponent {
+                                }).try_insert(LogisticUnitComponent {
                                     storage_capacity: human_resource_consumer.2.replenishment_amount,
                                     storage: ResourceTypes::HumanResources(human_resource_consumer.2.replenishment_amount),
                                     destination: (human_resource_consumer.0, None),
@@ -1631,7 +1692,7 @@ pub fn human_resource_producers_processing_system(
                                     destination_completion_range: human_resource_consumer.2.replenishment_range,
                                     last_pos: start_point,
                                     stuck_time: 0,
-                                }).insert(KinematicCharacterController{
+                                }).try_insert(KinematicCharacterController{
                                     custom_shape: Some((Collider::cuboid(0.5, 0.5, 0.5), Vec3::new(0., 0.5, 0.), Quat::IDENTITY)),
                                     up: Vec3::Y,
                                     offset: CharacterLength::Absolute(0.1),
@@ -1640,10 +1701,10 @@ pub fn human_resource_producers_processing_system(
                                     apply_impulse_to_dynamic_bodies: false,
                                     snap_to_ground: Some(CharacterLength::Absolute(1000.)),
                                     ..default()
-                                }).insert(LOD{
+                                }).try_insert(LOD{
                                     detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
                                     simplified: (units_assets.truck.2.clone(), simplified_material.clone()),
-                                }).insert(CombatComponent{
+                                }).try_insert(CombatComponent{
                                     team: human_resource_producer.1.0.team,
                                     current_health: 100,
                                     max_health: 100,

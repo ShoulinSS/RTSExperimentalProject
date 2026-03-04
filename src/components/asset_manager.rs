@@ -1,6 +1,6 @@
 use std::{f32::consts::TAU, primitive};
 
-use bevy::{color::palettes::css::GRAY, gltf::GltfMesh, pbr::{ExtendedMaterial, MaterialExtension, NotShadowCaster}, prelude::*, render::{mesh::{Indices, MeshVertexBufferLayout, skinning::{SkinnedMesh, SkinnedMeshInverseBindposes}}, render_asset::RenderAssetUsages, render_resource::{AsBindGroup, DynamicUniformBuffer, PipelineDescriptor, RenderPipelineDescriptor, Sampler, ShaderRef, ShaderType, SpecializedMeshPipelineError}, texture::{ImageAddressMode, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor}}, scene::SceneInstance, transform::commands, utils::{HashSet, hashbrown::HashMap}, window::PrimaryWindow};
+use bevy::{color::palettes::css::GRAY, gltf::GltfMesh, pbr::{ExtendedMaterial, MaterialExtension, NotShadowCaster}, prelude::*, render::{mesh::{Indices, MeshVertexBufferLayout, skinning::{SkinnedMesh, SkinnedMeshInverseBindposes}}, render_asset::RenderAssetUsages, render_resource::{AsBindGroup, DynamicUniformBuffer, FilterMode, PipelineDescriptor, RenderPipelineDescriptor, Sampler, ShaderRef, ShaderType, SpecializedMeshPipelineError}, texture::{ImageAddressMode, ImageFilterMode, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor}}, scene::SceneInstance, transform::commands, utils::{HashSet, hashbrown::HashMap}, window::PrimaryWindow};
 use bevy_egui::{EguiContext, EguiRenderToTextureHandle};
 use bevy_rapier3d::{na::TGeneral, prelude::{Collider, CollisionGroups, ComputedColliderShape, Group}};
 use oxidized_navigation_serializable::NavMeshAffector;
@@ -25,6 +25,8 @@ pub struct BuildingsAssets {
     pub logistic_hub: (Handle<Mesh>, Handle<StandardMaterial>),
     pub resource_extractor: (Handle<Mesh>, Handle<StandardMaterial>),
     pub pillbox: (Handle<Mesh>, Handle<StandardMaterial>),
+    pub watching_tower: (Handle<Mesh>, Handle<StandardMaterial>),
+    pub autoturret: (Handle<Mesh>, Handle<StandardMaterial>),
 
     pub town_hall: (Handle<Mesh>, Handle<StandardMaterial>),
     pub apartment: (Handle<Mesh>, Handle<StandardMaterial>),
@@ -47,6 +49,7 @@ pub struct UnitAssets {
     pub infantry_simplified_mesh: Handle<Mesh>,
     pub vehicle_simplified_mesh: Handle<Mesh>,
     pub corpse_simplified_mesh: Handle<Mesh>,
+    pub turret_simplified_mesh: Handle<Mesh>,
 }
 
 #[derive(Resource)]
@@ -217,6 +220,7 @@ pub fn generate_circle_segments(center: Vec2, radius: f32, segments: usize) -> V
 
 pub fn load_assets (
     asset_server: Res<AssetServer>,
+    mut instanced_materials: ResMut<InstancedMaterials>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
@@ -281,6 +285,28 @@ pub fn load_assets (
         trees_2d: trees_2d,
         trees_3d: trees_3d,
     });
+
+
+    let road_texture: Handle<Image> = asset_server.load_with_settings(
+        "textures/other/road.png",
+        |s: &mut _| {
+            *s = ImageLoaderSettings {
+                sampler: ImageSampler::Descriptor(ImageSamplerDescriptor {
+                    address_mode_u: ImageAddressMode::Repeat,
+                    address_mode_v: ImageAddressMode::Repeat,
+                    ..default()
+                }),
+                ..default()
+            }
+        },
+    );
+
+    instanced_materials.road_material = materials.add(
+        StandardMaterial {
+            base_color_texture: Some(road_texture),
+            ..default()
+        }
+    );
     //Level^
 
     //Buildings
@@ -299,6 +325,12 @@ pub fn load_assets (
     let pillbox_mesh: Handle<Mesh> = asset_server.load("buildings/pillbox.glb#Mesh0/Primitive0");
     let pillbox_material: Handle<StandardMaterial> = asset_server.load("buildings/pillbox.glb#Material0");
 
+    let tower_mesh: Handle<Mesh> = asset_server.load("buildings/watching_tower.glb#Mesh0/Primitive0");
+    let tower_material: Handle<StandardMaterial> = asset_server.load("buildings/watching_tower.glb#Material0");
+
+    let turret_mesh: Handle<Mesh> = asset_server.load("buildings/autoturret.glb#Mesh0/Primitive0");
+    let turret_material: Handle<StandardMaterial> = asset_server.load("buildings/autoturret.glb#Material0");
+
     let town_hall_mesh: Handle<Mesh> = asset_server.load("buildings/TownHall.glb#Mesh0/Primitive0");
     let town_hall_material: Handle<StandardMaterial> = asset_server.load("buildings/TownHall.glb#Material0");
 
@@ -311,6 +343,8 @@ pub fn load_assets (
         logistic_hub: (logistic_hub_mesh, logistic_hub_material),
         resource_extractor: (resource_extractor_mesh, resource_extractor_material),
         pillbox: (pillbox_mesh, pillbox_material),
+        watching_tower: (tower_mesh, tower_material),
+        autoturret: (turret_mesh, turret_material),
 
         town_hall: (town_hall_mesh, town_hall_material),
         apartment: (apartment_mesh, apartment_material),
@@ -378,6 +412,7 @@ pub fn load_assets (
     let infantry_simplified_mesh = meshes.add(Mesh::from(Cuboid{ half_size: Vec3::new(0.5, 1., 0.5) }.mesh()));
     let vehicle_simplified_mesh = meshes.add(Mesh::from(Cuboid{ half_size: Vec3::new(2., 1.5, 4.) }.mesh()));
     let corpse_simplified_mesh = meshes.add(Mesh::from(Cuboid{ half_size: Vec3::new(0.5, 0.5, 1.) }.mesh()));
+    let turret_simplified_mesh = meshes.add(Mesh::from(Cuboid{ half_size: Vec3::new(2., 4., 2.) }.mesh()));
 
     commands.insert_resource(UnitAssets{
         regular_soldier: (regular_soldier_scene, vec![regular_soldier_animation1, regular_soldier_animation2]),
@@ -395,6 +430,7 @@ pub fn load_assets (
         infantry_simplified_mesh: infantry_simplified_mesh,
         vehicle_simplified_mesh: vehicle_simplified_mesh,
         corpse_simplified_mesh: corpse_simplified_mesh,
+        turret_simplified_mesh: turret_simplified_mesh,
     });
     //Units^
 
@@ -633,16 +669,16 @@ pub fn initialize_level_gltf_objects (
                     transform: Transform::from_translation(Vec3::new(0., 0., 0.)),
                     ..default()
                 })
-                .insert(collider)
-                .insert(NavMeshAffector)
-                .insert(Terrain)
-                .insert(CollisionGroups::new(Group::GROUP_10, Group::all()));
+                .try_insert(collider)
+                .try_insert(NavMeshAffector)
+                .try_insert(Terrain)
+                .try_insert(CollisionGroups::new(Group::GROUP_10, Group::all()));
 
                 commands.spawn(SceneBundle{
                     scene: level_assets.trees_2d.clone(),
                     ..default()
                 })
-                .insert(Name::new("trees_2d"));
+                .try_insert(Name::new("trees_2d"));
 
                 // commands.spawn(MaterialMeshBundle{
                 //     mesh: mesh_handle,
@@ -693,10 +729,10 @@ pub fn initialize_level_gltf_objects (
                 //     transform: Transform::from_translation(Vec3::new(0., 0., 0.)),
                 //     ..default()
                 // })
-                // .insert(Collider::cuboid(WORLD_SIZE / 2., 0.1, WORLD_SIZE / 2.))
-                // .insert(NavMeshAffector)
-                // .insert(Terrain)
-                // .insert(CollisionGroups::new(Group::GROUP_10, Group::all()));
+                // .try_insert(Collider::cuboid(WORLD_SIZE / 2., 0.1, WORLD_SIZE / 2.))
+                // .try_insert(NavMeshAffector)
+                // .try_insert(Terrain)
+                // .try_insert(CollisionGroups::new(Group::GROUP_10, Group::all()));
             }
         }
     }
@@ -785,6 +821,7 @@ pub struct InstancedMaterials{
     pub blue_transparent: Handle<StandardMaterial>,
     pub red_transparent: Handle<StandardMaterial>,
     pub wreck_material: Handle<StandardMaterial>,
+    pub road_material: Handle<StandardMaterial>,
 }
 
 #[derive(Resource)]
@@ -1241,11 +1278,11 @@ pub fn apply_team_material_to_scenes (
                             }
 
                             commands.entity(*child).remove::<Handle<StandardMaterial>>();
-                            commands.entity(*child).insert(material.clone());
+                            commands.entity(*child).try_insert(material.clone());
                             commands.entity(*child).remove::<ChangeMaterial>();
 
                             if mesh_material.2.is_none() {
-                                commands.entity(*child).insert((
+                                commands.entity(*child).try_insert((
                                     LOD{
                                         detailed: (mesh_material.0.clone(), Some(material), None),
                                         simplified: (
@@ -1331,7 +1368,7 @@ pub fn running_animation_manager(
 
                                 let graph_handle = graphs.add(graph);
 
-                                instanced_animations.running_animations.try_insert(runner.0.unit_data.1.2.clone(), (animation_indices.clone(), graph_handle.clone()));
+                                instanced_animations.running_animations.insert(runner.0.unit_data.1.2.clone(), (animation_indices.clone(), graph_handle.clone()));
 
                                 let mut transitions = AnimationTransitions::new();
 
@@ -1404,7 +1441,7 @@ pub fn running_animation_manager(
 
                                 let graph_handle = graphs.add(graph);
 
-                                instanced_animations.running_animations.try_insert(runner.0.unit_data.1.2.clone(), (animation_indices.clone(), graph_handle.clone()));
+                                instanced_animations.running_animations.insert(runner.0.unit_data.1.2.clone(), (animation_indices.clone(), graph_handle.clone()));
 
                                 let mut transitions = AnimationTransitions::new();
 
@@ -1526,7 +1563,7 @@ pub fn explosion_effects_handler(
                 continue;
             }
 
-            commands.entity(explosion.0).insert(assets.explosion_regular.1[explosion.1.0.0].clone());
+            commands.entity(explosion.0).try_insert(assets.explosion_regular.1[explosion.1.0.0].clone());
         }
     }
 }

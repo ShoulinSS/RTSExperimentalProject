@@ -12,7 +12,7 @@ use oxidized_navigation_serializable::{
 use bevy_tasks::{TaskPool, TaskPoolBuilder};
 use bevy_egui::{egui::{self, Color32, Context, Stroke}, EguiContext};
 
-use crate::components::{asset_manager::{AnimationComponent, BuildingsAssets, InstancedAnimations, InstancedMaterials, TeamMaterialExtension, UnitAssets}, building::{BuildingStageCache, BuildingsDeletionStates, PillboxBundle, Settlements}, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, ArtilleryUnitSelectedEvent, BattalionSelectionEvent, BrigadeSelectionEvent, BuildingButtonHovered, BuildingHints, ChangeTacticalSymbolsLevel, CompanySelectionEvent, DisplayedTacicalSymbolsLevel, OpenTacticalSymbolsLevels, PlatoonSelectionEvent, RebuildApartments, RegimentSelectionEvent, RegimentSwipeEvent, SwitchBuildingState, TransportDisembarkEvent, UiBlocker}, unit::{AttackAnimationTypes, FogOfWarTexture, InfantryTransport, IsUnitSelectionAllowed, RemainsCount, TILE_SIZE, UnitsTileMap, UnstartedPathfindingTasksPool}};
+use crate::components::{asset_manager::{AnimationComponent, BuildingsAssets, InstancedAnimations, InstancedMaterials, TeamMaterialExtension, UnitAssets}, building::{AutoturretBundle, BuildingStageCache, BuildingsDeletionStates, PillboxBundle, Settlements, WatchingTowerBundle}, ui_manager::{ActivateBlueprintsDeletionMode, ActivateBuildingsDeletionCancelationMode, ActivateBuildingsDeletionMode, ArtilleryUnitSelectedEvent, BattalionSelectionEvent, BrigadeSelectionEvent, BuildingButtonHovered, BuildingHints, ChangeTacticalSymbolsLevel, CompanySelectionEvent, DisplayedTacicalSymbolsLevel, OpenTacticalSymbolsLevels, PlatoonSelectionEvent, RebuildApartments, RegimentSelectionEvent, RegimentSwipeEvent, SwitchBuildingState, TransportDisembarkEvent, UiBlocker}, unit::{AttackAnimationTypes, FogOfWarTexture, InfantryTransport, IsUnitSelectionAllowed, RemainsCount, TILE_SIZE, UnitsTileMap, UnstartedPathfindingTasksPool}};
 
 mod components;
 
@@ -72,8 +72,8 @@ fn main() {
     setup_panic_hook();
 
     App::new()
-    // .add_plugins(FrameTimeDiagnosticsPlugin::default())
-    // .add_plugins(LogDiagnosticsPlugin::default())
+    .add_plugins(FrameTimeDiagnosticsPlugin::default())
+    .add_plugins(LogDiagnosticsPlugin::default())
     .add_plugins(DefaultPlugins
         .set(bevy_mod_raycast::low_latency_window_plugin())
         .set(WindowPlugin {
@@ -321,6 +321,7 @@ fn main() {
         blue_transparent: Handle::default(),
         red_transparent: Handle::default(),
         wreck_material: Handle::default(),
+        road_material: Handle::default(),
     })
     .insert_resource(DisplayedTacicalSymbolsLevel(1))
     .insert_resource(IsUnitSelectionAllowed(true))
@@ -653,7 +654,7 @@ fn setup(
     let mut regiment_id: LimitedNumber<1, 3> = LimitedNumber::new();
     squad_id.set_value(0);
 
-    for _i in 0..START_REGULAR_SQUADS_AMOUNT {
+    for i in 0..START_REGULAR_SQUADS_AMOUNT {
         if squad_id.next() {
             if platoon_id.next() {
                 if company_id.next() {
@@ -662,6 +663,14 @@ fn setup(
                     }
                 }
             }
+        }
+
+        let specialization;
+
+        if i < START_REGULAR_SQUADS_AMOUNT / 3 * 2 {
+            specialization = "atgm".to_string();
+        } else {
+            specialization = "sniperr".to_string();
         }
 
         army.0.get_mut(&player_data.team).unwrap().regular_squads.insert((
@@ -670,10 +679,10 @@ fn setup(
             company_id.get_value(),
             platoon_id.get_value(),
             squad_id.get_value(),
-        ), (RegularSquad((LimitedHashSet::new(), LimitedHashSet::new())), "atgm".to_string(), Entity::PLACEHOLDER));
+        ), (RegularSquad((LimitedHashSet::new(), LimitedHashSet::new())), specialization, Entity::PLACEHOLDER));
     }
 
-    for _i in 0..START_SHOCK_SQUADS_AMOUNT {
+    for i in 0..START_SHOCK_SQUADS_AMOUNT {
         if squad_id.next() {
             if platoon_id.next() {
                 if company_id.next() {
@@ -682,6 +691,14 @@ fn setup(
                     }
                 }
             }
+        }
+
+        let specialization;
+
+        if i < START_SHOCK_SQUADS_AMOUNT / 3 * 2 {
+            specialization = "lat".to_string();
+        } else {
+            specialization = "snipers".to_string();
         }
 
         army.0.get_mut(&player_data.team).unwrap().shock_squads.insert((
@@ -690,10 +707,10 @@ fn setup(
             company_id.get_value(),
             platoon_id.get_value(),
             squad_id.get_value(),
-        ), (ShockSquad((LimitedHashSet::new(), LimitedHashSet::new())), "lat".to_string(), Entity::PLACEHOLDER));
+        ), (ShockSquad((LimitedHashSet::new(), LimitedHashSet::new())), specialization, Entity::PLACEHOLDER));
     }
 
-    for _i in 0..START_ARMORED_SQUADS_AMOUNT {
+    for i in 0..START_ARMORED_SQUADS_AMOUNT {
         if squad_id.next() {
             if platoon_id.next() {
                 if company_id.next() {
@@ -704,13 +721,21 @@ fn setup(
             }
         }
 
+        let specialization;
+
+        if i < START_ARMORED_SQUADS_AMOUNT / 3 * 2 {
+            specialization = "tank".to_string();
+        } else {
+            specialization = "ifv".to_string();
+        }
+
         army.0.get_mut(&player_data.team).unwrap().armored_squads.insert((
             regiment_id.get_value(),
             battalion_id.get_value(),
             company_id.get_value(),
             platoon_id.get_value(),
             squad_id.get_value(),
-        ), (ArmoredSquad(LimitedHashSet::new()), "tank".to_string(), Entity::PLACEHOLDER));
+        ), (ArmoredSquad(LimitedHashSet::new()), specialization, Entity::PLACEHOLDER));
     }
 
     for i in 1..START_ARTILLERY_UNITS_COUNT + 1 {
@@ -1245,7 +1270,7 @@ fn setup(
                 current_health: 1000,
                 max_health: 1000,
                 unit_type: UnitTypes::HeavyVehicle,
-                attack_type: AttackTypes::BallisticProjectile(5., 2, 50., 5., 0., (1000, DamageTypes::AntiTank), (5., 500, DamageTypes::AntiInfantry), Vec3::new(0., 1., 0.)),
+                attack_type: AttackTypes::BallisticProjectile(5., 2, 100., 5., 0., (1000, DamageTypes::AntiTank), (5., 500, DamageTypes::AntiInfantry), Vec3::new(0., 1., 0.)),
                 attack_animation_type: AttackAnimationTypes::TankCannon(Vec3::new(0., 1., 0.)),
                 attack_frequency: 5000,
                 attack_elapsed_time: 5000,
@@ -1319,7 +1344,7 @@ fn setup(
                 current_health: 1000,
                 max_health: 1000,
                 unit_type: UnitTypes::LightVehicle,
-                attack_type: AttackTypes::Direct(110, 0.8, DamageTypes::AntiTank),
+                attack_type: AttackTypes::Direct(110, 0.8, DamageTypes::AntiInfantry),
                 attack_animation_type: AttackAnimationTypes::HighCaliber(Vec3::new(0., 1., 0.)),
                 attack_frequency: 1000,
                 attack_elapsed_time: 1000,
@@ -1760,7 +1785,7 @@ fn setup(
         10000,
     ));
 
-        buildings_list.0.push((
+    buildings_list.0.push((
         "PillB".to_string(),
         BuildingsBundles::Pillbox(PillboxBundle{
             model: MaterialMeshBundle{
@@ -1768,7 +1793,7 @@ fn setup(
                 material: buildings_assets.pillbox.1.clone(),
                 ..default()
             },
-            collider: Collider::cuboid(5., 5., 15.),
+            collider: Collider::cuboid(8., 5., 8.),
             building_component: CoverComponent {
                 cover_efficiency: 0.5,
                 points: vec![
@@ -1796,6 +1821,90 @@ fn setup(
                 enemies: Vec::new(),
                 detection_range: 50.,
                 attack_range: 0.,
+                is_static: true,
+                unit_data: (
+                    (0, 0),
+                    (
+                        CompanyTypes::None,
+                        (-1, -1, -1, -1, -1, -1, -1),
+                        "".to_string(),
+                    ),
+                ),
+            },
+        }),
+        Collider::cuboid(20., 5., 20.),
+        0.,
+        200,
+        30.,
+        10000,
+    ));
+
+    buildings_list.0.push((
+        "Watch".to_string(),
+        BuildingsBundles::WatchingTower(WatchingTowerBundle{
+            model: MaterialMeshBundle{
+                mesh: buildings_assets.watching_tower.0.clone(),
+                material: buildings_assets.watching_tower.1.clone(),
+                ..default()
+            },
+            collider: Collider::cuboid(5., 5., 5.),
+            combat_component: CombatComponent {
+                team: 1,
+                current_health: 500,
+                max_health: 500,
+                unit_type: UnitTypes::Building,
+                attack_type: AttackTypes::None,
+                attack_animation_type: AttackAnimationTypes::None(Vec3::ZERO),
+                attack_frequency: 0,
+                attack_elapsed_time: 0,
+                enemies: Vec::new(),
+                detection_range: 500.,
+                attack_range: 0.,
+                is_static: true,
+                unit_data: (
+                    (0, 0),
+                    (
+                        CompanyTypes::None,
+                        (-1, -1, -1, -1, -1, -1, -1),
+                        "".to_string(),
+                    ),
+                ),
+            },
+        }),
+        Collider::cuboid(20., 5., 20.),
+        0.,
+        200,
+        30.,
+        1000,
+    ));
+
+    let turret_lod = MaterialMeshBundle{
+        mesh: unit_assets.turret_simplified_mesh.clone(),
+        ..default()
+    };
+
+    buildings_list.0.push((
+        "Turrt".to_string(),
+        BuildingsBundles::Autoturret(AutoturretBundle{
+            model: MaterialMeshBundle{
+                mesh: buildings_assets.autoturret.0.clone(),
+                material: buildings_assets.autoturret.1.clone(),
+                ..default()
+            },
+            lod: turret_lod,
+            collider: Collider::cuboid(0., 0., 0.),
+            combat_component: CombatComponent {
+                team: 1,
+                current_health: 1000,
+                max_health: 1000,
+                unit_type: UnitTypes::Building,
+                attack_type: AttackTypes::Direct(110, 0.8, DamageTypes::Universal),
+                attack_animation_type: AttackAnimationTypes::HighCaliber(Vec3::new(0., 1.5, 0.)),
+                attack_frequency: 200,
+                attack_elapsed_time: 200,
+                enemies: Vec::new(),
+                detection_range: 150.,
+                attack_range: 145.,
                 is_static: true,
                 unit_data: (
                     (0, 0),
@@ -1856,6 +1965,18 @@ fn setup(
                 is_req = false;
 
                 hint = "Pillbox | cost: 10 000 materials\nDefensive structure. You can place a squad here.".to_string();
+            },
+            "Watch" => {
+                number = 5;
+                is_req = false;
+
+                hint = "Watching tower | cost: 1 000 materials\nProvides huge area of vision.".to_string();
+            },
+            "Turrt" => {
+                number = 10;
+                is_req = false;
+
+                hint = "Turret | cost: 10 000 materials\nAutomatic defensive structure.".to_string();
             },
             _ => {
                 number = 0;
@@ -2567,6 +2688,7 @@ impl Plugin for GameServerPlugin {
         ).run_if(in_state(GameState::MultiplayerAsHost)));
         app.add_systems(Update, (
             components::unit::artillery_unit_selection_system,
+            components::unit::pathfinding_tasks_starter,
             components::ui_manager::regiment_swipe_system,
             components::ui_manager::esc_menu_ui_system,
             components::ui_manager::ui_nodes_unlocker,//keep last
@@ -2676,6 +2798,7 @@ impl Plugin for GameClientPlugin {
             components::unit::artillery_unit_selection_system,
             components::ui_manager::regiment_swipe_system,
             components::ui_manager::esc_menu_ui_system,
+            components::unit::pathfinding_tasks_starter,
             components::ui_manager::ui_nodes_unlocker,//keep last
         ).run_if(in_state(GameState::MultiplayerAsClient)));
     }

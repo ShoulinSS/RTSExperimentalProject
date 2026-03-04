@@ -168,6 +168,8 @@ pub fn handle_mouse_buttons(
 
             if hits.len() > 0 && !unit_containers_q.0.get(hits[0].0).is_ok() && !unit_containers_q.1.get(hits[0].0).is_ok() {
                 event_writer.0.send(MoveOrderEvent);
+            } else if unit_containers_q.1.get(hits[0].0).is_ok() {
+                clear_selected_units(&mut selected_units, &mut commands, &selectables.0);
             }
         }
     }
