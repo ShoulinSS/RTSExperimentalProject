@@ -18,3 +18,34 @@
 5. Система логистики: каждому производящему зданию нужны ресурсы для производства, а каждому юниту нужны припасы для возможности вести боевые действия. Все это доставляется специальными логистическими юнитами по дорогам, из чего следует, что линии поставок можно обрубить.
 
 Скриншоты, демонстрирующие некоторые элементы игры:
+
+Строительство
+<img width="1920" height="1080" alt="2" src="https://github.com/user-attachments/assets/fdfc2888-cd23-4a39-bc94-89d57c94018e" />
+<img width="1920" height="1080" alt="3" src="https://github.com/user-attachments/assets/dbae1d54-3556-4ff6-9a66-d948ba92abe8" />
+
+Настройка шаблона армии
+<img width="1920" height="1080" alt="4" src="https://github.com/user-attachments/assets/8d543e52-3f82-43ba-bcad-2e182053ce82" />
+
+Осмотр войск
+<img width="1920" height="1080" alt="5" src="https://github.com/user-attachments/assets/32475395-b37b-4925-96d7-070acbc8f77c" />
+<img width="1920" height="1080" alt="8" src="https://github.com/user-attachments/assets/1395d65c-8e7a-4930-b314-18155ad28c36" />
+
+Смена отображения подразделений (1 - отделения, 2 - взводы)
+<img width="1920" height="1080" alt="6" src="https://github.com/user-attachments/assets/254f9fae-e087-4e6d-b4cb-83c309398738" />
+<img width="1920" height="1080" alt="7" src="https://github.com/user-attachments/assets/eb62eba5-cff4-4205-aaad-af93c186140e" />
+
+Стрельба артиллерии
+<img width="1920" height="1080" alt="9" src="https://github.com/user-attachments/assets/72284198-eda3-47c6-a9e4-06ec37c308f6" />
+<img width="1920" height="1080" alt="10" src="https://github.com/user-attachments/assets/f1292db9-b147-4e6d-85eb-e1539d1b72ce" />
+
+Бой
+<img width="1920" height="1080" alt="11" src="https://github.com/user-attachments/assets/fcac917f-d650-4bcb-b592-4b83da43bd8e" />
+<img width="1920" height="1080" alt="12" src="https://github.com/user-attachments/assets/b6a3d085-3180-4365-a865-2bc5c225fa58" />
+<img width="1920" height="1080" alt="14" src="https://github.com/user-attachments/assets/b75002a4-2cd8-4c31-af8b-f361000c9cfe" />
+
+Движение логистики
+<img width="1920" height="1080" alt="15" src="https://github.com/user-attachments/assets/6020a2a8-fb18-40f9-9c60-252ecbf73677" />
+
+Захват поселения
+<img width="1920" height="1080" alt="16" src="https://github.com/user-attachments/assets/74e7f074-d626-46f1-8ee5-dcf0c68f3b53" />
+<img width="1920" height="1080" alt="17" src="https://github.com/user-attachments/assets/55ff6c75-cef2-4f95-98f7-bfc3a35076ce" />
