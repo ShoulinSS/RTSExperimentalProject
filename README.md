@@ -1,6 +1,7 @@
 # Данное творение является пет-проектом, который призван продемонстрировать профпригодность его создателя потеницальному работадателю.
 
 Проект является игрой в жанре RTS, написанной на ECS (Entity Component System) движке Bevy[https://bevy.org]. Идея игры заключается в противостоянии двух сторон по разные стороны карты. Одиночного режима игры как такового нет, отсутствует ИИ противник, зато реализован почти полностью рабочий мультиплеер!
+
 Геймплей делится на 2 этапа: подготовительный и активный.
 
 Подготовительный этап заключается в:
@@ -17,35 +18,35 @@
 4. Возможность расстановки боевых единиц в формацию вдоль проведенной курсором линии.
 5. Система логистики: каждому производящему зданию нужны ресурсы для производства, а каждому юниту нужны припасы для возможности вести боевые действия. Все это доставляется специальными логистическими юнитами по дорогам, из чего следует, что линии поставок можно обрубить.
 
-Скриншоты, демонстрирующие некоторые элементы игры:
+## Скриншоты, демонстрирующие некоторые элементы игры:
 
-Строительство
-<img width="1920" height="1080" alt="2" src="https://github.com/user-attachments/assets/fdfc2888-cd23-4a39-bc94-89d57c94018e" />
-<img width="1920" height="1080" alt="3" src="https://github.com/user-attachments/assets/dbae1d54-3556-4ff6-9a66-d948ba92abe8" />
+### Строительство
+<img width="1024" height="576" alt="2" src="https://github.com/user-attachments/assets/ca80077c-67e8-460a-bc8a-019bc26a7152" />
+<img width="1024" height="576" alt="3" src="https://github.com/user-attachments/assets/852d98e5-7815-4e61-965f-87493b81ae6e" />
 
-Настройка шаблона армии
-<img width="1920" height="1080" alt="4" src="https://github.com/user-attachments/assets/8d543e52-3f82-43ba-bcad-2e182053ce82" />
+### Настройка шаблона армии
+<img width="1024" height="576" alt="4" src="https://github.com/user-attachments/assets/c640fe04-5f68-4157-9107-d79eae628e24" />
 
-Осмотр войск
-<img width="1920" height="1080" alt="5" src="https://github.com/user-attachments/assets/32475395-b37b-4925-96d7-070acbc8f77c" />
-<img width="1920" height="1080" alt="8" src="https://github.com/user-attachments/assets/1395d65c-8e7a-4930-b314-18155ad28c36" />
+### Осмотр войск
+<img width="1024" height="576" alt="5" src="https://github.com/user-attachments/assets/558ec722-326b-4945-8980-063e917ce364" />
+<img width="1024" height="576" alt="8" src="https://github.com/user-attachments/assets/6f418e59-96f1-420e-9c8a-d22fe5ced993" />
 
-Смена отображения подразделений (1 - отделения, 2 - взводы)
-<img width="1920" height="1080" alt="6" src="https://github.com/user-attachments/assets/254f9fae-e087-4e6d-b4cb-83c309398738" />
-<img width="1920" height="1080" alt="7" src="https://github.com/user-attachments/assets/eb62eba5-cff4-4205-aaad-af93c186140e" />
+### Смена отображения подразделений (1 - отделения, 2 - взводы)
+<img width="1024" height="576" alt="6" src="https://github.com/user-attachments/assets/e9e82b36-78be-4715-ae78-6650b9ddb7c2" />
+<img width="1024" height="576" alt="7" src="https://github.com/user-attachments/assets/47d505bd-db31-4f79-8f6a-39cb7f3bd176" />
 
-Стрельба артиллерии
-<img width="1920" height="1080" alt="9" src="https://github.com/user-attachments/assets/72284198-eda3-47c6-a9e4-06ec37c308f6" />
-<img width="1920" height="1080" alt="10" src="https://github.com/user-attachments/assets/f1292db9-b147-4e6d-85eb-e1539d1b72ce" />
+### Стрельба артиллерии
+<img width="1024" height="576" alt="9" src="https://github.com/user-attachments/assets/ae291ebf-53c0-48d2-874a-b1ab166b8b77" />
+<img width="1024" height="576" alt="10" src="https://github.com/user-attachments/assets/31598d12-549c-484f-8c87-1a8e5d18f056" />
 
-Бой
-<img width="1920" height="1080" alt="11" src="https://github.com/user-attachments/assets/fcac917f-d650-4bcb-b592-4b83da43bd8e" />
-<img width="1920" height="1080" alt="12" src="https://github.com/user-attachments/assets/b6a3d085-3180-4365-a865-2bc5c225fa58" />
-<img width="1920" height="1080" alt="14" src="https://github.com/user-attachments/assets/b75002a4-2cd8-4c31-af8b-f361000c9cfe" />
+### Бой
+<img width="1024" height="576" alt="11" src="https://github.com/user-attachments/assets/a32b5579-f7b1-46d0-9d9d-4b61634285fb" />
+<img width="1024" height="576" alt="12" src="https://github.com/user-attachments/assets/9a3c169a-09ef-4870-8755-edf41ca8b69e" />
+<img width="1024" height="576" alt="14" src="https://github.com/user-attachments/assets/668a1aaa-deeb-46c9-a379-6f21421b95bb" />
 
-Движение логистики
-<img width="1920" height="1080" alt="15" src="https://github.com/user-attachments/assets/6020a2a8-fb18-40f9-9c60-252ecbf73677" />
+### Движение логистики
+<img width="1024" height="576" alt="15" src="https://github.com/user-attachments/assets/31efa176-7b2f-4036-bab1-c2adf52cc928" />
 
-Захват поселения
-<img width="1920" height="1080" alt="16" src="https://github.com/user-attachments/assets/74e7f074-d626-46f1-8ee5-dcf0c68f3b53" />
-<img width="1920" height="1080" alt="17" src="https://github.com/user-attachments/assets/55ff6c75-cef2-4f95-98f7-bfc3a35076ce" />
+### Захват поселения
+<img width="1024" height="576" alt="16" src="https://github.com/user-attachments/assets/97eb67e7-ec70-4fe3-b7dc-1fab08362674" />
+<img width="1024" height="576" alt="17" src="https://github.com/user-attachments/assets/6ad3138f-da6c-4b46-9cfb-ff3d26751ea7" />
