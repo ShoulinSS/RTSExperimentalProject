@@ -3,7 +3,7 @@ use std::{fs::File, io::Write, hash::Hash, panic, time::{SystemTime, UNIX_EPOCH}
 use bevy::{core_pipeline::tonemapping::Tonemapping, diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin}, ecs::batching::BatchingStrategy, math::VectorSpace, pbr::{CascadeShadowConfigBuilder, ExtendedMaterial, NotShadowCaster, OpaqueRendererMethod}, prelude::*, render::{camera::RenderTarget, render_asset::RenderAssetUsages, render_resource::{Extent3d, Face, TextureDimension, TextureFormat, TextureUsages}, renderer::RenderDevice, view::{RenderLayers, ViewDepthTexture}}, tasks::AsyncComputeTaskPool, utils::hashbrown::{HashMap, HashSet}, window::{self, PrimaryWindow, WindowMode}};
 use bevy_egui::{EguiPlugin, EguiSet};
 use bevy_quinnet::{client::QuinnetClientPlugin, server::QuinnetServerPlugin};
-use bevy_rapier3d::{math::{Rot, Vect}, plugin::{RapierConfiguration, TimestepMode}, prelude::{CharacterLength, Collider, ComputedColliderShape, KinematicCharacterController, NoUserData, RapierPhysicsPlugin, RigidBody}, rapier::prelude::{LockedAxes, RigidBodyBuilder, RigidBodySet, RigidBodyType}, render::RapierDebugRenderPlugin};
+use bevy_rapier3d::{math::{Rot, Vect}, plugin::{RapierConfiguration, TimestepMode}, prelude::{CharacterLength, Collider, CollisionGroups, ComputedColliderShape, Group, KinematicCharacterController, NoUserData, RapierPhysicsPlugin, RigidBody}, rapier::prelude::{LockedAxes, RigidBodyBuilder, RigidBodySet, RigidBodyType}, render::RapierDebugRenderPlugin};
 use components::{asset_manager::{generate_circle_segments, LevelAssets, LineData, LineHolder, TerrainMaterialExtension}, building::{self, create_ring, AllApartmentsPlaced, AllRoadsGenerated, AllSettlementsPlaced, ArtilleryBundle, AssaultBundle, BuildingsBundles, BuildingsList, CoverComponent, DeleteTemporaryObjects, EngineerBundle, HumanResourceStorageComponent, IFVBundle, InfantryBarracksBundle, InfantryProducer, LogisticHubBundle, MaterialsProductionComponent, MaterialsStorageComponent, ProducableUnits, ProductionData, ProductionQueue, ProductionQueueObject, ProductionState, ResourceMinerBundle, SelectableBuilding, SettlementComponent, SettlementObject, SettlementsLeft, SoldierBundle, SuppliesProductionComponent, TankBundle, TemporaryObject, UnactivatedBlueprints, UnitBundles, UnitProductionBuildingComponent, VehicleFactoryBundle, VehiclesProducer, ALLOWED_DISTANCE_FROM_BORDERS, CITIES_COUNT, VILLAGES_COUNT}, camera::SelectionBox, logistics::{create_plane_between_points, LogisticUnitComponent, /*RoadComponent, RoadObject*/}, network::{AllPlayersPlacedSettlementsEvent, ClientGameInitializedEvent, ClientGameStartedEvent, ClientList, EntityMaps, InsertedConnectionData, NetworkStatus, NetworkStatuses, PlayerList, UnitsToDamage, UnitsToInsertPath, UnspecifiedEntitiesToMove}, ui_manager::{settlements_stage_ui_activation, setup_ingame_ui, ArmySettingsNodes, BuildingPlacementCache, BuildingToBuildSelectedEvent, ButtonAction, CancelArtilleryTargets, ChooseCompanyTypeEvent, ChooseSquadSpecializationEvent, CompleteConstruction, ConnectToHostedGameEvent, GameStartedEvent, HostNewGameEvent, LandArmyButtonClickEvent, OpenCompanyTypesEvent, OpenBuildingsListEvent, OpenSquadSpecializationsEvent, SquadSelectionEvent, ProductionStateChanged, SetupCompanyEvent, Specializations, StartSingleplayerEvent, ToggleArtilleryDesignation, ToggleProductionEvent, UiButtonNodes}, unit::{ArmoredSquad, ArmyObject, ArtilleryOrderGiven, ArtilleryUnit, AsyncTaskPools, AttackTypes, CompanyTypes, CombatComponent, DamageTypes, DeleteAfterStart, EngineerComponent, ExplosionEvent, IsArtilleryDesignationActive, IsUnitDeselectionAllowed, LimitedHashMap, LimitedHashSet, LimitedNumber, RegularSquad, SelectableUnit, ShockSquad, SuppliesConsumerComponent, UnitComponent, UnitDeathEvent, UnitNeedsToBeUncovered, UnitTypes, START_ARMORED_SQUADS_AMOUNT, START_ARTILLERY_UNITS_COUNT, START_ENGINEERS_COUNT, START_REGULAR_SQUADS_AMOUNT, START_SHOCK_SQUADS_AMOUNT}};
 use bevy_mod_raycast::prelude::*;
 use oxidized_navigation_serializable::{
@@ -72,8 +72,8 @@ fn main() {
     setup_panic_hook();
 
     App::new()
-    .add_plugins(FrameTimeDiagnosticsPlugin::default())
-    .add_plugins(LogDiagnosticsPlugin::default())
+    //.add_plugins(FrameTimeDiagnosticsPlugin::default())
+    //.add_plugins(LogDiagnosticsPlugin::default())
     .add_plugins(DefaultPlugins
         .set(bevy_mod_raycast::low_latency_window_plugin())
         .set(WindowPlugin {
@@ -829,6 +829,7 @@ fn setup(
                 autostep: None,
                 apply_impulse_to_dynamic_bodies: false,
                 snap_to_ground: Some(CharacterLength::Absolute(1000.)),
+                filter_groups: Some(CollisionGroups::new(Group::all(), Group::GROUP_10)),
                 ..default()
             },
             animation_component: AnimationComponent(unit_assets.regular_soldier.1.clone()),
@@ -861,7 +862,7 @@ fn setup(
                 current_health: 100,
                 max_health: 100,
                 unit_type: UnitTypes::Infantry,
-                attack_type: AttackTypes::HomingProjectile(20., 5., 5, 1., (1000, DamageTypes::AntiTank), (5., 1000, DamageTypes::AntiInfantry), Vec3::new(0., 1., 0.)),
+                attack_type: AttackTypes::HomingProjectile(50., 5., 5, 1., (1000, DamageTypes::AntiTank), (5., 1000, DamageTypes::AntiInfantry), Vec3::new(0., 1., 0.)),
                 attack_animation_type: AttackAnimationTypes::MissileLaunch(Vec3::new(0., 1., 0.)),
                 attack_frequency: 5000,
                 attack_elapsed_time: 5000,
@@ -895,6 +896,7 @@ fn setup(
                 autostep: None,
                 apply_impulse_to_dynamic_bodies: false,
                 snap_to_ground: Some(CharacterLength::Absolute(1000.)),
+                filter_groups: Some(CollisionGroups::new(Group::all(), Group::GROUP_10)),
                 ..default()
             },
             animation_component: AnimationComponent(unit_assets.atgm_soldier.1.clone()),
@@ -961,6 +963,7 @@ fn setup(
                 autostep: None,
                 apply_impulse_to_dynamic_bodies: false,
                 snap_to_ground: Some(CharacterLength::Absolute(1000.)),
+                filter_groups: Some(CollisionGroups::new(Group::all(), Group::GROUP_10)),
                 ..default()
             },
             animation_component: AnimationComponent(unit_assets.assault_soldier.1.clone()),
@@ -993,7 +996,7 @@ fn setup(
                 current_health: 100,
                 max_health: 100,
                 unit_type: UnitTypes::Infantry,
-                attack_type: AttackTypes::BallisticProjectile(5., 2, 20., 5., 0., (500, DamageTypes::AntiTank), (5., 500, DamageTypes::AntiInfantry), Vec3::new(0., 1., 0.)),
+                attack_type: AttackTypes::BallisticProjectile(5., 2, 100., 5., 0., (500, DamageTypes::AntiTank), (5., 500, DamageTypes::AntiInfantry), Vec3::new(0., 1., 0.)),
                 attack_animation_type: AttackAnimationTypes::MissileLaunch(Vec3::new(0., 1., 0.)),
                 attack_frequency: 5000,
                 attack_elapsed_time: 5000,
@@ -1027,6 +1030,7 @@ fn setup(
                 autostep: None,
                 apply_impulse_to_dynamic_bodies: false,
                 snap_to_ground: Some(CharacterLength::Absolute(1000.)),
+                filter_groups: Some(CollisionGroups::new(Group::all(), Group::GROUP_10)),
                 ..default()
             },
             animation_component: AnimationComponent(unit_assets.rpg_soldier.1.clone()),
@@ -1061,7 +1065,7 @@ fn setup(
                 max_health: 100,
                 unit_type: UnitTypes::Infantry,
                 attack_type: AttackTypes::Direct(150, 0.5, DamageTypes::AntiInfantry),
-                attack_animation_type: AttackAnimationTypes::LowCaliber(Vec3::new(0., 1., 0.)),
+                attack_animation_type: AttackAnimationTypes::HighCaliber(Vec3::new(0., 1., 0.)),
                 attack_frequency: 3000,
                 attack_elapsed_time: 3000,
                 enemies: Vec::new(),
@@ -1094,6 +1098,7 @@ fn setup(
                 autostep: None,
                 apply_impulse_to_dynamic_bodies: false,
                 snap_to_ground: Some(CharacterLength::Absolute(1000.)),
+                filter_groups: Some(CollisionGroups::new(Group::all(), Group::GROUP_10)),
                 ..default()
             },
             animation_component: AnimationComponent(unit_assets.sniper_soldier.1.clone()),
@@ -1128,7 +1133,7 @@ fn setup(
                 max_health: 100,
                 unit_type: UnitTypes::Infantry,
                 attack_type: AttackTypes::Direct(150, 0.5, DamageTypes::AntiInfantry),
-                attack_animation_type: AttackAnimationTypes::LowCaliber(Vec3::new(0., 1., 0.)),
+                attack_animation_type: AttackAnimationTypes::HighCaliber(Vec3::new(0., 1., 0.)),
                 attack_frequency: 3000,
                 attack_elapsed_time: 3000,
                 enemies: Vec::new(),
@@ -1161,6 +1166,7 @@ fn setup(
                 autostep: None,
                 apply_impulse_to_dynamic_bodies: false,
                 snap_to_ground: Some(CharacterLength::Absolute(1000.)),
+                filter_groups: Some(CollisionGroups::new(Group::all(), Group::GROUP_10)),
                 ..default()
             },
             animation_component: AnimationComponent(unit_assets.sniper_soldier.1.clone()),
@@ -1270,7 +1276,7 @@ fn setup(
                 current_health: 1000,
                 max_health: 1000,
                 unit_type: UnitTypes::HeavyVehicle,
-                attack_type: AttackTypes::BallisticProjectile(5., 2, 100., 5., 0., (1000, DamageTypes::AntiTank), (5., 500, DamageTypes::AntiInfantry), Vec3::new(0., 1., 0.)),
+                attack_type: AttackTypes::BallisticProjectile(5., 2, 100., 5., 0., (1000, DamageTypes::AntiTank), (10., 500, DamageTypes::AntiInfantry), Vec3::new(0., 1., 0.)),
                 attack_animation_type: AttackAnimationTypes::TankCannon(Vec3::new(0., 1., 0.)),
                 attack_frequency: 5000,
                 attack_elapsed_time: 5000,
@@ -1297,14 +1303,15 @@ fn setup(
             },
             selectable: components::unit::SelectableUnit,
             controller: KinematicCharacterController{
-                    custom_shape: custom_shape_infantry.clone(),
-                    up: Vec3::Y,
-                    offset: CharacterLength::Absolute(0.1),
-                    slide: true,
-                    autostep: None,
-                    apply_impulse_to_dynamic_bodies: false,
-                    snap_to_ground: Some(CharacterLength::Absolute(1000.)),
-                    ..default()
+                custom_shape: custom_shape_infantry.clone(),
+                up: Vec3::Y,
+                offset: CharacterLength::Absolute(0.1),
+                slide: true,
+                autostep: None,
+                apply_impulse_to_dynamic_bodies: false,
+                snap_to_ground: Some(CharacterLength::Absolute(1000.)),
+                filter_groups: Some(CollisionGroups::new(Group::all(), Group::GROUP_10)),
+                ..default()
                 },
             }),
             building::ProductionData {
@@ -1375,15 +1382,16 @@ fn setup(
             },
             selectable: components::unit::SelectableUnit,
             controller: KinematicCharacterController{
-                    custom_shape: custom_shape_infantry.clone(),
-                    up: Vec3::Y,
-                    offset: CharacterLength::Absolute(0.1),
-                    slide: true,
-                    autostep: None,
-                    apply_impulse_to_dynamic_bodies: false,
-                    snap_to_ground: Some(CharacterLength::Absolute(1000.)),
-                    ..default()
-                },
+                custom_shape: custom_shape_infantry.clone(),
+                up: Vec3::Y,
+                offset: CharacterLength::Absolute(0.1),
+                slide: true,
+                autostep: None,
+                apply_impulse_to_dynamic_bodies: false,
+                snap_to_ground: Some(CharacterLength::Absolute(1000.)),
+                filter_groups: Some(CollisionGroups::new(Group::all(), Group::GROUP_10)),
+                ..default()
+            },
             }),
             building::ProductionData {
                 time_to_produce: 50000,
@@ -1440,11 +1448,11 @@ fn setup(
                 projectile_waypoints_check_factor: 5.,
                 shell_speed: 50.,
                 max_range: 600.,
-                accuracy: 10.,
+                accuracy: 20.,
                 reload_time: 5000,
                 elapsed_reload_time: 0,
                 direct_damage: (1000, DamageTypes::Universal),
-                splash_damage: (10., 200, DamageTypes::AntiInfantry),
+                splash_damage: (20., 200, DamageTypes::Universal),
             },
             supplies_consumer: SuppliesConsumerComponent {
                 supplies_capacity: 100,
@@ -1456,15 +1464,16 @@ fn setup(
             },
             selectable: components::unit::SelectableUnit,
             controller: KinematicCharacterController{
-                    custom_shape: custom_shape_infantry.clone(),
-                    up: Vec3::Y,
-                    offset: CharacterLength::Absolute(0.1),
-                    slide: true,
-                    autostep: None,
-                    apply_impulse_to_dynamic_bodies: false,
-                    snap_to_ground: Some(CharacterLength::Absolute(1000.)),
-                    ..default()
-                },
+                custom_shape: custom_shape_infantry.clone(),
+                up: Vec3::Y,
+                offset: CharacterLength::Absolute(0.1),
+                slide: true,
+                autostep: None,
+                apply_impulse_to_dynamic_bodies: false,
+                snap_to_ground: Some(CharacterLength::Absolute(1000.)),
+                filter_groups: Some(CollisionGroups::new(Group::all(), Group::GROUP_10)),
+                ..default()
+            },
             }),
             building::ProductionData {
                 time_to_produce: 50000,
@@ -1527,15 +1536,16 @@ fn setup(
                 elapsed_time: 0,
             },
             controller: KinematicCharacterController{
-                    custom_shape: custom_shape_infantry.clone(),
-                    up: Vec3::Y,
-                    offset: CharacterLength::Absolute(0.1),
-                    slide: true,
-                    autostep: None,
-                    apply_impulse_to_dynamic_bodies: false,
-                    snap_to_ground: Some(CharacterLength::Absolute(1000.)),
-                    ..default()
-                },
+                custom_shape: custom_shape_infantry.clone(),
+                up: Vec3::Y,
+                offset: CharacterLength::Absolute(0.1),
+                slide: true,
+                autostep: None,
+                apply_impulse_to_dynamic_bodies: false,
+                snap_to_ground: Some(CharacterLength::Absolute(1000.)),
+                filter_groups: Some(CollisionGroups::new(Group::all(), Group::GROUP_10)),
+                ..default()
+            },
             }),
             building::ProductionData {
                 time_to_produce: 50000,
@@ -1731,7 +1741,7 @@ fn setup(
                 ),
             },
         }),
-        Collider::cuboid(5., 5., 15.),
+        Collider::cuboid(10., 5., 20.),
         0.,
         200,
         10.,
@@ -1871,7 +1881,7 @@ fn setup(
                 ),
             },
         }),
-        Collider::cuboid(20., 5., 20.),
+        Collider::cuboid(10., 5., 10.),
         0.,
         200,
         30.,
@@ -1899,7 +1909,7 @@ fn setup(
                 max_health: 1000,
                 unit_type: UnitTypes::Building,
                 attack_type: AttackTypes::Direct(110, 0.8, DamageTypes::Universal),
-                attack_animation_type: AttackAnimationTypes::HighCaliber(Vec3::new(0., 1.5, 0.)),
+                attack_animation_type: AttackAnimationTypes::HighCaliber(Vec3::new(0., 2., 0.)),
                 attack_frequency: 200,
                 attack_elapsed_time: 200,
                 enemies: Vec::new(),
@@ -1916,7 +1926,7 @@ fn setup(
                 ),
             },
         }),
-        Collider::cuboid(20., 5., 20.),
+        Collider::cuboid(5., 5., 5.),
         0.,
         200,
         30.,

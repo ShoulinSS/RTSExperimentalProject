@@ -1414,6 +1414,7 @@ pub fn check_tiles(
 pub fn find_targets(
     mut tile_map: ResMut<UnitsTileMap>,
     mut units_q: Query<(&Transform, &mut CombatComponent), With<CombatComponent>>,
+    mut commands: Commands,
     timer: ResMut<camera::TimerResource>,
 ){
     if timer.0.finished() {
@@ -1456,6 +1457,7 @@ pub fn find_targets(
                 let mut enemy_count = 0;
                 let mut is_enemy_count_overflow = false;
 
+                let mut units_to_clear: Vec<(i32, (i32, i32), Entity)> = Vec::new();
                 for _row in 0..rows + 1 {
                     for _column in 0..columns + 1 {
                         for team_tile_map in tile_map.tiles.iter_mut() {
@@ -1465,6 +1467,12 @@ pub fn find_targets(
 
                             for (unit_entity, (unit_position, unit_type)) in team_tile_map.1.entry(tile_to_scan)
                             .or_insert_with(HashMap::new) {
+                                if commands.get_entity(*unit_entity).is_none() {
+                                    units_to_clear.push((*team_tile_map.0, tile_to_scan, *unit_entity));
+
+                                    continue;
+                                }
+
                                 distance_to_target = unit_transform.translation.xz().distance(unit_position.xz());
 
                                 if distance_to_target <= combat_component.detection_range {
@@ -1514,6 +1522,11 @@ pub fn find_targets(
         
                     tile_to_scan.1 += 1;
                     tile_to_scan.0 -= columns + 1;
+                }
+
+                for unit_to_clear in units_to_clear.iter() {
+                    tile_map.tiles.entry(unit_to_clear.0).or_insert_with(HashMap::new).entry(unit_to_clear.1)
+                    .or_insert_with(HashMap::new).remove(&unit_to_clear.2);
                 }
 
                 infantry.sort_by_key(|&(_enemy, distance)| distance as i32);
@@ -1713,7 +1726,7 @@ pub fn process_combat (
                             .try_insert(BulletSprite{
                                 lifetime: 2000,
                                 elapsed_time: 0,
-                                speed: 50.,
+                                speed: 100.,
                                 direction: (displaced_enemy_pos - unit.1.translation).normalize(),
                             });
 
@@ -1750,86 +1763,102 @@ pub fn process_combat (
                 match sounds_type.0 {
                     AttackAnimationTypes::LowCaliber(_) => {
                         for source_entity in sounds_type.1.iter() {
-                            counter += 1;
+                            if commands.get_entity(source_entity.0).is_some() {
+                                counter += 1;
 
-                            commands.entity(source_entity.0).try_insert(
-                                AudioBundle{
-                                    source: attack_visualisation_assets.bullet_low.1.clone(),
-                                    settings: PlaybackSettings{
-                                        mode: PlaybackMode::Remove,
-                                        volume: Volume::new(100.),
-                                        speed: 1.,
-                                        paused: false,
-                                        spatial: true,
-                                        spatial_scale: None,
-                                    },
-                                }
-                            );
+                                commands.entity(source_entity.0).remove::<AudioBundle>();
 
-                            if counter >= 5 {break;}
+                                commands.entity(source_entity.0).try_insert(
+                                    AudioBundle{
+                                        source: attack_visualisation_assets.bullet_low.1.clone(),
+                                        settings: PlaybackSettings{
+                                            mode: PlaybackMode::Remove,
+                                            volume: Volume::new(100.),
+                                            speed: 1.,
+                                            paused: false,
+                                            spatial: true,
+                                            spatial_scale: None,
+                                        },
+                                    }
+                                );
+
+                                if counter >= 5 {break;}
+                            }
                         }
                     },
                     AttackAnimationTypes::HighCaliber(_) => {
                         for source_entity in sounds_type.1.iter() {
-                            counter += 1;
+                            if commands.get_entity(source_entity.0).is_some() {
+                                counter += 1;
 
-                            commands.entity(source_entity.0).try_insert(
-                                AudioBundle{
-                                    source: attack_visualisation_assets.bullet_high.1.clone(),
-                                    settings: PlaybackSettings{
-                                        mode: PlaybackMode::Remove,
-                                        volume: Volume::new(100.),
-                                        speed: 1.,
-                                        paused: false,
-                                        spatial: true,
-                                        spatial_scale: None,
-                                    },
-                                }
-                            );
+                                commands.entity(source_entity.0).remove::<AudioBundle>();
 
-                            if counter >= 5 {break;}
+                                commands.entity(source_entity.0).try_insert(
+                                    AudioBundle{
+                                        source: attack_visualisation_assets.bullet_high.1.clone(),
+                                        settings: PlaybackSettings{
+                                            mode: PlaybackMode::Remove,
+                                            volume: Volume::new(100.),
+                                            speed: 1.,
+                                            paused: false,
+                                            spatial: true,
+                                            spatial_scale: None,
+                                        },
+                                    }
+                                );
+
+                                if counter >= 5 {break;}
+                            }
                         }
                     },
-                    AttackAnimationTypes::MissileLaunch(p) => {
+                    AttackAnimationTypes::MissileLaunch(_) => {
                         for source_entity in sounds_type.1.iter() {
-                            counter += 1;
+                            if commands.get_entity(source_entity.0).is_some() {
+                                counter += 1;
 
-                            commands.entity(source_entity.0).try_insert(
-                                AudioBundle{
-                                    source: attack_visualisation_assets.missile_launch_sound.clone(),
-                                    settings: PlaybackSettings{
-                                        mode: PlaybackMode::Remove,
-                                        volume: Volume::new(100.),
-                                        speed: 1.,
-                                        paused: false,
-                                        spatial: true,
-                                        spatial_scale: None,
-                                    },
-                                }
-                            );
+                                commands.entity(source_entity.0).remove::<AudioBundle>();
 
-                            if counter >= 5 {break;}
+                                commands.entity(source_entity.0).try_insert(
+                                    AudioBundle{
+                                        source: attack_visualisation_assets.missile_launch_sound.clone(),
+                                        settings: PlaybackSettings{
+                                            mode: PlaybackMode::Remove,
+                                            volume: Volume::new(100.),
+                                            speed: 1.,
+                                            paused: false,
+                                            spatial: true,
+                                            spatial_scale: None,
+                                        },
+                                    }
+                                );
+
+                                if counter >= 5 {break;}
+                            }
                         }
                     },
                     AttackAnimationTypes::TankCannon(_) => {
                         for source_entity in sounds_type.1.iter() {
-                            counter += 1;
+                            if commands.get_entity(source_entity.0).is_some() {
+                                counter += 1;
 
-                            commands.entity(source_entity.0).try_insert(
-                                AudioBundle{
-                                    source: attack_visualisation_assets.tank_shot_sound.clone(),
-                                    settings: PlaybackSettings{
-                                        mode: PlaybackMode::Remove,
-                                        volume: Volume::new(100.),
-                                        speed: 1.,
-                                        paused: false,
-                                        spatial: true,
-                                        spatial_scale: None,
-                                    },
-                                }
-                            );
+                                commands.entity(source_entity.0).remove::<AudioBundle>();
 
-                            if counter >= 5 {break;}
+                                commands.entity(source_entity.0).try_insert(
+                                    AudioBundle{
+                                        source: attack_visualisation_assets.tank_shot_sound.clone(),
+                                        settings: PlaybackSettings{
+                                            mode: PlaybackMode::Remove,
+                                            volume: Volume::new(100.),
+                                            speed: 1.,
+                                            paused: false,
+                                            spatial: true,
+                                            spatial_scale: None,
+                                        },
+                                    }
+                                );
+
+                                if counter >= 5 {break;}
+                            }
                         }
                     },
                     AttackAnimationTypes::None(_) => {},
@@ -2248,7 +2277,7 @@ pub fn process_combat (
                                     .try_insert(BulletSprite{
                                         lifetime: 2000,
                                         elapsed_time: 0,
-                                        speed: 50.,
+                                        speed: 100.,
                                         direction: (displaced_enemy_pos - attacker_pos).normalize(),
                                     });
 
@@ -2289,86 +2318,102 @@ pub fn process_combat (
                 match sounds_type.0 {
                     AttackAnimationTypes::LowCaliber(_) => {
                         for source_entity in sounds_type.1.iter() {
-                            counter += 1;
+                            if commands.get_entity(source_entity.0).is_some() {
+                                counter += 1;
 
-                            commands.entity(source_entity.0).try_insert(
-                                AudioBundle{
-                                    source: attack_visualisation_assets.bullet_low.1.clone(),
-                                    settings: PlaybackSettings{
-                                        mode: PlaybackMode::Remove,
-                                        volume: Volume::new(100.),
-                                        speed: 1.,
-                                        paused: false,
-                                        spatial: true,
-                                        spatial_scale: None,
-                                    },
-                                }
-                            );
+                                commands.entity(source_entity.0).remove::<AudioBundle>();
 
-                            if counter >= 5 {break;}
+                                commands.entity(source_entity.0).try_insert(
+                                    AudioBundle{
+                                        source: attack_visualisation_assets.bullet_low.1.clone(),
+                                        settings: PlaybackSettings{
+                                            mode: PlaybackMode::Remove,
+                                            volume: Volume::new(100.),
+                                            speed: 1.,
+                                            paused: false,
+                                            spatial: true,
+                                            spatial_scale: None,
+                                        },
+                                    }
+                                );
+
+                                if counter >= 5 {break;}
+                            }
                         }
                     },
                     AttackAnimationTypes::HighCaliber(_) => {
                         for source_entity in sounds_type.1.iter() {
-                            counter += 1;
+                            if commands.get_entity(source_entity.0).is_some() {
+                                counter += 1;
 
-                            commands.entity(source_entity.0).try_insert(
-                                AudioBundle{
-                                    source: attack_visualisation_assets.bullet_high.1.clone(),
-                                    settings: PlaybackSettings{
-                                        mode: PlaybackMode::Remove,
-                                        volume: Volume::new(100.),
-                                        speed: 1.,
-                                        paused: false,
-                                        spatial: true,
-                                        spatial_scale: None,
-                                    },
-                                }
-                            );
+                                commands.entity(source_entity.0).remove::<AudioBundle>();
 
-                            if counter >= 5 {break;}
+                                commands.entity(source_entity.0).try_insert(
+                                    AudioBundle{
+                                        source: attack_visualisation_assets.bullet_high.1.clone(),
+                                        settings: PlaybackSettings{
+                                            mode: PlaybackMode::Remove,
+                                            volume: Volume::new(100.),
+                                            speed: 1.,
+                                            paused: false,
+                                            spatial: true,
+                                            spatial_scale: None,
+                                        },
+                                    }
+                                );
+
+                                if counter >= 5 {break;}
+                            }
                         }
                     },
-                    AttackAnimationTypes::MissileLaunch(p) => {
+                    AttackAnimationTypes::MissileLaunch(_) => {
                         for source_entity in sounds_type.1.iter() {
-                            counter += 1;
+                            if commands.get_entity(source_entity.0).is_some() {
+                                counter += 1;
 
-                            commands.entity(source_entity.0).try_insert(
-                                AudioBundle{
-                                    source: attack_visualisation_assets.missile_launch_sound.clone(),
-                                    settings: PlaybackSettings{
-                                        mode: PlaybackMode::Remove,
-                                        volume: Volume::new(100.),
-                                        speed: 1.,
-                                        paused: false,
-                                        spatial: true,
-                                        spatial_scale: None,
-                                    },
-                                }
-                            );
+                                commands.entity(source_entity.0).remove::<AudioBundle>();
 
-                            if counter >= 5 {break;}
+                                commands.entity(source_entity.0).try_insert(
+                                    AudioBundle{
+                                        source: attack_visualisation_assets.missile_launch_sound.clone(),
+                                        settings: PlaybackSettings{
+                                            mode: PlaybackMode::Remove,
+                                            volume: Volume::new(100.),
+                                            speed: 1.,
+                                            paused: false,
+                                            spatial: true,
+                                            spatial_scale: None,
+                                        },
+                                    }
+                                );
+
+                                if counter >= 5 {break;}
+                            }
                         }
                     },
                     AttackAnimationTypes::TankCannon(_) => {
                         for source_entity in sounds_type.1.iter() {
-                            counter += 1;
+                            if commands.get_entity(source_entity.0).is_some() {
+                                counter += 1;
 
-                            commands.entity(source_entity.0).try_insert(
-                                AudioBundle{
-                                    source: attack_visualisation_assets.tank_shot_sound.clone(),
-                                    settings: PlaybackSettings{
-                                        mode: PlaybackMode::Remove,
-                                        volume: Volume::new(100.),
-                                        speed: 1.,
-                                        paused: false,
-                                        spatial: true,
-                                        spatial_scale: None,
-                                    },
-                                }
-                            );
+                                commands.entity(source_entity.0).remove::<AudioBundle>();
 
-                            if counter >= 5 {break;}
+                                commands.entity(source_entity.0).try_insert(
+                                    AudioBundle{
+                                        source: attack_visualisation_assets.tank_shot_sound.clone(),
+                                        settings: PlaybackSettings{
+                                            mode: PlaybackMode::Remove,
+                                            volume: Volume::new(100.),
+                                            speed: 1.,
+                                            paused: false,
+                                            spatial: true,
+                                            spatial_scale: None,
+                                        },
+                                    }
+                                );
+
+                                if counter >= 5 {break;}
+                            }
                         }
                     },
                     AttackAnimationTypes::None(_) => {},
@@ -6221,7 +6266,7 @@ pub fn toggle_artillery_designation(
 pub fn artillery_designation_system (
     mut artillery_designation: ResMut<IsArtilleryDesignationActive>,
     is_unit_deselection_allowed: Res<IsUnitDeselectionAllowed>,
-    mut artillery_units_q: Query<(Entity, &mut Transform), (With<ArtilleryUnit>, With<SelectedUnit>)>,
+    mut artillery_units_q: Query<(Entity, &mut Transform, &mut UnitComponent), (With<ArtilleryUnit>, With<SelectedUnit>)>,
     ui_blocker: Res<UiBlocker>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     cursor_ray: Res<CursorRay>,
@@ -6258,6 +6303,8 @@ pub fn artillery_designation_system (
                                 }
                             }
 
+                            artillery_unit.2.path = vec![];
+
                             artillery_unit.1.look_at(
                                 Vec3::new(
                                     hits[0].1.position().x,
@@ -6270,6 +6317,8 @@ pub fn artillery_designation_system (
                     } else {
                         for mut artillery_unit in artillery_units_q.iter_mut() {
                             commands.entity(artillery_unit.0).try_insert(ArtilleryNeedsToFire(hits[0].1.position()));
+
+                            artillery_unit.2.path = vec![];
 
                             artillery_unit.1.look_at(
                                 Vec3::new(
@@ -6303,7 +6352,7 @@ pub fn artillery_order_delayed (
 }
 
 pub fn artillery_firing_system(
-    mut artillery_units_q: Query<(&Transform, &mut ArtilleryUnit, &ArtilleryNeedsToFire, Entity, Option<&NeedToMove>), With<ArtilleryNeedsToFire>>,
+    mut artillery_units_q: Query<(&Transform, &mut ArtilleryUnit, &ArtilleryNeedsToFire, Entity, Option<&NeedToMove>, &SuppliesConsumerComponent), With<ArtilleryNeedsToFire>>,
     mut unstarted_tasks: ResMut<UnstartedPathfindingTasksPool>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -6337,6 +6386,10 @@ pub fn artillery_firing_system(
     
                 if artillery_unit.1.elapsed_reload_time >= artillery_unit.1.reload_time {
                     artillery_unit.1.elapsed_reload_time = 0;
+
+                    if artillery_unit.5.supplies <= 0 {
+                        continue;
+                    }
 
                     let mut rng = rand::thread_rng();
                     let mut end_point = artillery_unit.2.0;

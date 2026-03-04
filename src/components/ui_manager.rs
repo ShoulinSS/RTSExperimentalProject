@@ -7,7 +7,7 @@ use bevy_rapier3d::{plugin::RapierContext, prelude::{Collider, QueryFilter}, rap
 use bevy_tasks::TaskPool;
 use oxidized_navigation_serializable::NavMeshAffector;
 
-use crate::{GameStage, GameStages, GameState, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, PlayerData, SUPPLIES_COLOR, components::{self, asset_manager::{CircleData, CircleHolder, ForbiddenBlueprint, InstancedAnimations, InstancedMaterials, OtherAssets, TeamMaterialExtension, Terrain}, building::{BuildingStageCache, BuildingsDeletionStates, HumanResourceStorageComponent, MaterialsProductionComponent, MaterialsStorageComponent, ProducableUnits, SettlementComponent, Settlements, SettlementsLeft, SwitchableBuilding, VILLAGES_COUNT}, camera::SelectionBox, network::{EntityMaps, UnitsToDamage, UnitsToInsertPath, UnspecifiedEntitiesToMove}, unit::{ARMY_SIZE, AsyncTaskPools, BATTALION_SIZE, COMPANY_SIZE, DisabledUnit, InfantryTransport, IsUnitDeselectionAllowed, IsUnitSelectionAllowed, PLATOON_SIZE, REGIMENT_SIZE, RemainsCount, START_ARTILLERY_UNITS_COUNT, SuppliesConsumerComponent}}};
+use crate::{GameStage, GameStages, GameState, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, PlayerData, SUPPLIES_COLOR, components::{self, asset_manager::{CircleData, CircleHolder, ForbiddenBlueprint, InstancedAnimations, InstancedMaterials, OtherAssets, TeamMaterialExtension, Terrain}, building::{BuildingStageCache, BuildingsDeletionStates, HumanResourceStorageComponent, MaterialsProductionComponent, MaterialsStorageComponent, ProducableUnits, ResourceZoneCollider, SettlementComponent, Settlements, SettlementsLeft, SwitchableBuilding, VILLAGES_COUNT}, camera::SelectionBox, network::{EntityMaps, UnitsToDamage, UnitsToInsertPath, UnspecifiedEntitiesToMove}, unit::{ARMY_SIZE, AsyncTaskPools, BATTALION_SIZE, COMPANY_SIZE, DisabledUnit, InfantryTransport, IsUnitDeselectionAllowed, IsUnitSelectionAllowed, PLATOON_SIZE, REGIMENT_SIZE, RemainsCount, START_ARTILLERY_UNITS_COUNT, SuppliesConsumerComponent}}};
 
 use super::{asset_manager::{generate_circle_segments, LineData, LineHolder}, building::{AllSettlementsPlaced, BuildingBlueprint, BuildingsBundles, BuildingsList, InfantryBarracksBundle, ProductionButtonPressed, ProductionQueue, ProductionState, SoldierBundle, UnactivatedBlueprints, UnitBundles, VehicleFactoryBundle, ALLOWED_DISTANCE_FROM_BORDERS, CITIES_COUNT}, camera::{CameraComponent, SelectionBounds}, logistics::ResourceZone, network::{ClientList, ClientMessage, InsertedConnectionData, NetworkStatus, NetworkStatuses, PlayerList, ServerMessage}, unit::{self, Armies, ArmoredSquad, ArtilleryUnit, CompanyTypes, CombatComponent, IsArtilleryDesignationActive, LimitedHashMap, LimitedHashSet, LimitedNumber, SquadLeader, RegularSquad, SelectedUnit, SerializableArmoredSquad, SerializableArmyObject, SerializableRegularSquad, SerializableShockSquad, ShockSquad, UnitTypes, UnitsTileMap, MAX_SQUAD_COUNT, START_ARMORED_SQUADS_AMOUNT, START_REGULAR_SQUADS_AMOUNT, START_SHOCK_SQUADS_AMOUNT, TILE_SIZE}};
 
@@ -8898,7 +8898,10 @@ pub fn building_placement_handling_system(
         Res<ButtonInput<KeyCode>>,
     ),
     mut commands: Commands,
-    mut resource_zones_q: Query<(&mut ResourceZone, &Transform), With<ResourceZone>>,
+    mut resource_zones_q: (
+        Query<(&mut ResourceZone, &Transform), With<ResourceZone>>,
+        Query<Entity, (With<ResourceZoneCollider>, Without<DisplayedModelHolder>, Without<Terrain>)>,
+    ),
     game_stage: Res<GameStage>,
     network_status: Res<NetworkStatus>,
     mut client: ResMut<QuinnetClient>,
@@ -8944,15 +8947,26 @@ pub fn building_placement_handling_system(
 
         shape_position.y += 5.5;
 
-        let intersections = rapier_context.intersection_with_shape(
+        let intersection = rapier_context.intersection_with_shape(
             shape_position,
             Quat::from_rotation_y(angle),
             &buildings_cache.0.current_building_check_collider,
             QueryFilter::default(),
         );
 
-        if intersections.is_some() {
-            is_forbidden = true;
+        if intersection.is_some() {
+            match buildings_cache.0.name.as_str() {
+                "ResM" => {
+                    if let Some(entity) = intersection {
+                        if !resource_zones_q.1.get(entity).is_ok() {
+                            is_forbidden = true;
+                        }
+                    }
+                }
+                _ => {
+                    is_forbidden = true;
+                }
+            }
         }
 
         if cursor_on_plane_position.y > 5. {
@@ -8969,7 +8983,7 @@ pub fn building_placement_handling_system(
 
             if holder.2.is_some() {
                 let mut is_inside_any_zone = false;
-                for res_zone in resource_zones_q.iter() {
+                for res_zone in resource_zones_q.0.iter() {
                     if cursor_on_plane_position.xz().distance(res_zone.1.translation.xz()) <= res_zone.0.zone_radius {
                         is_inside_any_zone = true;
                     }
@@ -9022,7 +9036,7 @@ pub fn building_placement_handling_system(
                             is_building_placed = true;
                         },
                         BuildingsBundles::ResourceMiner(bundle) => {
-                            for mut zone in resource_zones_q.iter_mut() {
+                            for mut zone in resource_zones_q.0.iter_mut() {
                                 zone.0.current_miners.entry(player_data.team).or_insert_with(|| None);
 
                                 let mut is_some = false;
@@ -9214,7 +9228,7 @@ pub fn building_placement_handling_system(
                             .id();
                         },
                         BuildingsBundles::ResourceMiner(bundle) => {
-                            for mut zone in resource_zones_q.iter_mut() {
+                            for mut zone in resource_zones_q.0.iter_mut() {
                                 zone.0.current_miners.entry(player_data.team).or_insert_with(|| None);
 
                                 let mut is_some = false;

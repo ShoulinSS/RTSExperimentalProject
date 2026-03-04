@@ -6,7 +6,7 @@ use bevy_rapier3d::{prelude::{CharacterLength, Collider, CollisionGroups, Comput
 use oxidized_navigation_serializable::{Area, NavMesh, NavMeshAffector, NavMeshAreaType, NavMeshSettings};
 use serde::{Deserialize, Serialize};
 
-use crate::{GameStage, GameStages, GameState, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, PlayerData, components::{asset_manager::{AttackVisualisationAssets, BuildingsAssets, ChangeMaterial, CircleData, CircleHolder, InstancedMaterials, LOD, TeamMaterialExtension, TrailComponent, TrailEmmiterComponent, UnitAssets}, building::{CONSTRUCTION_PROGRESS_COLOR, ConstructionProgressBar, DeconstructableBuilding, DontTouch, HumanResourceStorageComponent, HumanResourcesDisplay, MaterialsDisplay, MaterialsProductionComponent, MaterialsStorageComponent, SettlementCaptureInProgress, SettlementCaptureProgressBar, Settlements, SwitchableBuilding, ToDeconstruct}, logistics::LOGISTIC_UNITS_SPEED, ui_manager::{HumanResourcesOverallAmountDisplay, MaterialsOverallAmountDisplay}, unit::{AsyncPathfindingTasks, AsyncTaskPools, AttackAnimationTypes, BusyEngineer, Covered, DisabledUnit, EngineerActions, ExplosionEvent, InTransport, InfantryTransport, LimitedNumber, MovingToCover, MovingToTransport, RemainsCount, START_ARMORED_SQUADS_AMOUNT, START_ARTILLERY_UNITS_COUNT, START_ENGINEERS_COUNT, START_REGULAR_SQUADS_AMOUNT, START_SHOCK_SQUADS_AMOUNT, SelectedUnit, SquadLeader, StoppedMoving, SuppliesConsumerComponent, TaskPoolTypes, UnitNeedsToBeUncovered, UnitRemains, UnstartedPathfindingTasksPool, async_path_find}}};
+use crate::{GameStage, GameStages, GameState, HUMAN_RESOURCE_COLOR, MATERIALS_COLOR, PlayerData, components::{asset_manager::{AttackVisualisationAssets, BuildingsAssets, ChangeMaterial, CircleData, CircleHolder, InstancedMaterials, LOD, TeamMaterialExtension, TrailComponent, TrailEmmiterComponent, UnitAssets}, building::{CONSTRUCTION_PROGRESS_COLOR, ConstructionProgressBar, DeconstructableBuilding, DontTouch, HumanResourceStorageComponent, HumanResourcesDisplay, MaterialsDisplay, MaterialsProductionComponent, MaterialsStorageComponent, ResourceZoneCollider, SettlementCaptureInProgress, SettlementCaptureProgressBar, Settlements, SwitchableBuilding, ToDeconstruct}, logistics::LOGISTIC_UNITS_SPEED, ui_manager::{HumanResourcesOverallAmountDisplay, MaterialsOverallAmountDisplay}, unit::{AsyncPathfindingTasks, AsyncTaskPools, AttackAnimationTypes, BusyEngineer, Covered, DisabledUnit, EngineerActions, ExplosionEvent, InTransport, InfantryTransport, LimitedNumber, MovingToCover, MovingToTransport, RemainsCount, START_ARMORED_SQUADS_AMOUNT, START_ARTILLERY_UNITS_COUNT, START_ENGINEERS_COUNT, START_REGULAR_SQUADS_AMOUNT, START_SHOCK_SQUADS_AMOUNT, SelectedUnit, SerializableArmoredSquad, SerializableRegularSquad, SerializableShockSquad, SquadLeader, StoppedMoving, SuppliesConsumerComponent, TaskPoolTypes, UnitNeedsToBeUncovered, UnitRemains, UnstartedPathfindingTasksPool, async_path_find}}};
 
 use super::{asset_manager::{generate_circle_segments, LineData, LineHolder}, building::{create_ring, AllSettlementsPlaced, ApartmentHouse, ArtilleryBundle, BuildingBlueprint, BuildingConstructionSite, BuildingsBundles, BuildingsList, CoverComponent, DeleteTemporaryObjects, EngineerBundle, IFVBundle, InfantryBarracksBundle, LogisticHubBundle, ProducableUnits, ProductionQueue, ProductionState, ResourceMinerBundle, SettlementComponent, SettlementObject, SoldierBundle, SuppliesProductionComponent, TankBundle, TemporaryObject, UnactivatedBlueprints, UnitBundles, VehicleFactoryBundle}, logistics::{create_curved_mesh, ResourceZone}, ui_manager::{Actions, ButtonAction, GameStartedEvent, ProductionStateChanged, UiButtonNodes}, unit::{self, Armies, ArmoredSquad, ArmyObject, ArtilleryNeedsToFire, ArtilleryUnit, AttackTypes, CompanyTypes, CombatComponent, DamageTypes, DeleteAfterStart, LimitedHashSet, NeedToMove, RegularSquad, SelectableUnit, SerializableArmyObject, ShockSquad, UnitComponent, UnitDeathEvent, UnitTypes, UnitsTileMap, ARMORED_SQUAD_SIZE, REGULAR_SQUAD_SIZE, SHOCK_SQUAD_SIZE, SPECIALISTS_PER_REGULAR_SQUAD, SPECIALISTS_PER_SHOCK_SQUAD, TILE_SIZE}};
 
@@ -1097,6 +1097,10 @@ pub fn client_messages_handler(
                 },
                 ClientMessage::ArtilleryDesignationRequest { artillery_entity, target_position: position } => {
                     commands.entity(artillery_entity).try_insert(ArtilleryNeedsToFire(position));
+
+                    if let Ok(mut unit) = moving_units_q.get_mut(artillery_entity) {
+                        unit.path = vec![];
+                    }
                 },
                 ClientMessage::CancelArtilleryFire { artillery_entity } => {
                     if let Ok(mut unit) = queries.1.get_mut(artillery_entity) {
@@ -1515,6 +1519,7 @@ pub fn mp_game_starter(
     mut server: ResMut<QuinnetServer>,
     clients: Res<ClientList>,
     game_stage: Res<GameStage>,
+    mut armies: ResMut<Armies>,
     mut event_writer: (
         //EventWriter<UnsentServerMessage>,
         EventWriter<GameStartedEvent>,
@@ -1537,6 +1542,110 @@ pub fn mp_game_starter(
                     channel_id += 1;
                 } else {
                     break;
+                }
+            }
+
+            if let Some(team_army) = armies.0.get_mut(&player_data.team) {
+                let mut regular_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableRegularSquad, String, Entity))> = Vec::new();
+                let mut shock_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableShockSquad, String, Entity))> = Vec::new();
+                let mut armored_platoons: Vec<((i32, i32, i32, i32, i32), (SerializableArmoredSquad, String, Entity))> = Vec::new();
+                let mut artillery_units: (Vec<(i32, ((Option<Entity>, String), Entity))>, Entity) = (Vec::new(), Entity::PLACEHOLDER);
+                let mut engineers: Vec<(i32, ((Option<Entity>, String), Entity))> = Vec::new();
+
+                for reg_p in team_army.regular_squads.iter() {
+                    let mut soldiers: Vec<Entity> = Vec::new();
+                    let mut specialists: Vec<Entity> = Vec::new();
+                    let mut squad_leader = Entity::PLACEHOLDER;
+
+                    for soldier in reg_p.1.0.0.0.set.iter() {
+                        soldiers.push(*soldier);
+                    }
+
+                    for specialist in reg_p.1.0.0.1.set.iter() {
+                        specialists.push(*specialist);
+                    }
+
+                    squad_leader = reg_p.1.2;
+
+                    regular_platoons.push((*reg_p.0, (
+                        SerializableRegularSquad((
+                            soldiers,
+                            specialists,
+                        )),
+                        reg_p.1.1.clone(),
+                        squad_leader,
+                    )));
+                }
+
+                for shock_p in team_army.shock_squads.iter() {
+                    let mut soldiers: Vec<Entity> = Vec::new();
+                    let mut specialists: Vec<Entity> = Vec::new();
+                    let mut squad_leader = Entity::PLACEHOLDER;
+
+                    for soldier in shock_p.1.0.0.0.set.iter() {
+                        soldiers.push(*soldier);
+                    }
+
+                    for specialist in shock_p.1.0.0.1.set.iter() {
+                        specialists.push(*specialist);
+                    }
+
+                    squad_leader = shock_p.1.2;
+
+                    shock_platoons.push((*shock_p.0, (
+                        SerializableShockSquad((
+                            soldiers,
+                            specialists,
+                        )),
+                        shock_p.1.1.clone(),
+                        squad_leader,
+                    )));
+                }
+
+                for arm_p in team_army.armored_squads.iter() {
+                    let mut vehicles: Vec<Entity> = Vec::new();
+                    let mut squad_leader = Entity::PLACEHOLDER;
+
+                    for vehicle in arm_p.1.0.0.set.iter() {
+                        vehicles.push(*vehicle);
+                    }
+
+                    squad_leader = arm_p.1.2;
+
+                    armored_platoons.push((*arm_p.0, (
+                        SerializableArmoredSquad(
+                            vehicles,
+                        ),
+                        arm_p.1.1.clone(),
+                        squad_leader,
+                    )));
+                }
+
+                for art in team_army.artillery_units.0.iter() {
+                    artillery_units.0.push((*art.0, ((art.1.0.0, art.1.0.1.clone()), art.1.1)));
+                }
+
+                for eng in team_army.engineers.iter() {
+                    engineers.push((*eng.0, ((eng.1.0.0, eng.1.0.1.clone()), eng.1.1)));
+                }
+
+                let army = SerializableArmyObject{
+                    regular_platoons,
+                    shock_platoons,
+                    armored_platoons,
+                    artillery_units,
+                    engineers,
+                };
+
+                channel_id = 60;
+                while channel_id <= 89 {
+                    if let Err(_) = server.endpoint_mut().send_group_message_on(clients.0.keys(), channel_id, ServerMessage::HostArmyChanged {
+                        army: army.clone(),
+                    }){
+                        channel_id += 1;
+                    } else {
+                        break;
+                    }
                 }
             }
         }
@@ -2249,6 +2358,19 @@ pub fn server_messages_handler(
                     },
                 ]))
                 .id();
+
+                commands.spawn((
+                    SpatialBundle{
+                        visibility: Visibility::Hidden,
+                        inherited_visibility: InheritedVisibility::HIDDEN,
+                        view_visibility: ViewVisibility::HIDDEN,
+                        transform: Transform::from_translation(position),
+                        global_transform: GlobalTransform::default(),
+                    },
+                    Collider::cylinder(50., resource_zone_size),
+                    CollisionGroups::new(Group::GROUP_2, Group::all()),
+                    ResourceZoneCollider,
+                ));
 
                 entity_maps.client_to_server.insert(client_entity, server_entity);
                 entity_maps.server_to_client.insert(server_entity, client_entity);
@@ -5146,6 +5268,7 @@ pub fn server_messages_handler(
                     autostep: None,
                     apply_impulse_to_dynamic_bodies: false,
                     snap_to_ground: Some(CharacterLength::Absolute(1000.)),
+                    filter_groups: Some(CollisionGroups::new(Group::all(), Group::GROUP_10)),
                     ..default()
                 })
                 .try_insert(LOD{
@@ -5764,80 +5887,80 @@ pub fn client_game_starting_system(
             commands.entity(to_delete).despawn();
         }
 
-        let mut platoon_id: LimitedNumber<1, 3> = LimitedNumber::new();
-        let mut company_id: LimitedNumber<1, 3> = LimitedNumber::new();
-        let mut batallion_id: LimitedNumber<1, 3> = LimitedNumber::new();
-        let mut brigade_id: LimitedNumber<1, 3> = LimitedNumber::new();
-        let mut division_id: LimitedNumber<1, 2> = LimitedNumber::new();
-        platoon_id.set_value(0);
+        // let mut platoon_id: LimitedNumber<1, 3> = LimitedNumber::new();
+        // let mut company_id: LimitedNumber<1, 3> = LimitedNumber::new();
+        // let mut batallion_id: LimitedNumber<1, 3> = LimitedNumber::new();
+        // let mut brigade_id: LimitedNumber<1, 3> = LimitedNumber::new();
+        // let mut division_id: LimitedNumber<1, 2> = LimitedNumber::new();
+        // platoon_id.set_value(0);
 
-        for _i in 0..START_REGULAR_SQUADS_AMOUNT {
-            if platoon_id.next() {
-                if company_id.next() {
-                    if batallion_id.next() {
-                        if brigade_id.next() {
-                            division_id.next();
-                        }
-                    }
-                }
-            }
+        // for _i in 0..START_REGULAR_SQUADS_AMOUNT {
+        //     if platoon_id.next() {
+        //         if company_id.next() {
+        //             if batallion_id.next() {
+        //                 if brigade_id.next() {
+        //                     division_id.next();
+        //                 }
+        //             }
+        //         }
+        //     }
 
-            army.0.get_mut(&1).unwrap().regular_squads.insert((
-                division_id.get_value(),
-                brigade_id.get_value(),
-                batallion_id.get_value(),
-                company_id.get_value(),
-                platoon_id.get_value(),
-            ), (RegularSquad((LimitedHashSet::new(), LimitedHashSet::new())), "atgm".to_string(), Entity::PLACEHOLDER));
-        }
+        //     army.0.get_mut(&1).unwrap().regular_squads.insert((
+        //         division_id.get_value(),
+        //         brigade_id.get_value(),
+        //         batallion_id.get_value(),
+        //         company_id.get_value(),
+        //         platoon_id.get_value(),
+        //     ), (RegularSquad((LimitedHashSet::new(), LimitedHashSet::new())), "atgm".to_string(), Entity::PLACEHOLDER));
+        // }
 
-        for _i in 0..START_SHOCK_SQUADS_AMOUNT {
-            if platoon_id.next() {
-                if company_id.next() {
-                    if batallion_id.next() {
-                        if brigade_id.next() {
-                            division_id.next();
-                        }
-                    }
-                }
-            }
+        // for _i in 0..START_SHOCK_SQUADS_AMOUNT {
+        //     if platoon_id.next() {
+        //         if company_id.next() {
+        //             if batallion_id.next() {
+        //                 if brigade_id.next() {
+        //                     division_id.next();
+        //                 }
+        //             }
+        //         }
+        //     }
 
-            army.0.get_mut(&1).unwrap().shock_squads.insert((
-                division_id.get_value(),
-                brigade_id.get_value(),
-                batallion_id.get_value(),
-                company_id.get_value(),
-                platoon_id.get_value(),
-            ), (ShockSquad((LimitedHashSet::new(), LimitedHashSet::new())), "lat".to_string(), Entity::PLACEHOLDER));
-        }
+        //     army.0.get_mut(&1).unwrap().shock_squads.insert((
+        //         division_id.get_value(),
+        //         brigade_id.get_value(),
+        //         batallion_id.get_value(),
+        //         company_id.get_value(),
+        //         platoon_id.get_value(),
+        //     ), (ShockSquad((LimitedHashSet::new(), LimitedHashSet::new())), "lat".to_string(), Entity::PLACEHOLDER));
+        // }
 
-        for _i in 0..START_ARMORED_SQUADS_AMOUNT {
-            if platoon_id.next() {
-                if company_id.next() {
-                    if batallion_id.next() {
-                        if brigade_id.next() {
-                            division_id.next();
-                        }
-                    }
-                }
-            }
+        // for _i in 0..START_ARMORED_SQUADS_AMOUNT {
+        //     if platoon_id.next() {
+        //         if company_id.next() {
+        //             if batallion_id.next() {
+        //                 if brigade_id.next() {
+        //                     division_id.next();
+        //                 }
+        //             }
+        //         }
+        //     }
 
-            army.0.get_mut(&1).unwrap().armored_squads.insert((
-                division_id.get_value(),
-                brigade_id.get_value(),
-                batallion_id.get_value(),
-                company_id.get_value(),
-                platoon_id.get_value(),
-            ), (ArmoredSquad(LimitedHashSet::new()), "tank".to_string(), Entity::PLACEHOLDER));
-        }
+        //     army.0.get_mut(&1).unwrap().armored_squads.insert((
+        //         division_id.get_value(),
+        //         brigade_id.get_value(),
+        //         batallion_id.get_value(),
+        //         company_id.get_value(),
+        //         platoon_id.get_value(),
+        //     ), (ArmoredSquad(LimitedHashSet::new()), "tank".to_string(), Entity::PLACEHOLDER));
+        // }
 
-        for i in 1..START_ARTILLERY_UNITS_COUNT + 1 {
-            army.0.get_mut(&1).unwrap().artillery_units.0.insert(i, ((None, "artillery".to_string()), Entity::PLACEHOLDER));
-        }
+        // for i in 1..START_ARTILLERY_UNITS_COUNT + 1 {
+        //     army.0.get_mut(&1).unwrap().artillery_units.0.insert(i, ((None, "artillery".to_string()), Entity::PLACEHOLDER));
+        // }
 
-        for i in 1..START_ENGINEERS_COUNT + 1 {
-            army.0.get_mut(&1).unwrap().engineers.insert(i, ((None, "engineer".to_string()), Entity::PLACEHOLDER));
-        }
+        // for i in 1..START_ENGINEERS_COUNT + 1 {
+        //     army.0.get_mut(&1).unwrap().engineers.insert(i, ((None, "engineer".to_string()), Entity::PLACEHOLDER));
+        // }
     }
 }
 

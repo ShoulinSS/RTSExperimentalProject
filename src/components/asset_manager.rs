@@ -907,43 +907,33 @@ pub fn new_lods_initializing_system(
     camera_q: Query<&Transform, With<CameraComponent>>,
     mut new_lods_q: Query<(Entity, &LOD, Option<&mut AnimatedMesh>, Option<&SkinnedMesh>), (Added<LOD>, Without<AnimationComponent>, Without<ChangeMaterial>)>,
     mut commands: Commands,
-    mut less: Local<bool>,
-    mut more: Local<bool>,
 ){
     if new_lods_q.is_empty() {return;}
     
     let camera = camera_q.single();
 
     if camera.translation.y < LOD_SWITCH_HEIGHT {
-        if !*less {
-            *less = true;
-            *more = false;
+        for model in new_lods_q.iter_mut() {
+            commands.entity(model.0).remove::<(Handle<Mesh>, Handle<StandardMaterial>, Handle<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>)>();
 
-            for model in new_lods_q.iter_mut() {
-                commands.entity(model.0).remove::<(Handle<Mesh>, Handle<StandardMaterial>, Handle<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>)>();
-
-                if let Some(animated_mesh) = model.2 {
-                    if !animated_mesh.joints.is_empty() {
-                        commands.entity(model.0).try_insert(SkinnedMesh{
-                            inverse_bindposes: animated_mesh.inverse_bindposes.clone(),
-                            joints: animated_mesh.joints.clone(),
-                        });
-                    }
-                }
-
-                commands.entity(model.0).try_insert(model.1.detailed.0.clone());
-
-                if let Some(team_material) = &model.1.detailed.1 {
-                    commands.entity(model.0).try_insert(team_material.clone());
-                } else if let Some(simple_material) = &model.1.detailed.2 {
-                    commands.entity(model.0).try_insert(simple_material.clone());
+            if let Some(animated_mesh) = model.2 {
+                if !animated_mesh.joints.is_empty() {
+                    commands.entity(model.0).try_insert(SkinnedMesh{
+                        inverse_bindposes: animated_mesh.inverse_bindposes.clone(),
+                        joints: animated_mesh.joints.clone(),
+                    });
                 }
             }
-        }
-    } else if !*more {
-        *less = false;
-        *more = true;
 
+            commands.entity(model.0).try_insert(model.1.detailed.0.clone());
+
+            if let Some(team_material) = &model.1.detailed.1 {
+                commands.entity(model.0).try_insert(team_material.clone());
+            } else if let Some(simple_material) = &model.1.detailed.2 {
+                commands.entity(model.0).try_insert(simple_material.clone());
+            }
+        }
+    } else {
         for model in new_lods_q.iter_mut() {
             commands.entity(model.0).remove::<(Handle<Mesh>, Handle<StandardMaterial>, Handle<ExtendedMaterial<StandardMaterial, TeamMaterialExtension>>)>();
 

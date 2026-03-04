@@ -2590,15 +2590,27 @@ pub fn settlements_placement_system (
                 }
             }
         } else {
-            commands.spawn(LineHolder(vec![
-                LineData{
-                    line_start: Vec2::new(WORLD_SIZE / 2., -ALLOWED_DISTANCE_FROM_BORDERS),
-                    line_end: Vec2::new(-WORLD_SIZE / 2., -ALLOWED_DISTANCE_FROM_BORDERS),
-                    line_width: 5.,
-                    highlight_color: Vec4::new(0., 1., 1., 1.),
-                },
-            ]))
-            .try_insert(DeleteAfterStart);
+            if player_data.team == 1 {
+                commands.spawn(LineHolder(vec![
+                    LineData{
+                        line_start: Vec2::new(WORLD_SIZE / 2., -ALLOWED_DISTANCE_FROM_BORDERS),
+                        line_end: Vec2::new(-WORLD_SIZE / 2., -ALLOWED_DISTANCE_FROM_BORDERS),
+                        line_width: 5.,
+                        highlight_color: Vec4::new(0., 1., 1., 1.),
+                    },
+                ]))
+                .try_insert(DeleteAfterStart);
+            } else {
+                commands.spawn(LineHolder(vec![
+                    LineData{
+                        line_start: Vec2::new(WORLD_SIZE / 2., ALLOWED_DISTANCE_FROM_BORDERS),
+                        line_end: Vec2::new(-WORLD_SIZE / 2., ALLOWED_DISTANCE_FROM_BORDERS),
+                        line_width: 5.,
+                        highlight_color: Vec4::new(0., 1., 1., 1.),
+                    },
+                ]))
+                .try_insert(DeleteAfterStart);
+            }
 
             match network_status.0 {
                 NetworkStatuses::SinglePlayer => {
@@ -2848,6 +2860,9 @@ pub fn apartments_generation_system(
     }
 }
 
+#[derive(Component)]
+pub struct ResourceZoneCollider;
+
 pub fn resource_zones_generation_system (
     mut event_reader: EventReader<AllSettlementsPlaced>,
     settlements_q: Query<(Entity, &Transform, &SettlementComponent), With<SettlementComponent>>,
@@ -2915,6 +2930,19 @@ pub fn resource_zones_generation_system (
                     },
                 ]))
                 .id();
+
+                commands.spawn((
+                    SpatialBundle{
+                        visibility: Visibility::Hidden,
+                        inherited_visibility: InheritedVisibility::HIDDEN,
+                        view_visibility: ViewVisibility::HIDDEN,
+                        transform: Transform::from_translation(spot),
+                        global_transform: GlobalTransform::default(),
+                    },
+                    Collider::cylinder(50., resource_zone_size),
+                    CollisionGroups::new(Group::GROUP_2, Group::all()),
+                    ResourceZoneCollider,
+                ));
 
                 if matches!(network_status.0, NetworkStatuses::Host) {
                     let mut channel_id = 60;
@@ -2986,6 +3014,19 @@ pub fn resource_zones_generation_system (
                     },
                 ]))
                 .id();
+
+                commands.spawn((
+                    SpatialBundle{
+                        visibility: Visibility::Hidden,
+                        inherited_visibility: InheritedVisibility::HIDDEN,
+                        view_visibility: ViewVisibility::HIDDEN,
+                        transform: Transform::from_translation(spot),
+                        global_transform: GlobalTransform::default(),
+                    },
+                    Collider::cylinder(50., resource_zone_size),
+                    CollisionGroups::new(Group::GROUP_2, Group::all()),
+                    ResourceZoneCollider,
+                ));
 
                 if matches!(network_status.0, NetworkStatuses::Host) {
                     let mut channel_id = 60;

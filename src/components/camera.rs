@@ -271,10 +271,14 @@ pub fn handle_mouse_buttons(
                 let hits = raycast.cast_ray(cursor_ray, &default());
     
                 if hits.len() > 0 && !selection_bounds.is_ui_hovered {
-                    if selectables.0.get(hits[0].0).is_ok() && selected_buildings.buildings.is_empty() && selection_modifiers.1.0 {
-                        add_selected_units(vec![hits[0].0], &mut selected_units, &mut commands, &selectables.0);
-                    } else if selectables.1.get(hits[0].0).is_ok() && selected_units.platoons.is_empty() && selection_modifiers.1.0 {
-                        add_selected_buildings(vec![hits[0].0], &mut selected_buildings, &mut commands, &selectables.1);
+                    if let Ok(selectable) = selectables.0.get(hits[0].0) {
+                        if selectable.2.team == selectables.2.team {
+                            if selectables.0.get(hits[0].0).is_ok() && selected_buildings.buildings.is_empty() && selection_modifiers.1.0 {
+                                add_selected_units(vec![hits[0].0], &mut selected_units, &mut commands, &selectables.0);
+                            } else if selectables.1.get(hits[0].0).is_ok() && selected_units.platoons.is_empty() && selection_modifiers.1.0 {
+                                add_selected_buildings(vec![hits[0].0], &mut selected_buildings, &mut commands, &selectables.1);
+                            }
+                        }
                     }
                 }
             }

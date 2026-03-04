@@ -3,7 +3,7 @@ use std::f32::consts::E;
 
 use bevy::{ecs::query, log, pbr::ExtendedMaterial, prelude::*, render::{mesh::{Indices, PrimitiveTopology}, render_asset::RenderAssetUsages}, tasks::AsyncComputeTaskPool, transform::commands, utils::hashbrown::HashMap};
 use bevy_quinnet::server::QuinnetServer;
-use bevy_rapier3d::{na::distance, prelude::{CharacterLength, Collider, KinematicCharacterController}, rapier::{crossbeam::{channel, epoch::Pointable}, prelude::query_pipeline_generators::CurrentAabb}};
+use bevy_rapier3d::{na::distance, prelude::{CharacterLength, Collider, CollisionGroups, Group, KinematicCharacterController}, rapier::{crossbeam::{channel, epoch::Pointable}, prelude::query_pipeline_generators::CurrentAabb}};
 use oxidized_navigation_serializable::{NavMesh, NavMeshSettings};
 use rand::distributions::DistMap;
 
@@ -345,6 +345,7 @@ pub fn assign_supply_tasks (
                                         autostep: None,
                                         apply_impulse_to_dynamic_bodies: false,
                                         snap_to_ground: Some(CharacterLength::Absolute(1000.)),
+                                        filter_groups: Some(CollisionGroups::new(Group::all(), Group::GROUP_10)),
                                         ..default()
                                     }).try_insert(LOD{
                                         detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
@@ -507,6 +508,7 @@ pub fn assign_supply_tasks (
                                             autostep: None,
                                             apply_impulse_to_dynamic_bodies: false,
                                             snap_to_ground: Some(CharacterLength::Absolute(1000.)),
+                                            filter_groups: Some(CollisionGroups::new(Group::all(), Group::GROUP_10)),
                                             ..default()
                                         }).try_insert(LOD{
                                             detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
@@ -669,6 +671,7 @@ pub fn assign_supply_tasks (
                                                 autostep: None,
                                                 apply_impulse_to_dynamic_bodies: false,
                                                 snap_to_ground: Some(CharacterLength::Absolute(1000.)),
+                                                filter_groups: Some(CollisionGroups::new(Group::all(), Group::GROUP_10)),
                                                 ..default()
                                             }).try_insert(LOD{
                                                 detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
@@ -833,6 +836,7 @@ pub fn assign_supply_tasks (
                                                         autostep: None,
                                                         apply_impulse_to_dynamic_bodies: false,
                                                         snap_to_ground: Some(CharacterLength::Absolute(1000.)),
+                                                        filter_groups: Some(CollisionGroups::new(Group::all(), Group::GROUP_10)),
                                                         ..default()
                                                     }).try_insert(LOD{
                                                         detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
@@ -1496,6 +1500,7 @@ pub fn material_producers_processing_system(
                                     autostep: None,
                                     apply_impulse_to_dynamic_bodies: false,
                                     snap_to_ground: Some(CharacterLength::Absolute(1000.)),
+                                    filter_groups: Some(CollisionGroups::new(Group::all(), Group::GROUP_10)),
                                     ..default()
                                 }).try_insert(LOD{
                                     detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
@@ -1700,6 +1705,7 @@ pub fn human_resource_producers_processing_system(
                                     autostep: None,
                                     apply_impulse_to_dynamic_bodies: false,
                                     snap_to_ground: Some(CharacterLength::Absolute(1000.)),
+                                    filter_groups: Some(CollisionGroups::new(Group::all(), Group::GROUP_10)),
                                     ..default()
                                 }).try_insert(LOD{
                                     detailed: (units_assets.truck.0.clone(), Some(material.clone()), None),
